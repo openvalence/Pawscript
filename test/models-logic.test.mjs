@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   parseManifest, safePath, rows, modelState, rowState, toFetch, runtimeNeeded, modelsReady, matchFile, otherVersion, baseUrl,
-  MODELS_BASE_URL, fmtBytes, isRuntime, chooseRuntime, isHosted,
+  MODELS_BASE_URL, fmtBytes, isRuntime, chooseRuntime, isHosted, rateMeter, fmtSpeed,
 } from '../src/features/models/logic.js';
 
 const shipped = JSON.parse(readFileSync(new URL('../src/features/models/manifest.json', import.meta.url), 'utf8'));
@@ -142,4 +142,21 @@ test('the models server: env var, then the setting, then the default', () => {
   assert.equal(fmtBytes(156_008_466), '156 MB');
   assert.equal(fmtBytes(258), '1 KB');
   assert.equal(fmtBytes(0), '0 KB', 'nothing is not "1 KB" (the Models foot, a download that has not started)');
+});
+
+test('download speed: smoothed, time left hidden until it settles, one written form', () => {
+  const m = rateMeter();
+  assert.deepEqual(m(5e6, 1e9, 0), { rate: 0, left: null }, 'one sample: no speed (a resumed .part does not count as speed)');
+  assert.equal(m(55e6, 1e9, 1000).rate, 50e6, 'the first interval seeds it');
+  let r;
+  for (let t = 1150; t <= 2000; t += 150) r = m(55e6 + (t - 1000) * 1e5, 1e9, t);   // a burst at 100 MB/s
+  assert.ok(r.rate > 50e6 && r.rate < 70e6, `a burst moves it a little, not all the way (${r.rate})`);
+  assert.equal(m(140e6, 1e9, 1999).left, null, 'a sample from the past changes nothing and stays unsettled');
+  const s = m(140e6, 1e9, 2150);
+  assert.ok(s.left > 0 && Math.abs(s.left - ((1e9 - 140e6) * 1000) / s.rate) < 1e-6, 'settled after 2 s: time left from the smoothed speed');
+  assert.equal(fmtSpeed({ rate: 48.24e6, left: 72_000 }), '48.2 MB/s · 1:12 left');
+  assert.equal(fmtSpeed({ rate: 48.24e6, left: null }), '48.2 MB/s');
+  assert.equal(fmtSpeed({ rate: 640e3, left: 400 }), '640 KB/s · 1.0 s left');
+  assert.equal(fmtSpeed({ rate: 0, left: null }), '');
+  assert.equal(fmtSpeed(), '');
 });

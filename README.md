@@ -27,11 +27,12 @@ Several projects open as tabs, and a track keeps running in a tab you are not lo
 **What you need.**
 
 - Windows 11, 64-bit.
-- An NVIDIA RTX 20-series card or newer, with driver 580 or newer. 8 GB of video memory works. Without one, the
-  editor, playback and the simpler trackers still run; the tracking models do not.
+- An NVIDIA RTX 20-series card or newer, with driver 580 or newer, or an AMD Radeon RX 9000 or RX 7000 card or a
+  Radeon 780M / 760M, with Adrenalin 26.11.2 or newer. 8 GB of video memory works. Without one, the editor, playback
+  and the simpler trackers still run; the tracking models do not.
 - About 10 GB to download and about 15 GB of free disk space.
 
-**What is next.** AMD cards and Linux come next, Mac later.
+**What is next.** Linux next, Mac later.
 
 ## Run
 
@@ -179,4 +180,4 @@ Every dependency and model with its licence: `THIRD-PARTY.md`; where each idea a
 
 ## Building from source
 
-This is the public source of Pawscript, exported from the working tree at `4c864cf294ce` on 2026-11-20 without its history. Prerequisites, the tracker sidecar, where each model comes from and what is not reproducible yet: [docs/BUILDING.md](docs/BUILDING.md).
+This is the public source of Pawscript, exported from the working tree at `0a38ef538ff7` on 2026-11-20 without its history. Prerequisites, the tracker sidecar, where each model comes from and what is not reproducible yet: [docs/BUILDING.md](docs/BUILDING.md).

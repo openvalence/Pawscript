@@ -58,3 +58,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 # Win32_UI_Shell: SHFileOperationW, a file to the Recycle Bin (files::remove_recoverably, paw-zkvc).
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_UI_Shell"] }
+
+# A dev build hashes a downloaded runtime at 77 MB/s unoptimized (2 GB/s optimized): keep sha2 optimized there too.
+[profile.dev.package.sha2]
+opt-level = 3

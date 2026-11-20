@@ -3,14 +3,14 @@
 // Every network call starts from a user's click: Download, Check for model updates (and the app's first start screen's
 // Download). The rest (what is on the disk) is read locally.
 import embedded from './manifest.json';
-import { parseManifest, rows, toFetch, baseUrl, runtimeNeeded, modelsReady, matchFile, errorWords, isRuntime, isManual, isHosted, otherVersion, fmtBytes, chooseRuntime, runtimeThere, RUNTIME_WORDS } from './logic.js';
+import { parseManifest, rows, toFetch, baseUrl, runtimeNeeded, modelsReady, matchFile, errorWords, isRuntime, isManual, isHosted, otherVersion, fmtBytes, chooseRuntime, rateMeter, runtimeThere, RUNTIME_WORDS } from './logic.js';
 
 export const EMBEDDED = parseManifest(embedded);
 const entryOf = (id) => EMBEDDED.models.find((m) => isRuntime(m) && m.id === id);
 
 /** info: models_info; rt: runtime_status; gpu: gpu_probe (the display adapters and the runtime they pick, paw-vdb3.3);
  *  facts: {path: {exists, bytes, part}} in the models folder; verified: {path: sha256} (Verify, an import, a download); fetched: the server's newer manifest; picked: {id: true}
- *  optional models ticked; job: {kind, id, model, file, done, total}; ready: the required models are usable (tracking
+ *  optional models ticked; job: {kind, id, model, file, done, total, rate, left}; ready: the required models are usable (tracking
  *  may run; true when not known, e.g. the browser harness, and with the fake tracker). */
 export const models = $state({ info: null, rt: null, gpu: null, facts: {}, verified: {}, fetched: null, picked: {}, job: null, message: '', error: '', ready: true });
 
@@ -59,8 +59,9 @@ export async function download(app, ids) {
       const rt = isRuntime(model);
       const { files, bytes } = rt ? { files: model.files, bytes: model.files.reduce((n, f) => n + f.bytes, 0) } : toFetch(model, models.facts, models.verified);
       if (!files.length) continue;
-      models.job = { kind: 'download', id, model: model.id, title: model.title, file: '', done: 0, total: bytes };
-      await be.modelsDownload(id, base(app), rt ? models.rt.dir : folderOf(app), files.map(strip), (p) => Object.assign(models.job, p));
+      models.job = { kind: 'download', id, model: model.id, title: model.title, file: '', done: 0, total: bytes, rate: 0, left: null };
+      const meter = rateMeter();
+      await be.modelsDownload(id, base(app), rt ? models.rt.dir : folderOf(app), files.map(strip), (p) => Object.assign(models.job, p, meter(p.done, p.total, performance.now())));
       for (const f of files) models.verified[f.path] = f.sha256;   // checked by the shell before it was kept
       unpack ||= rt;
     }

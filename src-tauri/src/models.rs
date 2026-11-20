@@ -171,15 +171,20 @@ pub fn free_near(dir: &Path) -> Option<u64> {
   dir.ancestors().find(|a| a.is_dir()).and_then(crate::portable::free_bytes)
 }
 
-/// `fut`, or Err(cancelled) as soon as `cancel` is set (looked at every 100 ms): a server that accepts the connection and
-/// then says nothing (up to the 60 s read timeout) can still be cancelled.
-async fn or_cancel<T>(cancel: &AtomicBool, fut: impl std::future::Future<Output = T>) -> Result<T> {
-  let watch = async {
+/// Ends once `cancel` is set (looked at every 100 ms). Make one per download, not one per chunk: each leaves a 100 ms
+/// sleeper on the blocking pool, and at 16 KB chunks those fill its 512 threads and queue every other blocking call.
+fn watch(cancel: &AtomicBool) -> std::pin::Pin<Box<impl std::future::Future<Output = ()> + '_>> {
+  Box::pin(async move {
     while !cancel.load(Ordering::SeqCst) {
       let _ = tauri::async_runtime::spawn_blocking(|| std::thread::sleep(Duration::from_millis(100))).await;
     }
-  };
-  match futures::future::select(Box::pin(fut), Box::pin(watch)).await {
+  })
+}
+
+/// `fut`, or Err(cancelled) as soon as `watch` ends: a server that accepts the connection and then says nothing (up to
+/// the 60 s read timeout) can still be cancelled. Do not poll `watch` again after it ended.
+async fn or_cancel<T>(watch: &mut (impl std::future::Future<Output = ()> + Unpin), fut: impl std::future::Future<Output = T>) -> Result<T> {
+  match futures::future::select(Box::pin(fut), watch).await {
     futures::future::Either::Left((v, _)) => Ok(v),
     futures::future::Either::Right(_) => Err(Error::cancelled()),
   }
@@ -202,6 +207,7 @@ pub async fn download(base: &str, dir: &Path, files: &[Want], cancel: &AtomicBoo
     return Err(Error::new("disk_full", format!("The models need {:.1} GB more and the drive of {} has {:.1} GB free: free up room or choose another folder", gb(left), dir.display(), gb(free))));
   }
   let http = client()?;
+  let mut stop = watch(cancel);
   let mut done = 0u64;
   for ((dest, url), f) in plan.iter().zip(files) {
     let part = part_of(dest);
@@ -218,7 +224,7 @@ pub async fn download(base: &str, dir: &Path, files: &[Want], cancel: &AtomicBoo
       if have > 0 {
         req = req.header(reqwest::header::RANGE, format!("bytes={have}-"));
       }
-      let mut resp = or_cancel(cancel, req.send()).await?.map_err(|e| net(e, url))?;
+      let mut resp = or_cancel(&mut stop, req.send()).await?.map_err(|e| net(e, url))?;
       let s = resp.status();
       let mut out = if s == reqwest::StatusCode::PARTIAL_CONTENT && have > 0 {
         fs::OpenOptions::new().append(true).open(&part).at(&part)?
@@ -234,7 +240,7 @@ pub async fn download(base: &str, dir: &Path, files: &[Want], cancel: &AtomicBoo
           out.flush().at(&part)?;
           return Err(Error::cancelled());
         }
-        let next = match or_cancel(cancel, resp.chunk()).await {
+        let next = match or_cancel(&mut stop, resp.chunk()).await {
           Ok(r) => r,
           Err(e) => {
             out.flush().at(&part)?;

@@ -6,6 +6,8 @@
 // States: 'installed' | 'missing' (none or some of its files) | 'damaged' (a size that is wrong, or a hash Verify found
 // wrong) | 'update' (the files of the compiled manifest are there, the fetched one has newer ones).
 
+import { fmtDuration } from '../../lib/time-format.js';
+
 /** The models server: ONE place (OpenValence's R2 bucket behind its own domain). The setting models.baseUrl and
  *  PAWSCRIPT_MODELS_URL may change the folder, not the host: the shell downloads only from MODELS_HOST (or this PC, for
  *  tests; src-tauri/src/models.rs ALLOWED_HOST). */
@@ -141,6 +143,28 @@ export function matchFile(list, name, only = null) {
     if (f) return { model, file: f };
   }
   return null;
+}
+
+/** A download's speed and time left. meter(done, total, tMs) -> {rate: bytes/s (0 before the second sample), left: ms,
+ *  or null until `settle` ms of samples are in}. The speed is an exponential moving average with time constant `tau`. */
+export function rateMeter({ tau = 3000, settle = 2000 } = {}) {
+  let first = null, prev = null, rate = 0;
+  return (done, total, t) => {
+    if (!prev) first = prev = { done, t };
+    else if (t > prev.t) {
+      const now = (Math.max(0, done - prev.done) * 1000) / (t - prev.t);
+      rate = prev === first ? now : rate + (now - rate) * (1 - Math.exp(-(t - prev.t) / tau));
+      prev = { done, t };
+    }
+    return { rate, left: rate > 0 && t - first.t >= settle ? (Math.max(0, total - done) * 1000) / rate : null };
+  };
+}
+
+/** 48.2 MB/s · 1:12 left; '' before there is a speed. */
+export function fmtSpeed({ rate, left } = {}) {
+  if (!(rate > 0)) return '';
+  const r = rate >= 1e6 ? `${(rate / 1e6).toFixed(1)} MB/s` : `${Math.max(1, Math.round(rate / 1e3))} KB/s`;
+  return left == null ? r : `${r} · ${fmtDuration(Math.max(1000, left))} left`;
 }
 
 /** 1.2 GB / 340 MB; a few bytes are 1 KB, none are 0 KB. */

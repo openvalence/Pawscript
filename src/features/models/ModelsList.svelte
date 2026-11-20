@@ -7,7 +7,7 @@
   import Prop from '../../app/Prop.svelte';
   import { tooltip } from '../../ui/kit/tooltip.js';
   import { models, list, refresh, download, cancel, remove, verify, checkUpdates, chooseFiles, chooseFolder, setFolder, openFolder, openLink, folderOf, plan, needsRuntime, choice, runtimeChosen, removeRuntime } from './store.svelte.js';
-  import { rowState, isRuntime, isManual, isHosted, otherVersion, toFetch, fmtBytes, runtimeThere, RUNTIME_IDS, RUNTIME_WORDS, STATE_WORDS } from './logic.js';
+  import { rowState, isRuntime, isManual, isHosted, otherVersion, toFetch, fmtBytes, fmtSpeed, runtimeThere, RUNTIME_IDS, RUNTIME_WORDS, STATE_WORDS } from './logic.js';
   import { onMount } from 'svelte';
 
   let { app, pick = false } = $props();
@@ -27,6 +27,7 @@
   const ids = $derived(shown.filter((r) => (r.model.required || models.picked[r.model.id]) && !isManual(r.model) && st(r) !== 'installed').map((r) => r.model.id));
   const p = $derived((models.facts, models.rt, rtc, plan(ids, app)));
   const frac = $derived(models.job?.total ? models.job.done / models.job.total : null);
+  const speed = $derived(models.job ? fmtSpeed(models.job) : '');
 
   const spare = $derived(RUNTIME_IDS.filter((id) => id !== rtc.id && runtimeThere(models.rt, id)));
   const rtState = $derived(runtimeThere(models.rt, rtc.id) ? 'Installed' : isHosted(list().find((r) => r.model.id === rtc.id)?.model) ? 'Not downloaded' : 'Not published yet');
@@ -111,7 +112,7 @@
   {#if models.job}
     <div class="job" data-testid="models-job">
       <ProgressBar value={frac} label={`${models.job.title || ''}${models.job.file ? ': ' + models.job.file.split('/').pop() : ''}`} showValue={frac != null} />
-      {#if models.job.total}<span class="k-hint k-num">{fmtBytes(models.job.done)} of {fmtBytes(models.job.total)}</span>{/if}
+      {#if models.job.total}<span class="k-hint k-num">{fmtBytes(models.job.done)} of {fmtBytes(models.job.total)}{#if speed} · {speed}{/if}</span>{/if}
       {#if models.job.id}<Button size="sm" onclick={() => cancel(app)}>Cancel</Button>{/if}
     </div>
   {/if}
