@@ -28,7 +28,7 @@ export default [
   { id: 'timeline.scenes', title: 'Actions and shots', order: 30, height: 56, extra: () => extraFor(tl.actLayers), component: ScenesLane },
   // the Scenes tab: the shots as pictures (select / move cuts; hover scrubs, a drag does not)
   { id: 'timeline.filmstrip', title: 'Shots (frames)', order: 30.2, height: 'fill', minHeight: 24, modes: ['scenes'], component: FilmstripLane },
-  // paw-ef73.20: the one row for modifiers (knotting, orgasm, throbbing, idle, insertion, pull-out; Reshape / Climax run-in / spurts in Refine), every tab
+  // paw-ef73.20: the one row for modifiers (knotting with its push / pull, orgasm, throbbing, idle; Reshape / spurts in Refine), every tab
   { id: 'timeline.fx', title: 'Modifiers', order: 31, orderIn: { scenes: 30.1 }, height: 24, component: FxLane },
   // Autorange: shown by the command / while the live pass is on
   { id: 'timeline.range', title: 'Range', order: 31.5, height: 84, modes: NOT_SCENES, component: RangeLane, visible: (app) => tl.range || !!app.doc.finish?.autorange },

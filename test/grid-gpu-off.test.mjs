@@ -35,3 +35,21 @@ test('GPU off: no grid tracker, T says why and names the CPU route, nothing reme
   assert.equal(tr.gridTracker?.id, 'tapnext_points', 'the GPU fine: TAPNext++');
   tr.destroy();
 });
+
+// paw-bunr: Track runs TAPNext++ with its own params and leaves the Tracker panel's pick (the custom tracks', Forward / Backward / Both) alone
+test('Track with the pick on another tracker: TAPNext++ runs with its own params, trackerId unchanged', async () => {
+  const app = M.createMockApp({ doc: { ...M.sampleDoc(), media: { ...M.sampleDoc().media, path: 'C:/v/clip.mp4' } }, keys: false, backend: M.mockBackend() });
+  app.toast = () => {};
+  const tr = T.trackingFor(app);
+  const P = (key, d) => ({ key, label: key, type: 'int', default: d, min: null, max: null, choices: null });
+  tr.trackers = [{ id: 'lk_box', name: 'Optical flow (box)', roi: 'box', params: [] }, { id: 'tapnext_points', name: 'TAPNext++', roi: 'box_or_points', gpu: true, params: [P('size', 512)] }];
+  tr.paramsBy = { lk_box: {}, tapnext_points: { size: 777 } };
+  tr.trackerId = 'lk_box';
+  tr.gpu = { state: 'ok' };
+  const got = [];
+  tr.runTrack = async (t, range, params) => { got.push([t.id, params.size]); return { cancelled: true }; };
+  await tr.gridFrame();
+  assert.deepEqual(got, [['tapnext_points', 777]]);
+  assert.equal(tr.trackerId, 'lk_box', 'the pick did not move');
+  tr.destroy();
+});

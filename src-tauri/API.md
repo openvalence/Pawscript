@@ -426,10 +426,14 @@ anything else). `models_changed()`: an idle tracker serve is dropped so the next
 ### `open_url({url})`
 A licence or download page in the default browser; https only (`refused` otherwise).
 
-### `runtime_status()` → `{portable, dir, installed, python, zip}` / `runtime_unpack()`
-The shared build's runtime: whether this is the shared build (code.zip beside the exe), its folder, the recorded
-`.setup\runtime.stamp`, whether `python\python.exe` is there, and whether a `runtime.zip` (or `.001` part) waits beside
-the exe. `runtime_unpack()` runs the first-start setup again (`portable_status` then reports the unpack).
+### `runtime_status()` → `{portable, dir, runtimes: [{id, installed, python, zip}]}` / `runtime_unpack()` / `runtime_remove(id)` / `gpu_probe()`
+The shared build's runtimes (paw-vdb3.3): `runtime` (CUDA, `python\`) and `runtime-rocm` (AMD, `python-rocm\`) may both be unpacked.
+Per runtime: the recorded `.setup\<id>.stamp`, whether its `python.exe` is there, and whether `<id>.zip` (or `.001`) waits
+beside the exe. `runtime_unpack()` runs the first-start setup again (`portable_status` then reports the unpack);
+`runtime_remove(id)` deletes that runtime's folder, stamp and ownership record (the shared `ffmpeg.exe` stays).
+`gpu_probe()` → `{adapters: [{vendor, name, vram, software}], runtime, name, vram}`: DXGI before any download; a discrete (4 GB+)
+NVIDIA card picks `runtime`, else a discrete AMD card `runtime-rocm`, else `runtime`. The setting `models.runtime` (`''` = that
+pick) overrides it; the sidecar starts from the chosen runtime's `python.exe`, else the other one that is unpacked, else uv.
 
 ### `update_check()` → `{configured, current, version, notes, date, portable}`
 tauri-plugin-updater against `plugins.updater.endpoints` (GitHub's `latest.json`); the shared build asks for the

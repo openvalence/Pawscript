@@ -192,9 +192,3 @@ test('roll-from-phase peaks at the stroke tops', () => {
   assert.equal(at(10500), 32); // bottom: 50 - 18
   assert.equal(at(10250), 50); // midpoint
 });
-
-test('grid-hand-on-shaft reads two channels of ONE run (slot n: 0)', () => {
-  const { graph } = place(PRESETS.find((p) => p.id === 'grid-hand-on-shaft'), makeSnapshot(3));
-  const runs = graph.nodes.filter((x) => x.type === 'src.run');
-  assert.deepEqual(runs.map((x) => [x.params.run, x.params.channel]).sort(), [['run1', 'g1_proj'], ['run1', 'g2_proj']]);
-});

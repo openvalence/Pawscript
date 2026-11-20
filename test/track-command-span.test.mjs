@@ -34,7 +34,7 @@ function setup({ mode = 'track', range = null, t = 5000, parts = [], box = true 
   const ran = [];
   const app = {
     mode, durationMs: 10000, doc: { media: { path: 'x.mp4', durationMs: 10000 }, range, fx: [], scenes: [{ start_ms: 0, end_ms: 4000 }, { start_ms: 4000, end_ms: 10000 }] },
-    player: { timeMs: t }, settings: { get: (k, d) => d, set() {} }, toast: (m, k, o) => ran.push(['toast', m, o?.action?.label]), commands: { keysFor: () => [], winner: () => null },
+    player: { timeMs: t }, settings: { get: (k, d) => d, set() {} }, toast: (m, k, o) => ran.push(['toast', m, o?.action?.label]), commands: { keysFor: () => [], winner: () => null, run: (id) => ran.push(['cmd', id]) },
   };
   const span = () => (app.doc.range ? { ...app.doc.range } : 'whole video');
   adoptTracking(app, { videoPath: 'x.mp4', canGrid: true, canTrack: true, canPart: true, trackers: [], trackRoi: box ? { kind: 'box', x: 0.1, y: 0.1, w: 0.2, h: 0.2 } : null, selected: null,
@@ -58,14 +58,11 @@ test('Ctrl+T with a part named (the pick menu\'s row) tracks it; {all} is the ol
   assert.deepEqual(ran, [['part', 'c1_anus', { t0: 4000, t1: 10000 }], ['roi', { t0: 4000, t1: 10000 }]]);
 });
 
-test('Ctrl+T with nothing painted and no box: says to paint the part, offers the Groups tool; nothing tracked', () => {
+test('Ctrl+T with nothing painted and no box: opens the Groups tool on the video and says to paint the part; nothing tracked (paw-bunr)', () => {
   setSel();
   const { run, ran } = setup({ box: false });
   run('track.run');
-  assert.equal(ran.length, 1);
-  assert.equal(ran[0][0], 'toast');
-  assert.match(ran[0][1], /paint it with Groups/);
-  assert.equal(ran[0][2], 'Open Groups');
+  assert.deepEqual(ran, [['cmd', 'tracking.groups'], ['toast', 'Paint the part to track on the video', undefined]]);
 });
 
 test('T with nothing selected tracks the scene at the playhead (what the chips name), not the whole video', () => {

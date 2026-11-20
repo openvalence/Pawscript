@@ -13,7 +13,7 @@ import numpy as np
 from pawtrack import director, frames, motion, progress
 from pawtrack.progress import Progress
 from pawtrack.loops import FOLD_PARAMS, LOOP_PARAMS, THUMB_W, detect_period, fold, held_frames, retime, thumb
-from pawtrack.pipeline import (PIPE_PARAMS, cadence_fill, cadence_turns, cam_detrend, energy_sign, finish_range,
+from pawtrack.pipeline import (PIPE_PARAMS, cadence_fill, cadence_turns, cam_detrend, finish_range,
                                normalize, project_auto, to_points)
 from pawtrack.registry import coerce, load
 from pawtrack.levels import LEVEL_PARAMS, apply_levels, levelled, scene_levels
@@ -733,7 +733,7 @@ def _track(req, emit, prog):
     media = probe(req["video"])
     start, end, roi, p = clamp_direction(req, tracker, roi, p)
     want_thumbs = (p["loop_fold"] != "off" or p["held_retime"] != "off" or p["pipe_gate"] != "off"
-                   or p["pipe_sign"] == "auto")
+                   or p["pipe_cadence_fill"])
     # No tracker here uses more than ~1080p (SAM 2 resizes to 1024); 4K only costs decode time and memory.
     # ROI and overlays are normalized, so the cap is invisible to the caller.
     width = 1920 if (media["width"] or 0) > 1920 else None
@@ -752,10 +752,10 @@ def _track(req, emit, prog):
     # v4.9: soft cuts never stop the run; points trackers re-seed there (wrap), the pipeline normalises per segment
     # v4.11: user groups replace the tagger's pinned groups in their scenes (points trackers, wrap)
     p = {**p, "soft_cuts": soft, "groups": parse_groups(req["groups"]) if req.get("groups") is not None else []}
-    if req.get("groups_only"):  # v4.45: only the groups' own points (no box layout, no re-seeding into voids, no motion-group names)
+    if req.get("groups_only"):  # v4.45: only the groups' own points (no box layout, no re-seeding into voids)
         if not p["groups"]:
             raise ValueError("groups_only needs groups")
-        p.update(groups_only=True, box_seed="grid", reseed_every_ms=0, group_labels=False)
+        p.update(groups_only=True, box_seed="grid", reseed_every_ms=0)
     det, cam = _with_camera(_fixed_cuts(cuts))
     want_pts = any((g.get("shaft") or g.get("depth")) and g["id"] is not None for g in p["groups"])  # v4.17: the shaft pass reads the pts (v4.52: a depth part too)
     ptss = []  # per scene: the overlay `pts` per frame (only with a shaft group)
@@ -843,7 +843,7 @@ def _track(req, emit, prog):
             keep = {r[0] for r in rows}  # fewer rows than the scene's frames: the thumbs of the frames it kept, in step
             thumbs = [th for th, t in zip(thumbs, tthumb) if t in keep]
             if len(thumbs) != len(rows):
-                thumbs = []  # still out of step: the picture passes (gate, loop, sign, cadence) skip this scene
+                thumbs = []  # still out of step: the picture passes (gate, loop, cadence) skip this scene
         segs.append((rows, thumbs))
     prog(done, done, stage="points", force=True)
 
@@ -895,8 +895,7 @@ def _track(req, emit, prog):
             for c in channels:
                 channels[c].append([t, _r((ch or {}).get(c), 5)])
             confidence.append([t, _r(cf, 3)])
-    points = finish_range([([r[0] for r in rows], th) for rows, th in segs], points, p, req.get("spans"), events,
-                          req.get("activity"))
+    points = finish_range([([r[0] for r in rows], th) for rows, th in segs], points, p, req.get("spans"), events)
     events.sort(key=lambda e: e["t_ms"])
     starts = [rows[0][0] for rows, _ in segs if rows]
     if starts:  # last scene ends one mean frame interval after its last frame
@@ -1009,7 +1008,7 @@ class _SceneFrames:
 
 def process_scene(ts, v, thumbs, p, events, dec=None, soft=(), camera=None, chans=None, shaft_len=None):
     """One scene, after the tracker: 0..1 primary values (NaN = cut/lost) -> (samples, points,
-    sign). sign = pipe_sign auto decision (energy_sign, +1 if keep/undecided) x pipe_invert.
+    {sign}). sign = the shaft's direction where it is confident (else +1) x pipe_invert.
     dec (dict, optional) gets the decision record's "sign" and "cadence_fill" (PROTOCOL notes, code primary), and
     "segments" (v4.9, pipeline.cam_detrend's per-piece record).
     v4.9: soft (ms, inside the scene) = soft cuts, each a normalisation boundary; camera = the camera detector's
@@ -1018,7 +1017,7 @@ def process_scene(ts, v, thumbs, p, events, dec=None, soft=(), camera=None, chan
     The eval (trackers/eval/baselines.py) calls exactly this, so it scores what track returns."""
     v = np.asarray(v, float)
     if np.isfinite(v).sum() < 2:
-        return v, [], {"sign": -1 if p["pipe_invert"] else 1, "auto_sign": None}
+        return v, [], {"sign": -1 if p["pipe_invert"] else 1}
     rec = []
     v = cam_detrend(ts, v, soft, camera, chans, p, rec)
     if rec:
@@ -1028,15 +1027,13 @@ def process_scene(ts, v, thumbs, p, events, dec=None, soft=(), camera=None, chan
             dec["segments"] = rec
     if thumbs:
         v = _loop_post(ts, v, thumbs, p, events)
-    info = {}
-    auto = energy_sign(ts, v, thumbs, p, info) if p["pipe_sign"] == "auto" and thumbs else None
     sh = None
     if shaft_len is not None:  # v4.17: the shaft's visible length (larger = out) sets the direction where it is confident
         sh = shaft.shaft_sign(v, *shaft_len)
-    sign = (sh["sign"] if sh and sh["confident"] else auto or 1) * (-1 if p["pipe_invert"] else 1)
+    sign = (sh["sign"] if sh and sh["confident"] else 1) * (-1 if p["pipe_invert"] else 1)
     if dec is not None:
-        dec["sign"] = {"mode": "shaft" if sh and sh["confident"] else p["pipe_sign"], "auto": auto,
-                       "invert": bool(p["pipe_invert"]), "applied": sign, **info, **({"shaft": sh} if sh else {})}
+        dec["sign"] = {"mode": "shaft" if sh and sh["confident"] else "keep", "invert": bool(p["pipe_invert"]),
+                       "applied": sign, **({"shaft": sh} if sh else {})}
 
     if sign < 0:
         v = 1 - v
@@ -1047,7 +1044,7 @@ def process_scene(ts, v, thumbs, p, events, dec=None, soft=(), camera=None, chan
         pts = cadence_fill(pts, cadence_turns(ts, thumbs), p["pipe_min_interval_ms"])
         if dec is not None:
             dec["cadence_fill"] = {"inserted": len(pts) - n_pts}
-    return v, pts, {"sign": sign, "auto_sign": auto}
+    return v, pts, {"sign": sign}
 
 
 def _loop_post(ts, v, thumbs, p, events):

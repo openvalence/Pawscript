@@ -231,6 +231,35 @@
           "url": "runtime/runtime-2026-11-18-d9930152.zip"
         }
       ]
+    },
+    {
+      "id": "runtime-rocm",
+      "kind": "runtime",
+      "hosted": true,
+      "gpu": "amd",
+      "archs": [
+        "gfx1100",
+        "gfx1101",
+        "gfx1102",
+        "gfx1103",
+        "gfx1200",
+        "gfx1201"
+      ],
+      "title": "Runtime for AMD (Python, PyTorch ROCm, ffmpeg)",
+      "for": "Runs the trackers on an AMD Radeon RX 9000 or RX 7000 card",
+      "required": true,
+      "licence": "PSF / BSD / Apache-2.0 / MIT (ROCm) / GPL-3.0 (ffmpeg) and more",
+      "licenceUrl": "https://github.com/openvalence/Pawscript/blob/main/dev/share/LICENSES-SUMMARY.txt",
+      "notice": "",
+      "version": "runtime-rocm 2026-11-19 python3.12.16 torch2.15.0+rocm10.2.0 ffmpeg8.1.1",
+      "files": [
+        {
+          "path": "runtime-rocm.zip",
+          "bytes": 3620971349,
+          "sha256": "8492bb446c92f47cf0cb703d8f904b7e98059dd31c69956d5cfe104a50fce99e",
+          "url": "runtime/runtime-rocm-2026-11-19-8492bb44.zip"
+        }
+      ]
     }
   ]
 }

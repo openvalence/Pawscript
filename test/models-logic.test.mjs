@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   parseManifest, safePath, rows, modelState, rowState, toFetch, runtimeNeeded, modelsReady, matchFile, otherVersion, baseUrl,
-  MODELS_BASE_URL, fmtBytes, isRuntime,
+  MODELS_BASE_URL, fmtBytes, isRuntime, chooseRuntime, isHosted,
 } from '../src/features/models/logic.js';
 
 const shipped = JSON.parse(readFileSync(new URL('../src/features/models/manifest.json', import.meta.url), 'utf8'));
@@ -83,13 +83,45 @@ test('a fetched manifest: changed files are an update, new models join, the runt
   assert.deepEqual(rows(old, null).map((r) => r.old), [undefined, undefined]);
 });
 
+const RT = (id, o = {}) => ({ id, installed: null, python: false, zip: false, ...o });
+const OLD = 'runtime 2026-11-18 python3.12.12';
+
 test('the runtime: downloaded only for the shared build, when none or another version is unpacked and no zip waits', () => {
-  const entry = { version: 'runtime 2026-11-18 python3.12.12' };
-  assert.equal(runtimeNeeded({ portable: false, python: false }, entry), false, 'a dev build');
-  assert.equal(runtimeNeeded({ portable: true, python: false, installed: null, zip: false }, entry), true, 'a clean first start');
-  assert.equal(runtimeNeeded({ portable: true, python: false, installed: null, zip: true }, entry), false, 'runtime.zip (or parts) beside the exe: the setup unpacks it');
-  assert.equal(runtimeNeeded({ portable: true, python: true, installed: 'runtime 2026-11-18 python3.12.12\r\n', zip: false }, entry), false, 'the same version');
-  assert.equal(runtimeNeeded({ portable: true, python: true, installed: 'runtime 2026-11-17 python3.12.12', zip: false }, entry), true, 'an update that needs a new runtime');
+  const entry = { id: 'runtime', version: OLD };
+  assert.equal(runtimeNeeded({ portable: false, runtimes: [RT('runtime')] }, entry), false, 'a dev build');
+  assert.equal(runtimeNeeded({ portable: true, runtimes: [RT('runtime')] }, entry), true, 'a clean first start');
+  assert.equal(runtimeNeeded({ portable: true, runtimes: [RT('runtime', { zip: true })] }, entry), false, 'runtime.zip (or parts) beside the exe: the setup unpacks it');
+  assert.equal(runtimeNeeded({ portable: true, runtimes: [RT('runtime', { python: true, installed: OLD + '\r\n' })] }, entry), false, 'the same version');
+  assert.equal(runtimeNeeded({ portable: true, runtimes: [RT('runtime', { python: true, installed: 'runtime 2026-11-17 python3.12.12' })] }, entry), true, 'an update that needs a new runtime');
+  assert.equal(runtimeNeeded({ portable: true, runtimes: [RT('runtime', { python: true, installed: OLD })] }, { id: 'runtime-rocm', version: 'x' }), false, 'a shell that does not know this runtime');
+});
+
+test('the shipped manifest holds the AMD runtime, published (uploaded 2026-11-19)', () => {
+  const m = parseManifest(shipped);
+  const rocm = m.models.find((x) => x.id === 'runtime-rocm');
+  assert.ok(isRuntime(rocm) && isHosted(rocm) && rocm.files[0].path === 'runtime-rocm.zip');
+  assert.equal(rows(m).filter((r) => isRuntime(r.model)).length, 2, 'the compiled manifest pins both');
+});
+
+test('the runtime for this PC: the GPU found picks it, the setting overrides, an unpublished one falls back', () => {
+  const entries = [{ id: 'runtime' }, { id: 'runtime-rocm' }];
+  const nv = { runtime: 'runtime', name: 'NVIDIA GeForce RTX 4090' }, amd = { runtime: 'runtime-rocm', name: 'AMD Radeon RX 9070 XT' };
+  const rt = { portable: true, runtimes: [RT('runtime'), RT('runtime-rocm')] };
+  let c = chooseRuntime({ probe: nv, rt, entries });
+  assert.deepEqual([c.id, c.why, c.note, c.other], ['runtime', 'NVIDIA GeForce RTX 4090 found', '', 'runtime-rocm']);
+  c = chooseRuntime({ probe: amd, rt, entries });
+  assert.deepEqual([c.id, c.why, c.other], ['runtime-rocm', 'AMD Radeon RX 9070 XT found', 'runtime']);
+  const unpublished = [{ id: 'runtime' }, { id: 'runtime-rocm', hosted: false }];
+  c = chooseRuntime({ probe: amd, rt, entries: unpublished });
+  assert.deepEqual([c.id, c.auto, c.why, c.note], ['runtime', 'runtime', 'AMD Radeon RX 9070 XT found', 'AMD (ROCm) runtime not published yet']);
+  const there = { portable: true, runtimes: [RT('runtime'), RT('runtime-rocm', { python: true })] };
+  assert.equal(chooseRuntime({ probe: amd, rt: there, entries: unpublished }).id, 'runtime-rocm', 'unpublished but unpacked: used');
+  c = chooseRuntime({ setting: 'runtime', probe: amd, rt, entries });
+  assert.deepEqual([c.id, c.why, c.note, c.auto], ['runtime', 'Your choice', 'AMD Radeon RX 9070 XT found', 'runtime-rocm']);
+  assert.equal(chooseRuntime({ setting: 'bogus', probe: nv, rt, entries }).id, 'runtime', 'a setting that is no runtime is auto');
+  c = chooseRuntime({ probe: { runtime: 'runtime', name: null }, rt, entries });
+  assert.deepEqual([c.id, c.why, c.note], ['runtime', 'No discrete GPU found', 'Trackers run on the CPU']);
+  assert.equal(chooseRuntime({ rt, entries }).id, 'runtime', 'no probe (a shell without it)');
 });
 
 test('a brought file is matched by its name, within a row or anywhere', () => {

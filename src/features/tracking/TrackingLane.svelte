@@ -1,8 +1,7 @@
 <script>
   // The Tracker row of the timeline: the live signal while tracking, the visible runs' signals (the selected one
   // bright, its chosen channel), confidence, events / bands, loop cycle marks; under it the signal row of the current
-  // scene's run (paw-9qm): the source (a picker: Fused, the parts, pairs, the other channels; the old motion groups g1..g4
-  // at its bottom), Pair (a chip: click the moving part, then the part it moves against; or pick them on the video), what
+  // scene's run (paw-9qm): the source (a picker: Fused, the parts, pairs, the other channels), Pair (a chip: click the moving part, then the part it moves against; or pick them on the video), what
   // it is measured against (the camera, none, a part; the camera removal's mode / strength / smooth), its baseline /
   // envelope; the selected run's direction per scene (click = flip; drag = flip a stretch, paw-57ve) -- or the detected scenes (click = range) -- and the
   // span labels. The pickers edit the range override under the playhead (or the segment clicked), else the shot's own
@@ -18,7 +17,7 @@
   import { layerOf, effSign, linkFor, sceneAt } from '../../lib/runs.js';
   import { xorFlips, matchText } from '../../lib/polarity.js';
   import { shotLabel, sceneNo } from '../timeline/shots.js';
-  import { carriers, spline, pickerChannels, camWeak, camChannel, decisionsOf, candidateText, decisionLines, primaryHow, chipVariants, groupOfChannel, groupPresence, sceneGroups, labelOf, labelText, partsLeftOut, relParse, relId, relLabel, relChannels, relSuggestions, whoLabel, channelWord, channelHasData, VARIANT_WORDS } from '../../lib/runs-channel.js';
+  import { carriers, spline, pickerChannels, camWeak, camChannel, decisionsOf, candidateText, decisionLines, primaryHow, chipVariants, groupOfChannel, groupPresence, sceneGroups, labelOf, labelText, relParse, relId, relLabel, relChannels, relSuggestions, whoLabel, channelWord, channelHasData, VARIANT_WORDS } from '../../lib/runs-channel.js';
   import { contextMenu, showContextMenu } from '../../ui/kit/contextmenu.js';
   import { tooltip } from '../../ui/kit/tooltip.js';
   import { editorItem } from '../../ui/kit/editor-item.svelte.js';
@@ -28,7 +27,7 @@
   import { progressBand } from './direction.js';
   import { sceneCamera } from '../timeline/acts.js';
   import { chipTag } from './group-labels.js';
-  import { KIND_COLOR, LIVE_COLOR, TAG_COLOR, GROUP_COLORS, PAIR_COLOR, partColor, semColor, semPaint, whoColor, paint as tok } from './colors.js';
+  import { KIND_COLOR, LIVE_COLOR, TAG_COLOR, PAIR_COLOR, semColor, semPaint, whoColor, paint as tok } from './colors.js';
   import { fmtTime } from '../../lib/funscript.js';
   import Icon from '../../ui/kit/Icon.svelte';
   import DetailChip, { detailMenu } from './DetailChip.svelte';
@@ -53,7 +52,9 @@
   import { cmd } from '../../app/cmd.js';
   import { rangeAt } from '../../lib/run-ranges.js';
   import { modMeasure } from '../timeline/mod-runs.js';
-  import { modLabel } from '../timeline/mods.js';
+  import { modLabel, modAt } from '../timeline/mods.js';
+  import { innerOf } from '../timeline/fx-edit.js';
+  import FxEditor from '../timeline/FxEditor.svelte';
   import { rowControls, measureText } from './row-controls.js';
   import { correctHere, trackMod } from './mod-track.js';
   import { ctlLog } from '../../app/ctl-log.js';
@@ -89,6 +90,9 @@
   // edits the run whose RANGE plays there (tracking deriveRun, paw-1ysd), so a shot played by a range with nothing selected and
   // no link (a reopened project, a run strip pick) can be adjusted too; it was disabled there (the picker's run only)
   const bandRun = $derived(pickRun || tr.deriveRun(tr.currentScene));
+  // paw-d1g7: the orgasm under the playhead: its params and markers in the band (its output informs the fusion params)
+  const orgNow = $derived(modAt(app.doc.fx, app.player.timeMs, 'orgasm'));
+  const orgMarks = $derived(orgNow ? innerOf(app.doc.fx || [], orgNow).length : 0);
   const pickScene = $derived(pickRun ? tr.sceneOf(pickRun) : -1);
   // paw-ef73.31: what applies to the picked run (row-controls.js): a modifier's own run gets its modifier, measure and actions only
   const ctl = $derived(new Set(rowControls(pickRun)));
@@ -116,13 +120,13 @@
   const camNote = $derived(camSt.from === 'tag' ? ` (${camSt.tag.label})` : '');
   // a baseline / envelope belongs to the shot's link (its channel), not to a range override: it checks the shot's source
   const carrierBlock = $derived(!pickRun ? '' : pickScene < 0 ? 'A baseline belongs to a scene: detect scenes first' : shotSrc === 'primary' || !pickRun.channels[shotSrc] ? 'Pick a channel first (the sidecar primary has no raw channel here): a baseline belongs to the whole shot\'s channel' : '');
-  const chipColor = (c) => { const q = groupOfChannel(c), w = /^who_(c[12]|x)_/.exec(c); return c === 'fused' ? 'var(--tx-hi)' : q ? (q.sem ? semColor(q.sem) : q.part ? partColor(q.body) : GROUP_COLORS[q.body - 1]) : w ? whoColor(w[1]) : c === 'pair_proj' || relParse(c) || whoLabel(c) ? PAIR_COLOR : null; };
+  const chipColor = (c) => { const q = groupOfChannel(c), w = /^who_(c[12]|x)_/.exec(c); return c === 'fused' ? 'var(--tx-hi)' : q ? semColor(q.sem) : w ? whoColor(w[1]) : relParse(c) || whoLabel(c) ? PAIR_COLOR : null; };
   const kindOf = (c) => { const q = groupOfChannel(c); return q && chipVariants(pickRun, c)[0] !== c ? ' · ' + (VARIANT_WORDS[q.kind] || q.kind).toLowerCase() : ''; };
   /** The source chip's face for a painted part or a pair of them: [{t: 'B-LH', col}] (the full words stay in the tooltip); null = its label. */
   const chipTags = (c) => {
     const r = relParse(c), nm = (k) => (k.startsWith('sem_') ? k.slice(4) : null), q = groupOfChannel(c);
     if (r && nm(r.a) && nm(r.b)) return [r.a, r.b].map((k) => ({ t: chipTag(nm(k)), col: semColor(nm(k)) }));
-    return q?.sem ? [{ t: chipTag(q.sem) + kindOf(c), col: semColor(q.sem) }] : null;
+    return q ? [{ t: chipTag(q.sem) + kindOf(c), col: semColor(q.sem) }] : null;
   };
   const chipLabel = (c) => {
     const q = groupOfChannel(c), lb = labelOf(groups, c);
@@ -131,8 +135,7 @@
     if (relParse(c)) return relLabel(groups, c);
     // paw-u6s5: user words (lib/runs-channel.js channelWord); the channel id is in no label
     const kind = kindOf(c);
-    if (q?.sem) return lb + kind;
-    return (q && lb && lb !== 'body' ? `${lb[0].toUpperCase() + lb.slice(1)} (${channelWord(c).toLowerCase()})` : channelWord(c)) + kind;
+    return (q ? lb : channelWord(c)) + kind;
   };
   /** Share of the pick scene's frames the chip's group is present on (its _n channel). */
   const presence = (c) => {
@@ -140,7 +143,7 @@
     return q && pickRun ? groupPresence(pickRun, q.key, s ? s.start_ms : -Infinity, s ? s.end_ms : Infinity) : 1;
   };
   const SEM_VARIANT = { rel: 'its own motion in the frame of the body around it', scale: 'its own contraction (+ = bigger; balls: the spurts)', pulse: 'its contractions from detect cumshots (SAM mask; + = contracted, in noise units): the spurt cue', proj: 'its position on the stroke axis' };
-  const VARIANT = { proj: 'its position on the stroke axis', rel: "its own motion in its body's frame (the default: the part's stroke)", scale: 'its size change (+ = bigger: toward the camera, or swelling)', rot: 'its rotation (+ = clockwise)' };
+  const VARIANT = { proj: 'its position on the stroke axis', rel: "its own motion in its body's frame (the default: the part's stroke)", scale: 'its size change (+ = bigger: toward the camera, or swelling)' };
   // the sidecar's decision record for the run scene the pick goes to (PROTOCOL notes, code primary)
   const pickDec = $derived((pickRun ? decisionsOf(pickRun.notes) : [])[pickRunScene] || null);
   /** One line on what channel c is (the picker's item hints). */
@@ -152,9 +155,9 @@
     const recip = c.startsWith('cam_') && sceneCamera(tr.scenes[pickScene]) === 'reciprocal' ? 'camera is reciprocal: cam x / y are stroke candidates' : '';
     const nums = cand ? candidateText(cand) : c.startsWith('cam_') ? [decisionLines({ camera: pickDec?.camera })[0], recip].filter(Boolean).join(' · ') : '';
     const q = groupOfChannel(c), pr = presence(c);
-    const extra = [q?.sem && !groups[q.key] && labelText({ source: 'cam' }), q && labelText(groups[q.key]), q && partsLeftOut(groups, c), q && pr < 1 && `present on ${Math.round(pr * 100)}% of the scene's frames`, weakCam && camChannel(c) && 'camera estimate weak'].filter(Boolean).join(' · ');
+    const extra = [q && !groups[q.key] && labelText({ source: 'cam' }), q && labelText(groups[q.key]), q && pr < 1 && `present on ${Math.round(pr * 100)}% of the scene's frames`, weakCam && camChannel(c) && 'camera estimate weak'].filter(Boolean).join(' · ');
     return [c === 'primary' && id ? `picks ${chipLabel(id)}` : '', ch?.min != null ? `range ${+ch.min.toFixed(3)} … ${+ch.max.toFixed(3)}` : '', nums,
-      primaryHow(id) || (q && VARIANT[q.kind] ? (q.sem && SEM_VARIANT[q.kind]) || VARIANT[q.kind] : ''), extra].filter(Boolean).join(' · ');
+      primaryHow(id) || (q && VARIANT[q.kind] ? SEM_VARIANT[q.kind] || VARIANT[q.kind] : ''), extra].filter(Boolean).join(' · ');
   };
   // paw-4c48.10: the shaft source (lib/shaft-source.js): the position bar's diamond as the stroke
   const SHAFT_TIP = "the shaft's reading of how much of it is out, the position bar's hollow diamond (on the shaft): pos 0 hilted, 100 fully out (your marks, if set). Read from the penis points still visible, or from SAM's outline where that repeats clearly better with the strokes; the diamond then draws that same reading. Where it is held or unsure the gap is filled from fusion seated on its level and size, joined without a jump. Not a default; it can read a shot upside down: F flips it";
@@ -165,10 +168,9 @@
   const partTip = (p) => `the ${partWord(p)}'s reading of how much of it is out (pos 0 deepest, 100 fully out; your marks, if set), the same way as the shaft's: from its points still visible, or from SAM's outline where that repeats clearly better with the strokes; held or unsure stretches filled from fusion. Not a default; it can read a shot upside down: F flips it`;
   const shaftHint = $derived(pickRun && pickScene >= 0 && !target && ctl.has('overrides') ? tr.shaftHint(pickRun, pickScene) : null);
   let peek = $state('');
-  // ---- the source picker: the tracker's choice and Fused first, the shaft, the parts, pairs, bodies, everything else; the old
-  // motion groups (g1..g4) last, in their own submenu. paw-u6s5: only what has data where the pick goes (the range override,
-  // else the shot); the picked one always shows; one greyed row counts the rest ----
-  const OLD = /^g[1-4](p[12])?_|^pair_proj$/;
+  // ---- the source picker: the tracker's choice and Fused first, the shaft, the parts, pairs, bodies, everything else.
+  // paw-u6s5: only what has data where the pick goes (the range override, else the shot); the picked one always shows; one
+  // greyed row counts the rest ----
   /** The picker's items, each applying through `put(channel)` (the row's target). */
   function sourceItems(put, cur = picked, span = target) {
     const r = pickRun;
@@ -187,26 +189,23 @@
     let gone = 0;
     const here = (c) => vars(c).length > 0 || (gone++, false);   // (vars keeps the picked one)
     const radio = (c) => ({ label: chipLabel(c), type: 'radio', checked: cur === c, disabled: c !== 'primary' && c !== 'fused' && !r.channels[c] && !relParse(c), run: () => put(c) });
-    const varLabel = (v) => { const g = groupOfChannel(v), d = (g.sem && SEM_VARIANT[g.kind]) || VARIANT[g.kind]; return (VARIANT_WORDS[g.kind] || g.kind) + (d ? ': ' + d : ''); };
+    const varLabel = (v) => { const g = groupOfChannel(v), d = SEM_VARIANT[g.kind] || VARIANT[g.kind]; return (VARIANT_WORDS[g.kind] || g.kind) + (d ? ': ' + d : ''); };
     const entry = (c) => { const vs = vars(c); return vs.length < 2 ? radio(vs[0] ?? c) : { label: chipLabel(c), checked: vs.includes(cur) || undefined, items: vs.map((v) => ({ ...radio(v), label: varLabel(v) })) }; };
-    const top = chips.filter((c) => c === 'fused' || c === 'primary'), parts = chips.filter((c) => groupOfChannel(c)?.sem && here(c));
-    const pairs = [...new Set([...(relParse(cur) ? [cur] : []), ...relSuggestions(r, groups), ...chips.filter((c) => /^who_(pair|p1h2|p2h1)_proj$/.test(c))])].filter(here);
-    const old = chips.filter((c) => OLD.test(c) && here(c)), all = chips.filter((c) => !top.includes(c) && !groupOfChannel(c)?.sem && !/^who_(pair|p1h2|p2h1)_proj$/.test(c) && !OLD.test(c) && here(c));
+    const top = chips.filter((c) => c === 'fused' || c === 'primary'), parts = chips.filter((c) => groupOfChannel(c) && here(c));
+    const pairs = [...new Set([...(relParse(cur) ? [cur] : []), ...relSuggestions(r), ...chips.filter((c) => /^who_(pair|p1h2|p2h1)_proj$/.test(c))])].filter(here);
+    const all = chips.filter((c) => !top.includes(c) && !groupOfChannel(c) && !/^who_(pair|p1h2|p2h1)_proj$/.test(c) && here(c));
     const bodies = all.filter((c) => whoLabel(c)), rest = all.filter((c) => !whoLabel(c));
     const sect = (name, cs, f = entry) => (cs.length ? [{ section: name }, ...cs.map(f)] : []);
     return [...top.map(radio), shaft, ...depthParts, ...data, ...sect('Parts', parts), ...sect('Pairs', pairs, radio), ...sect('Bodies', bodies), ...sect('Other', rest),
-      ...(old.length ? [{ separator: true }, { label: 'Old motion groups', checked: old.some((c) => vars(c).includes(cur)) || undefined, items: old.map(entry) }] : []),
       ...(gone ? [{ separator: true }, { label: `${gone} more with no data in this ${span ? 'range' : 'shot'}`, disabled: true }] : [])];
   }
   const putSource = (c) => tr.setSource(c, target, pickRun?.id, 'row');
-  // ---- Pair: the run's parts (painted groups; a run without: its motion groups), click the moving one, then the other ----
+  // ---- Pair: the run's parts (painted groups), click the moving one, then the other ----
   const parts = $derived.by(() => {
     const r = pickRun;
     if (!r) return [];
     const has = (k) => r.channels[k + '_x']?.v?.some((x) => x === x && x != null);   // a part with data (old runs keep empty ones)
-    const sem = fusionGroups(r).filter((g) => has(g.key)).map((g) => ({ key: g.key, label: partLabel(g.name), color: semColor(g.name) }));
-    if (sem.length) return sem;
-    return Object.keys(r.channels).filter((k) => /^g[1-4](p[12])?_x$/.test(k) && r.channels[k.slice(0, -2) + '_y']).map((k) => k.slice(0, -2)).map((k) => ({ key: k, label: labelOf(groups, k + '_x') || k, color: chipColor(k + '_proj') }));
+    return fusionGroups(r).filter((g) => has(g.key)).map((g) => ({ key: g.key, label: partLabel(g.name), color: semColor(g.name) }));
   });
   const pairNow = $derived(relParse(picked));
   let pairOpen = $state(false), pairA = $state(''), pairBtn = $state(null);
@@ -379,7 +378,7 @@
   const pickName = $derived(pickDec?.chosen ?? pickRun?.params?.primary ?? '');
   const DEPTH_WHAT = { fusion: "fusion's own level and size (every relationship is centred over two strokes and scaled by its own spread: a stretch of small strokes at depth comes out centred and full size)", pick: 'the sidecar pick', pair: "the two bodies' distance along the stroke", shaft: "the shaft's visible share (where it is read with confidence)" };
   const depthWhat = (m) => DEPTH_WHAT[m] || (partOf(m) ? `the ${partWord(partOf(m))}'s visible share (where it is read with confidence)` : m);
-  const depthBlock = (m) => (!pickRun || m === 'fusion' ? '' : m === 'pick' ? (pickName && pickName !== 'fused' && pickRun.channels[pickName] ? '' : 'no sidecar pick channel in this run') : m === 'pair' ? (pickRun.channels.who_pair_proj || pickRun.channels.pair_proj ? '' : 'no pair tracked (two characters, or the motion groups)') : partOf(m) ? (shaftOf(pickRun, pickRunScene, { part: partOf(m) }) ? '' : `no ${partWord(partOf(m))} measured by SAM in this scene`) : shaftOf(pickRun, pickRunScene) ? '' : 'no shaft pass in this scene (paint the penis and re-track)');
+  const depthBlock = (m) => (!pickRun || m === 'fusion' ? '' : m === 'pick' ? (pickName && pickName !== 'fused' && pickRun.channels[pickName] ? '' : 'no sidecar pick channel in this run') : m === 'pair' ? (pickRun.channels.who_pair_proj ? '' : 'no pair tracked (two characters)') : partOf(m) ? (shaftOf(pickRun, pickRunScene, { part: partOf(m) }) ? '' : `no ${partWord(partOf(m))} measured by SAM in this scene`) : shaftOf(pickRun, pickRunScene) ? '' : 'no shaft pass in this scene (paint the penis and re-track)');
   const depthTip = (m) => {
     if (m === 'fusion') return `Depth from ${DEPTH_WHAT.fusion}. The default. One undo step`;
     const b = depthBlock(m), now = depthNow === m && depthInfo ? (depthInfo.used ? ` · now: seated on ${Math.round(100 * depthInfo.used)} % of the shot (it moves with the stroke: r ${depthInfo.r})` : ` · now: not used, ${depthInfo.why}: fusion's own`) : '';
@@ -1064,10 +1063,13 @@
           {@attach tooltip(tr.bandOpen ? "Fold the shot's controls back to one row" : "Unfold all of the shot's controls")}
           onclick={() => (tr.bandOpen = !tr.bandOpen)}><Icon name={tr.bandOpen ? 'chevron-down' : 'chevron-right'} size={12} /></button>
         {#if shaftOn && shaftData && shaftNow}<span class="bnote num" class:warn={shaftNow.unsure} data-testid="shaft-note" {@attach tooltip(`Shaft data on the lane's scale: out 100, hilted 0`)}>{shaftNow.text}</span>{/if}
+        {#if orgNow}<Button size="sm" variant="ghost" data-testid="orgasm-band" disabled={!bandRun} tip="Orgasm here: U adds a spurt, X on the lane removes one"
+          onclick={() => (tr.bandOpen = true)}>orgasm · {orgMarks} spurt{orgMarks === 1 ? '' : 's'}</Button>{/if}
         {#if pickRun && !pickRun.mod}<DetailChip {app} inline />{/if}
       </div>
       {#if tr.bandOpen && bandRun}
         <div class="bandmore k-scroll" data-testid="inspector-more-body">
+          {#if orgNow}<div class="bandorg" data-testid="orgasm-band-editor"><FxEditor {app} id={orgNow.id} /></div>{/if}
           {#if shaftOn}<button class="chip" class:on={shaftData} aria-pressed={shaftData} data-testid="shaft-data-toggle" {@attach tooltip("The shaft's readings over the shot, under the lane")} onclick={() => app.settings.set('tracking.shaftData', !shaftData)}>shaft data</button>{/if}
           <DeriveStrip {app} />
         </div>
@@ -1098,7 +1100,7 @@
 {#snippet gSrc()}
   {@const col = chipColor(picked)}
   <span class="grp">
-    <button class="chip on src" class:sem={!!groupOfChannel(picked)?.sem} style:--chip={col} aria-haspopup="menu" aria-label="Signal source: {chipLabel(picked)}"
+    <button class="chip on src" class:sem={!!groupOfChannel(picked)} style:--chip={col} aria-haspopup="menu" aria-label="Signal source: {chipLabel(picked)}"
       {@attach tooltip(`Signal${target ? ' of the range' : ''}: ${chipLabel(picked)}${chipTitle(picked) ? ` (${chipTitle(picked)})` : ''}, click to change`)}
       {@attach contextMenu(() => sourceItems(putSource))} onclick={(e) => showContextMenu(e.currentTarget, sourceItems(putSource))}>{#if chipTags(picked)}{#each chipTags(picked) as x, k (k)}{#if k}<span>↔</span>{/if}<i style:--chip={x.col}></i><span class="tx">{x.t}</span>{/each}{:else}{#if col}<i></i>{/if}<span class="tx">{chipLabel(picked)}</span>{/if} ▾</button>
     {#if shaftHint}<span class="shint" data-testid="shaft-hint" role="note" aria-label="The shaft reads this shot differently: worth a look" {@attach tooltip(`The shaft (${READ_WORD[shaftHint.reading]}) differs from ${chipLabel(picked)}: r ${shaftHint.r.toFixed(2)}, ${shaftHint.size}× the size\nPick Shaft as the source to follow it`)}>◆</span>{/if}
@@ -1199,7 +1201,7 @@ ${PAIR_TIP}` : PAIR_TIP)}
         {@const sg = effSign(sel, i)}
         {@const glyph = signGlyphs[i]}
         <button class="seg sign" data-ctl="flip strip" class:flipped={sel.flips.includes(i)} style:left={L(sc.start_ms)} style:width={W(sc.end_ms - sc.start_ms)}
-          {@attach tooltip(`Run scene ${i + 1}: direction ${sg > 0 ? '+' : '−'}${sc.auto_sign != null ? ' (auto ' + (sc.auto_sign > 0 ? '+' : '−') + ')' : ''}${shaftNote(sel, i)}${matchNote(sel, i)}\nClick or ${flipKey} flips it, drag flips a stretch`)}
+          {@attach tooltip(`Run scene ${i + 1}: direction ${sg > 0 ? '+' : '−'}${shaftNote(sel, i)}${matchNote(sel, i)}\nClick or ${flipKey} flips it, drag flips a stretch`)}
           onpointerdown={stripDown} onclick={() => { if (!stripSwallow) tr.flipScene(i); }}>{glyph ? (sg > 0 ? '+' : '−') : ''}</button>
       {/each}
       {#each stretches as st, j (j)}<!-- by index: a stretch keeps its element (and its pointer capture) while it is dragged -->
@@ -1248,6 +1250,7 @@ ${PAIR_TIP}` : PAIR_TIP)}
   .eph { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--highlight); pointer-events: none; }
   .bnote { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tx-mut); font-size: var(--fs-1); }
   .bnote.warn { color: var(--warn-ink); }
+  .bandorg { break-inside: avoid; margin-bottom: var(--space-2); }
   .rub { position: absolute; top: 0; bottom: 0; background: rgba(var(--highlight-rgb), .3); pointer-events: none; }
   .band { display: flex; flex-direction: column; min-height: 0; max-height: 60%; background: var(--bg-raised); border-top: var(--bw) solid var(--line-1); }
   .bandrow { flex: none; display: flex; align-items: center; gap: var(--space-1); height: 22px; padding-right: var(--space-2); overflow: hidden; }

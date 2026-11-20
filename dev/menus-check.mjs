@@ -66,11 +66,13 @@ try {
   // ---- 2. the source chip's menu ----
   await ev(async () => { const tr = window.__pawDev.trackingFor(app); await tr.list(); tr.selectTracker('fake.groups'); app.doc.range = { t0: 0, t1: 8000 }; app.player.seek(500); for (let k = 0; k < 75 && !tr.canTrack; k++) await new Promise((r) => setTimeout(r, 200)); await tr.track(); });
   await page.waitForFunction(() => !window.__pawDev.trackingFor(app).busy && window.__pawDev.trackingFor(app).runs.length, null, { timeout: 90000 });
-  // old motion-group channels as an older points run has them: g1 with data, g2 only gaps in the shot
+  // old motion-group channels as an older points run has them (paw-57dw: never offered any more), a painted part with data and
+  // one with only gaps in the shot
   await ev(() => {
     const tr = window.__pawDev.trackingFor(app), r = tr.runs.at(-1), t = Array.from(r.channels.cam_x.t), wave = (k) => t.map((x) => 0.5 + 0.4 * Math.sin(x / (150 + 40 * k)));
     const ch = (v) => ({ t: [...t], v, min: 0, max: 1 });
-    r.channels = { ...r.channels, g1_proj: ch(wave(1)), g1_scale: ch(wave(2)), g1p1_rel: ch(wave(3)), g1p1_proj: ch(wave(4)), g2_proj: ch(t.map(() => NaN)), pair_proj: ch(wave(5)), proj_cam: ch(wave(6)) };
+    r.channels = { ...r.channels, g1_proj: ch(wave(1)), g1_scale: ch(wave(2)), g1p1_rel: ch(wave(3)), g1p1_proj: ch(wave(4)), pair_proj: ch(wave(5)), proj_cam: ch(wave(6)),
+      sem_c1_tail_proj: ch(wave(7)), sem_c2_tail_proj: ch(t.map(() => NaN)) };
     tr.select(''); tr.select(r.id); app.player.seek(1500, { exact: true });
   });
   await wait(900);
@@ -90,11 +92,7 @@ try {
   const more = srcRows.find((r) => /more with no data in this shot$/.test(r.label));
   ok(!!more && more.off, `the gap-only channel is left out and counted: "${more?.label}" (greyed: ${more?.off})`);
   await page.screenshot({ path: join(out, 'menus-source.png') });
-  await page.locator('[role="menu"] .k-item').filter({ hasText: /^\s*Old motion groups/ }).first().hover(); await wait(700);
-  const old = await rows('[role="menu"] [role="menu"]') || [];
-  console.log('info Old motion groups: ' + old.map((r) => r.label + (r.sub ? ' >' : '')).join(' | '));
-  ok(old.length >= 2 && !old.some((r) => INTERNAL.test(r.label)) && !old.some((r) => /^Body 2\b/.test(r.label)), `the old groups in their own submenu, in words, body 2 (gaps only) left out: ${old.map((r) => r.label).join(', ')}`);
-  await page.screenshot({ path: join(out, 'menus-source-old.png') });
+  ok(!srcRows.some((r) => /Old motion groups|^Body \d/.test(r.label)), 'no old motion groups (g1..g4, their parts, the pair)');
   await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
 } catch (e) { fails++; console.log('FAIL', e.message); }
 console.log(fails ? `${fails} FAILED` : 'all ok');

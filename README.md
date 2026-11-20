@@ -4,7 +4,7 @@ Funscript editor and semi-automatic scripter. Tauri 2 + Svelte 5 + Vite on the f
 backend for safe file IO and ffmpeg media helpers, and an optional Python tracker sidecar (`trackers/`)
 that turns a video region into a position signal.
 
-**Licence: GPL-3.0-or-later** (`LICENSE`, `NOTICE`; see "Licensing" below). For adults (18+) only.
+**Licence: GPL-3.0-or-later** (`LICENSE`, `NOTICE`; see "Licensing" below). Made for explicit content: for users of legal age only.
 
 ## State of the project
 
@@ -155,9 +155,11 @@ If someone sold it to you, you can get it free here: https://github.com/openvale
   `docs/formats/` are CC BY 4.0, and implementing the formats needs no licence from this project, in open or closed,
   free or commercial software.
 - **What you make is yours**: scripts, projects and packs belong to their author.
-- Terms for the shared build (18+, no warranty, devices at your own risk, the source offer for the GPL components):
-  `dev/share/TERMS.txt`. The toy library in `src/features/machine/toys` is not under the GPL and is left out of the
-  public build (`dev/share/build-nas.ps1`).
+- Terms for the shared build (legal age only, no warranty, devices at your own risk, the source offer for the GPL components):
+  `dev/share/TERMS.txt`.
+- **Toy library**: the Machine panel's toy data (`src/features/machine/toys/library.json`) is third-party product data,
+  not under the GPL. The public source and the public build ship it empty; the panel then offers generic and imported
+  toys.
 
 Every dependency and model with its licence: `THIRD-PARTY.md`; where each idea and borrowed piece came from:
 `PROVENANCE.md`.
@@ -177,4 +179,4 @@ Every dependency and model with its licence: `THIRD-PARTY.md`; where each idea a
 
 ## Building from source
 
-This is the public source of Pawscript, exported from the working tree at `1408d64a434f` on 2026-11-19 without its history. Prerequisites, the tracker sidecar, where each model comes from and what is not reproducible yet: [docs/BUILDING.md](docs/BUILDING.md).
+This is the public source of Pawscript, exported from the working tree at `4c864cf294ce` on 2026-11-20 without its history. Prerequisites, the tracker sidecar, where each model comes from and what is not reproducible yet: [docs/BUILDING.md](docs/BUILDING.md).

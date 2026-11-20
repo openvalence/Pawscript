@@ -38,7 +38,7 @@ function whyOf(w) {
 /** pawtrack/pulse.py MARGIN_MS: the pulse groups are tracked over the orgasm span +- this. */
 export const PULSE_MARGIN_MS = 1000;
 const who = (w) => (w ? ` (${whoName(w)})` : '');
-/** 'sem_c1_balls_scale' -> 'balls (Bottom)', 'sem_balls_scale' -> 'balls', 'g1p1_scale' -> 'balls'. */
+/** 'sem_c1_balls_scale' -> 'balls (Bottom)', 'sem_balls_scale' -> 'balls'. */
 const ballsName = (ch) => { const m = /^sem_(c[12]|x)_/.exec(ch || ''); return 'balls' + who(m?.[1]); };
 /**
  * What detect will use on a scene: groups = cumGroups(scene) (groups.js; no pulse group in it = nothing tracked), span =
@@ -72,26 +72,22 @@ export function pulseChannels(result) {
 /** Proposals shown at a threshold (score >= threshold). */
 export const cumShown = (list, threshold = 0) => (list || []).filter((p) => p.score >= threshold);
 
-/** The linked spurt group the placed spurts join: the last spurt by t0 inside the span that has a `link`. -> {link, params} | null. */
-export function linkedSpurt(fx, span) {
-  const { t0, t1 } = spanOf(span);
-  const e = (fx || []).filter((x) => x.kind === 'spurt' && x.link && x.t0 >= t0 && x.t0 < t1).sort((a, b) => b.t0 - a.t0)[0];
-  return e ? { link: e.link, params: { ...(e.params || {}) } } : null;
-}
+/** paw-d1g7: a placed proposal's marker velocity from its score (0.5 at score 0, 1 at 0.5 = strong, 1.5 at 1). */
+export const velOfScore = (score) => Math.round(Math.min(1.5, Math.max(0.5, 0.5 + (Number(score) || 0))) * 20) / 20;
 
 /**
- * What placing the proposals adds: one spurt per shown proposal (score >= threshold) on its frame (snap), except where a
- * spurt already sits within a frame (or one placed earlier in this call); with a linked spurt group in the span every
- * new one joins it (same link, a copy of its params). -> [{t0, link?, params?}] in time order.
+ * What placing the proposals adds: one marker per shown proposal (score >= threshold) on its frame (snap), except where
+ * a spurt already sits within a frame (or one placed earlier in this call), its velocity from its score (velOfScore;
+ * paw-d1g7: the orgasm around it holds the spurt shape). -> [{t0, vel}] in time order.
  */
-export function cumPlacement(fx, list, { threshold = 0, frameMs = 1, span = null, snap = (t) => t } = {}) {
-  const fr = Math.max(1, frameMs || 1), taken = (fx || []).filter((e) => e.kind === 'spurt').map((e) => e.t0), rec = span ? linkedSpurt(fx, span) : null;
+export function cumPlacement(fx, list, { threshold = 0, frameMs = 1, snap = (t) => t } = {}) {
+  const fr = Math.max(1, frameMs || 1), taken = (fx || []).filter((e) => e.kind === 'spurt').map((e) => e.t0);
   const out = [];
   for (const p of cumShown(list, threshold)) {
     const t = Math.round(snap(p.t));
     if (taken.some((x) => Math.abs(x - t) < fr)) continue;
     taken.push(t);
-    out.push(rec ? { t0: t, link: rec.link, params: { ...rec.params } } : { t0: t });
+    out.push({ t0: t, vel: velOfScore(p.score) });
   }
   return out;
 }

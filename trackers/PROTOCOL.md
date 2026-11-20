@@ -68,8 +68,11 @@ v4.56 (additive, optional; paw-k97q, paw-ldfs, paw-eeod): THE GPU FAILS IN WORDS
 v4.57 (behaviour, same messages and params; paw-vdr4): COTRACKER3 IS OPTIONAL. `list` names `cotracker_points` only when the `cotracker` package is importable AND both checkpoints are in `trackers/.cache/cotracker/` (the user installs them: CC-BY-NC 4.0, in no build; docs/guide/cotracker.md); its checkpoints are never downloaded. A `track` naming it when it is not listed errors with "CoTracker3 is not installed ..." (was "unknown tracker"). The shared point-tracker code moved to `pawtrack/points.py` (identical results). Clients fall back to `tapnext_points`.
 v4.58 (additive, optional; paw-1dt4): A TORCH THAT CANNOT LOAD NO LONGER STOPS THE TRACKER. A torch whose import fails (ImportError, or on Windows OSError from a DLL: WinError 126 / 1114, a missing VC++ runtime, an antivirus-quarantined DLL) is `list.gpu` {"state": "none", "reason": "torch", "probe": "<the error>"}: the GPU trackers are off, every other command (the CPU trackers, scenes, frames, loop, probe, list) runs; a GPU tracker's `track` closes with an error event, the process stays. Nothing loads torch at a process's start any more (a command that needs none never loads it or makes a CUDA context): it is patched (v4.56 (1)) when something first imports it. `list` no longer runs the kernel probe for a card in the build's arch list (it answers "ok" with the card's name, no `probe_ms`); the probe runs at that card's first `torch.cuda.is_available()` (a GPU tracker's start), as before for any card; a card outside the list is still probed by `list`.
 v4.59 (behaviour, same names; paw-adxi): THE KNOT SECTION SURVIVES A LONG HIDE. A knot section's members (v4.54) are never re-seeded onto the rest of their group (the hull pick, a pick on its tracked mask): a lost member waits for its section (the knot inside the partner comes back out where it went in), the own-place re-seed under the floor (v4.51) still applies; every re-seed whose place in its group's layout (its reference, else its birth position) is inside the section joins it. While none of its members is visible, `sem_<who>_knot_x / _y / _proj` are carried by the group's fit (the visible members' similarity from their anchors) with `_n` 0, instead of null (null only while the group has under 3 visible members). The shaft / depth pass takes the section as its base-end hint, as it took an own knot group.
+v4.60 (removal; paw-57dw): THE MOTION GROUPS' CHANNELS ARE GONE. The points trackers no longer send the unsupervised motion groups' channels: `g1_*` .. `g4_*` (`_x`, `_y`, `_n`, `_proj`, `_scale`, `_rot`), their parts' `g{k}p{j}_*`, `n_groups`, `pair_dist` and `pair_proj`; none of them is a `primary` value or a `primary` note candidate any more (a request naming one as `primary` is refused like any value outside the choices). The track param `group_labels` (the tagger naming the motion groups) is gone (a request carrying it is refused as an unknown param), and with it the motion groups' entries in `scenes[].groups` and the `group_labels` note: both now carry the pinned groups' records only (the note's message "group labels: sem_penis = penis (seeded, sam), ..."). The group pass itself still runs: `cam_x` / `cam_y` / `cam_conf` (the camera estimate), the pinned groups' `sem_*` and the characters' `who_*` channels are unchanged, and so are the overlay `pts` (the 4th element is still the point's motion group, the 5th its part: what the camera estimate is built on).
+v4.61 (additive, optional; paw-vdb3.1): AMD CARDS ON A ROCm TORCH. `list.gpu.capability` is the card's gfx target ("gfx1201") instead of "12.0" when torch is a ROCm build. A card the installed ROCm runtime has no device libraries for (its `rocm-sdk-device-<target>` packages; else torch's arch list) is `{"state": "unsupported", "reason": "old" | "new"}` without the probe (rocBLAS / MIOpen without its code objects can abort the process). With several devices the sidecar uses one, set current before any model loads: a usable discrete card with the most VRAM, an iGPU only when nothing else is there (all VRAM figures are that card's). `track` may send the stage `"warming"` before `"starting"`: the card's one-time probe (MIOpen's first convolution: the probe took 9-11 s on an RX 9070 XT, once per sidecar process). HIP / MIOpen / rocBLAS / hipBLASLt errors end the process as v4.56 (2) does for CUDA ones; a hipBLAS or MIOpen allocation failure is an out-of-memory. MIOpen's cache goes to `<models folder>/.cache/miopen` (env `MIOPEN_USER_DB_PATH` / `MIOPEN_CUSTOM_CACHE_DIR`, unless set from outside). Old clients ignore all of it.
+v4.62 (removal and behavior; paw-dnrv): THE PIPELINE NO LONGER INVENTS OR ERASES STROKES. (1) The activity gate only flags: its own `idle` (a still run at a range end) and `still` spans are events, the points stay as tracked; `pipe_gate_inside` is gone. (2) `pipe_carry_gaps` is gone: a long gap between turns is left as tracked and makes no `carry` event. A `carry` or `idle` span label (`spans`) still replaces the points under it, as before. (3) The span state `orgasm` is a flag like `climax` (points as tracked, an `orgasm` event); `pipe_climax_rate` / `pipe_climax_lo` / `pipe_climax_hi` are gone. (4) `pipe_sign` is gone with its `auto` (motion energy at the turns): a scene keeps the tracker's own orientation, or the shaft's where it is confident (v4.17), then `pipe_invert`; `scenes[].auto_sign` is gone and the `primary` note's `sign` is {mode: "keep" | "shaft", invert, applied, shaft?}. (5) The `activity` track input is gone. (6) `pipe_cadence_fill` defaults to false (opt-in). (7) New `pipe_norm_floor` (default 0.75): the local range (`pipe_norm_window_ms`) never counts narrower than this share of the scene's median stroke (its turns at `pipe_min_prominence` of the whole scene's p5..p95), so a near-still window is not stretched to full strokes; 0 = the v4.61 range. Gold set, per-scene requests, F1 (v4.61 defaults -> v4.62): oracle 0.820 -> 0.860, flowroi 0.540 -> 0.554, pca 0.568 -> 0.549. A request that sends a removed param is refused (unknown params), as any unknown param is.
 
-**Position convention** (all of `samples`, `points`, `score`): pos 0 = deepest (fully inserted), pos 100 = out. `samples` v 0..1 has the same orientation (0 = deepest). Trackers do not know depth: their primary signal is oriented by geometry (`centroid`/LK: image-up = higher value; `len_over_width`: longer visible length = higher value, i.e. shorter visible length = deeper = LOWER pos, which is the right way round). `pipe_sign` / `pipe_invert` set the orientation per scene; `track.scenes[].sign` reports it.
+**Position convention** (all of `samples`, `points`, `score`): pos 0 = deepest (fully inserted), pos 100 = out. `samples` v 0..1 has the same orientation (0 = deepest). Trackers do not know depth: their primary signal is oriented by geometry (`centroid`/LK: image-up = higher value; `len_over_width`: longer visible length = higher value, i.e. shorter visible length = deeper = LOWER pos, which is the right way round). A confident shaft (v4.17) and `pipe_invert` set the orientation per scene; `track.scenes[].sign` reports it.
 
 ```
 REQUESTS (stdin, one JSON object)
@@ -129,8 +132,8 @@ REQUESTS (stdin, one JSON object)
    "spans":[{"start_ms":int,"end_ms":int,"state":"active"|"idle"|"carry"|"climax"|"orgasm"}, ...]
       per-span override of the activity gate over [start_ms, end_ms) (the UI, or a story timeline:
       action_continues true -> "carry" (or "active" if the picture shows it), false -> "idle"; the fast
-      run-in before an orgasm -> "climax" (v3.1), the orgasm -> "orgasm" (v3.1)). Wins over every automatic
-      decision. Another state is an error.
+      run-in before an orgasm -> "climax" (v3.1), the orgasm -> "orgasm" (v3.1; v4.62: a flag like climax)).
+      Wins over every automatic decision. Only "idle" and "carry" change points. Another state is an error.
    "groups":[{"name":str,"poly":[[x,y],...],"pinned"?:bool,"t_ms"?:ms}, ...]   (v4.11, points trackers, box roi; v4.12: + "who"?, "part"?, "side"?; v4.21: + "points"?)
       the owner's groups. name: lower-cased to [a-z0-9] ("other" if nothing is left; a repeat becomes tail2, tail3, ...).
       poly: >= 3 vertices, 0..1 frame coords (clipped). t_ms: the frame it was drawn on: the group belongs to the scene
@@ -144,10 +147,6 @@ REQUESTS (stdin, one JSON object)
       a points roi ignore groups (points trackers note `groups`).
    "tags":[str, ...]
       scene tags of the range (e.g. the describe summary's acts). "knotting" enables the knot events of sam2_mask.
-   "activity":[[t_ms:int, active:bool], ...]
-      sorted samples of an external "action visible" timeline (e.g. act tags of describe per sampled
-      frame); each sample holds until the next. Inside a low-motion run, where active the run stays
-      "active", where not it becomes "idle" (anywhere, not only at the range ends). Needs pipe_gate motion.
    "cuts":[ms | {"t_ms":ms,"kind":"hard"|"soft","why"?:str}, ...] | null   (v3.1, additive; kinds v4.9)
       the scene cuts to use instead of the cut detector (e.g. the document's scenes, after the user merged
       the false cuts big motion produced). A frame starts a new scene iff it is the first frame with
@@ -208,7 +207,7 @@ EVENTS (stdout, JSONL)
       explaining both), a piece that starts moving on its own gets a new id, and an id ends only when its points
       are gone or have not moved for 8 s; a point keeps its group unless another fits clearly better, and each
       frame's label is a vote of the overlapping windows, so labels do not flip at window steps).
-      New channels on both point trackers: g1_x,g1_y ... g4_x,g4_y group
+      New channels on both point trackers (v4.60: all gone but cam_x / cam_y): g1_x,g1_y ... g4_x,g4_y group
       centroid (normalized, camera removed = background frame; null when the group is absent), g1_n ... g4_n
       member share of all points (0 when absent), n_groups (moving groups present), pair_dist (centroid
       distance of the two largest moving groups along the custom stroke axis, else the principal axis of their
@@ -217,7 +216,7 @@ EVENTS (stdout, JSONL)
       see cam_conf below; group centroid + cam = image position). Existing channels and primaries unchanged.
       v3.1 (additive): g1_proj ... g4_proj = group k's centroid through proj's own code path (same axis param,
       sign, gap bridging, 0..1 per scene; camera already removed), pair_proj = pair_dist scaled 0..1 per scene
-      (larger = farther apart); all five are also valid `primary` values.
+      (larger = farther apart); all five are also valid `primary` values. (v4.60: gone.)
       v3.1 (additive): proj_cam = proj computed on the centroid minus cam (background frame), same pipeline and
       sign rules as proj (axis param, gap bridging, 0..1 per scene; axis auto is fitted on its own track); a valid
       `primary` (primary_used 2, raw_px then = raw_px_cam). raw_px_cam = proj_cam before normalization, frame px.
@@ -237,7 +236,7 @@ EVENTS (stdout, JSONL)
       outliers become -1. The body's centroid (g{k}_x/_y/_proj, pair_dist) comes from its inliers only.
       A "pts" entry of a point in a part gains a 5th element = part id (1 or 2) of its body (the 4th element is
       still the body's group); points not in a part keep 4 elements.
-      New channels (null when the body / part is absent; a part that never exists in the scene stays null):
+      New channels (null when the body / part is absent; a part that never exists in the scene stays null; v4.60: gone):
         g1_scale ... g4_scale  body's relative size change per frame (high-passed, ~log scale, > 0 = bigger on
                                screen: toward the camera); g1_rot ... g4_rot body's rotation (radians, high-passed,
                                > 0 = clockwise on screen). Raw values, not 0..1.
@@ -346,7 +345,7 @@ RESULTS
                                                 (after held_retime / loop_fold if they applied).
                                                 null = cut frame (first frame of a new scene) or lost.
               "points":[{"at":int,"pos":int 0..100}, ...]   after the signal pipeline (pipe_*),
-                                                per scene, then the activity gate over the whole range;
+                                                per scene, then the span labels over the whole range;
                                                 strictly increasing "at". With pipe_snap_frames false
                                                 (default) a turning point's "at" may fall between frame
                                                 timestamps (parabolic peak time); other points sit on
@@ -356,16 +355,18 @@ RESULTS
                                                 when loop_fold applied; label "cycle N", N from 1)
                                                 v3, activity-gate spans, with an extra "end_ms":int
                                                 (span = [t_ms, end_ms)), label "<kind> <seconds> s":
-                                                  "idle"   points replaced by a hold (no strokes)
-                                                  "carry"  points replaced by strokes at the rhythm of
-                                                           the nearest active stretch (see pipe_gate)
-                                                  "still"  low motion inside the clip, points kept as
+                                                  "idle"   low motion at a range end (v4.62: points kept as
+                                                           tracked), or an "idle" label: points replaced by
+                                                           a hold (no strokes)
+                                                  "carry"  only from a "spans" label (v4.62): points replaced
+                                                           by strokes at the rhythm of the nearest active stretch
+                                                  "still"  low motion inside the range, points kept as
                                                            tracked; flagged so the UI can flip it to
                                                            idle / carry via "spans"
                                                   "climax" only from a "spans" label. v3: synthesized pulses;
                                                            v3.1: the fast run-in, points kept as tracked
-                                                  "orgasm" v3.1, only from a "spans" label: synthesized pulses
-                                                           (pipe_climax_*)
+                                                  "orgasm" only from a "spans" label; v4.62: points kept as
+                                                           tracked (v3.1 to v4.61: synthesized pulses)
                                                 v3, knot passes (sam2_mask only, only when the request has
                                                 "tags" containing "knotting", scene passes the area gate p95/p5 <= 10):
                                                   "knot"   {"t_ms","kind":"knot","dir":"in"|"out","score","label":"knot in"|"knot out"}
@@ -380,7 +381,7 @@ RESULTS
                                                 (v3.2, points trackers, every scene: the decision record below; v3 sent
                                                 "primary_used" for auto only, message only), "held_input" (points tracker,
                                                 v3.1: held frames skipped; data {mode, step, ratio, tracked, frames}),
-                                                "group_labels" (v3.3, points trackers with group_labels on, every scene: message
+                                                "group_labels" (v3.3; v4.60: the pinned groups' records only, see v4.60; was: points trackers with group_labels on, every scene: message
                                                 "group labels (5 frames, 0.3 s): g1 = body, g1p1 = penis"; data {groups: = that
                                                 scene's scenes[].groups, s: tagger seconds}; "group labels skipped: <error>"
                                                 without data when the tagger fails, the track itself is unaffected).
@@ -403,9 +404,7 @@ RESULTS
                                                   axis        {mode: auto|vertical|horizontal|custom, deg: screen direction of rising
                                                               value, 0 = right, 90 = up (auto: PCA of the chosen basis)}
                                                   camera      {cam_conf: mean, std: camera motion std, frame heights}
-                                                  sign        {mode: pipe_sign, auto: 1|-1|null, invert: bool, applied: 1|-1,
-                                                              energy_top, energy_bottom, score = (bottom - top) / (bottom + top)
-                                                              (energy_sign; near 0 = a coin toss) | why: str when undecided}
+                                                  sign        {mode: "keep" | "shaft", invert: bool, applied: 1|-1, shaft?} (v4.62)
                                                   seed        (v4.3) {frame_ms: the frame the ROI was seeded on, mode: first|roi|auto,
                                                               reason: str}; every frame of the scene is tracked from there, both ways;
                                                               (v4.6) layout: grid|line|motion (a box laid on the frame), flow_ms:
@@ -424,16 +423,15 @@ RESULTS
                                                               share_after: stroke amplitude / the piece's range}. Also in
                                                               scenes[].segments (every tracker).
                                                 Numbers have 3 significant figures; null = not computable.
-              "scenes":[{"start_ms":int,"end_ms":int,"sign":1|-1,"auto_sign":1|-1|null}, ...]   (v3)
+              "scenes":[{"start_ms":int,"end_ms":int,"sign":1|-1}, ...]   (v3; v4.62: no auto_sign)
                                                 one per scene the range was split into (cuts), in order;
                                                 end_ms = next start_ms, last = last frame + one mean frame
                                                 interval. sign = orientation applied to this scene's samples
                                                 and points relative to the tracker's own signal (-1 =
-                                                flipped, v -> 1 - v) = auto_sign (pipe_sign "auto"; null if
-                                                "keep" or too few strokes, counts as +1) x (-1 if
-                                                pipe_invert). To flip one scene, re-run it with pipe_invert
+                                                flipped, v -> 1 - v) = the shaft's sign where it is confident
+                                                (else +1) x (-1 if pipe_invert). To flip one scene, re-run it with pipe_invert
                                                 toggled, or map its points pos -> 100 - pos.
-                                                "groups" (v3.3, optional, points trackers with group_labels on): names of the
+                                                "groups" (v3.3, optional; v4.60: the pinned groups' entries only; was: points trackers with group_labels on): names of the
                                                 scene's motion groups, {} when none moves:
                                                   {"g1": {"label": "body", "score": 0.0, "tags": {"penis": 0.21, ...}, "frames": 5,
                                                           "stable": 1.0, "suspect": "penis"?}, "g1p1": {"label": "penis", ...}}
@@ -606,14 +604,14 @@ Every tracker accepts its own params plus these groups (all listed in each track
 
 ### Points pipeline (`pipe_*`), in order
 
-Per scene: held_retime / loop_fold -> sign -> smooth -> local range -> turning points -> holds -> simplify -> spacing / speed cap. Then over the whole range: the activity gate (motion, `activity`, gaps, `spans`).
+Per scene: held_retime / loop_fold -> sign -> smooth -> local range -> turning points -> holds -> simplify -> spacing / speed cap -> cadence fill (opt-in). Then over the whole range: the activity gate's flags and the `spans` labels.
 
 | param | default | meaning |
 |---|---|---|
-| `pipe_sign` | `keep` | `keep`: the tracker's own orientation. `auto`: per scene, the stroke end where the picture moves least (thumbnail motion energy at the turning points) becomes pos 100 (out). Measured accuracy in README; not the default because it is worse than `keep` for flow-like trackers. |
-| `pipe_invert` | false | flip (v -> 1 - v) after `pipe_sign`. Reported in `scenes[].sign`. |
+| `pipe_invert` | false | flip (v -> 1 - v) of the tracker's own orientation (or the shaft's). Reported in `scenes[].sign`. |
 | `pipe_smooth_ms` | 150 | Savitzky-Golay window. |
 | `pipe_norm_window_ms` | 3000 | v3. 0..1 from a rolling robust range (p5..p95 over this window, smoothed) instead of the scene's min-max, so small strokes next to drift or one big move still count. 0 = whole scene (v2). |
+| `pipe_norm_floor` | 0.75 | v4.62. The rolling range never counts narrower than this x the scene's median stroke (turns at `pipe_min_prominence` of the scene's p5..p95): a near-still window is not stretched to full strokes. 0 = off (v4.61). |
 | `pipe_min_prominence` | 0.04 | turning-point prominence, share of that (local) range. |
 | `pipe_hold_ms` | 0 | v3. A turn whose signal stays within 5% of it for >= this many ms becomes two points (arrival, departure, same pos). 0 = off. |
 | `pipe_rdp_epsilon` | 100 | points kept between turning points (RDP tolerance, pos). 100 = extremes only. |
@@ -621,16 +619,14 @@ Per scene: held_retime / loop_fold -> sign -> smooth -> local range -> turning p
 | `pipe_min_interval_ms` | 60 | min spacing between points. |
 | `pipe_max_speed` | 500 | pos/s cap (0 = off); clips the amplitude, keeps the timing. |
 | `pipe_snap_frames` | false | v3. true: every point on a frame timestamp. false: turning points at the parabolic peak time between frames. |
-| `pipe_gate` | `motion` | v3. `motion`: per frame the 2 s median of the thumbnail motion energy (RMS grey-level difference to the frame ~125 ms earlier, 64 px grey thumbnails) below `pipe_gate_motion` is still. Still runs >= `pipe_gate_min_ms` that touch the start or end of the range become `idle`, others `pipe_gate_inside`. `off`: no motion decision (`spans` and `pipe_carry_gaps` still apply). |
+| `pipe_gate` | `motion` | v3. `motion`: per frame the 2 s median of the thumbnail motion energy (RMS grey-level difference to the frame ~125 ms earlier, 64 px grey thumbnails) below `pipe_gate_motion` is still. Still runs >= `pipe_gate_min_ms` that touch the start or end of the range are `idle` events, others `still` events; v4.62: flags only, the points stay as tracked. `off`: no motion decision (`spans` still apply). |
 | `pipe_gate_motion` | 4.0 | grey levels. |
 | `pipe_gate_min_ms` | 2000 | shorter still runs are ignored. |
-| `pipe_gate_inside` | `keep` | still run between active ones: `keep` (points kept, `still` event), `carry`, or `idle`. |
-| `pipe_carry_gaps` | true | v3. Between the first and last turning point of the range, a gap between consecutive turns longer than max(3x the local turn interval, 1.5 s) becomes `carry`. |
 | `pipe_cam_detrend` | true | v4.9. Remove the camera trend from the primary in pieces where the camera travels and the strokes are drowned: see v4.9 and `pipeline.cam_detrend` (thresholds `TREND_K` 1.5, `SHARE_MAX` 0.5, `PERIODIC` 0.3, `CAM_CONF_MIN` 0.3). Measured on the gold set. |
-| `pipe_climax_rate`, `pipe_climax_lo`, `pipe_climax_hi` | 6.8, 1, 34 | v3. Only inside an `orgasm` span label (a `climax` label before v3.1): pulses alternating `hi` / `lo` at `rate` turns per second (the reference scripts' convention: fast shallow pulses at the deep end). |
+| `pipe_cadence_fill` | false | strokes the tracker missed, from the picture's own rhythm (`pipeline.cadence_fill`); v4.62: opt-in. |
 
-`carry` points: from the position the points had at the span start, alternate the median top and median bottom of the nearest active stretch (10 s before the span, else after it) every half of its median stroke period, then return to the position the points had at the span end. Rate, not phase (the reference scripts carry the rate through cut-aways; their phase is unrelated).
-`idle` points: a hold at the position the points had at the span start. `orgasm` points: see `pipe_climax_*`. `climax` points (v3.1): unchanged.
+`carry` points (a `carry` label only): from the position the points had at the span start, alternate the median top and median bottom of the nearest active stretch (10 s before the span, else after it) every half of its median stroke period, then return to the position the points had at the span end. Rate, not phase (the reference scripts carry the rate through cut-aways; their phase is unrelated).
+`idle` points (an `idle` label only): a hold at the position the points had at the span start. `climax` (v3.1) and `orgasm` (v4.62) points: unchanged.
 
 ## GPU memory
 

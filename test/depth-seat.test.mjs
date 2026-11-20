@@ -88,7 +88,7 @@ test('synthetic depth cases (fusion-synth DEPTH_CASES): level and size from the 
     const s = C[id], a = smart(s, null), b = smart(s, 'pair'), ea = errVsTruth(a.P, s.truth), eb = errVsTruth(b.P, s.truth);
     assert.ok(b.f.depth[0].used > (id === 'd-dropout' ? 0.6 : 0.95), `${id}: used ${b.f.depth[0].used}`);
     assert.ok(eb.level < 0.6 * ea.level, `${id}: level error ${ea.level.toFixed(1)} -> ${eb.level.toFixed(1)}`);
-    assert.ok(eb.size <= ea.size + 1, `${id}: size error ${ea.size.toFixed(1)} -> ${eb.size.toFixed(1)}`);
+    assert.ok(eb.size <= ea.size + (id === 'd-dropout' ? 3 : 1), `${id}: size error ${ea.size.toFixed(1)} -> ${eb.size.toFixed(1)}`);   // d-dropout: seated on 60 % of its frames
     // the turns: as many, each within 50 ms of the fused one
     const ta = turnsOf(a.P), tb = turnsOf(b.P), near = ta.filter((x) => tb.some((y) => Math.abs(x - y) <= 50)).length;
     assert.ok(Math.abs(ta.length - tb.length) <= 2 && near >= ta.length - 2, `${id}: turns ${ta.length} / ${tb.length}, ${near} kept`);
@@ -102,12 +102,13 @@ test('synthetic depth cases (fusion-synth DEPTH_CASES): level and size from the 
   assert.equal(b.f.depth[0].used, undefined);
 });
 
-test('strokes keepLevel: a level step stays in the depth (default: taken out as drift)', () => {
+test('strokes: a level step stays in the depth (keepLevel, and the default since paw-dnrv); undrift takes it out as drift', () => {
   const tt = Array.from({ length: 600 }, (_, i) => (i * 1000) / 30), v = tt.map((x, i) => (i < 300 ? 0.6 : 0.15) + (i < 300 ? 0.35 : 0.08) * Math.sin((2 * Math.PI * x) / 900));
   const lv = (P, a, b) => { const q = P.points.filter((p) => p.at >= a && p.at < b).map((p) => p.pos); return q.reduce((s, x) => s + x, 0) / q.length; };
-  const keep = strokes(tt, v, { keepLevel: true }), drift = strokes(tt, v);
+  const keep = strokes(tt, v, { keepLevel: true, undrift: true }), plain = strokes(tt, v), drift = strokes(tt, v, { undrift: true });
   assert.ok(lv(keep, 12000, 19000) < 25, `kept deep: ${lv(keep, 12000, 19000)}`);
-  assert.ok(lv(drift, 12000, 19000) > 35, `default re-centres: ${lv(drift, 12000, 19000)}`);
+  assert.ok(lv(plain, 12000, 19000) < 25, `default keeps it: ${lv(plain, 12000, 19000)}`);
+  assert.ok(lv(drift, 12000, 19000) > 35, `undrift re-centers: ${lv(drift, 12000, 19000)}`);
 });
 
 test("carriers: a seated fused scene shows its level (baseline off too); the owner's knots move it", () => {

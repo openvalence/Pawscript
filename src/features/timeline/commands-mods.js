@@ -1,16 +1,17 @@
 // Marking modifiers (paw-ef73.20; timeline/mods.js, lib/fx.js). One command per kind, in every tab: an event kind
-// (orgasm, knotting, throbbing, idle, insertion, pull-out) toggles over the selected scenes (one each), an I / O range the
+// (orgasm, knotting, throbbing, idle) toggles over the selected scenes (one each), an I / O range the
 // owner set, else the scene at the playhead (paw-8b4h: a scene's tags are its action only, the modifier goes on the
 // Modifiers row; one already there is selected, not doubled); Shift+O / Shift+K mark orgasm / knotting in at the playhead and, pressed again, out (live while
-// playing). A Refine kind (Reshape, Climax run-in) adds over the range, else the scene at the playhead, in Refine only:
-// elsewhere it is greyed with its reason (lib/fx REFINE_WHY). Spurt is U (commands-fx). Every edit is one undo step on
+// playing). A Refine kind (Reshape) adds over the range, else the scene at the playhead, in Refine only: elsewhere it is
+// greyed with its reason (lib/fx REFINE_WHY). paw-ajvq: Push / Pull add a knotting in mode 'none' (lib/fx KNOT_PUSH /
+// KNOT_PULL) over the range, else the scene at the playhead. Spurt is U (commands-fx). Every edit is one undo step on
 // doc.fx (commands-fx commitFx).
 import { tl, scenesOf, newId, selectedShots, selectedHull, durOf } from './state.svelte.js';
 import { toggleMod, toggleModOver, modLabel, spurtHint, makeMod, MODS, DEFAULT_MS } from './mods.js';
 import { baseTurns } from '../../lib/fx.js';
 import { sceneRuns } from './shots.js';
 import { sceneAtPlayhead } from './scenes.js';
-import { FX_KINDS, REFINE_KINDS, REFINE_WHY, isPointFx } from '../../lib/fx.js';
+import { FX_KINDS, REFINE_KINDS, REFINE_WHY, isPointFx, KNOT_PUSH, KNOT_PULL } from '../../lib/fx.js';
 import { commitFx, addModifier } from './commands-fx.js';
 import { playheadFrameStart } from '../../lib/lane.js';
 
@@ -93,6 +94,8 @@ export default [
   ...MODS.map((k) => ({
     id: `timeline.mod.toggle.${k}`, title: `${modLabel(k)} over the selection or scene (again: off)`, keys: TOGGLE_KEYS[k] ? [TOGGLE_KEYS[k]] : [], group: 'scenes',
     run: (app, args) => toggleModCmd(app, k, args) })),
+  { id: 'timeline.mod.add.push', title: 'Push over the range or scene (a knotting with no pop)', group: 'scenes', run: (app, args) => addModifier(app, 'knotting', { ...args, params: KNOT_PUSH }) },
+  { id: 'timeline.mod.add.pull', title: 'Pull out over the range or scene (a knotting with no pop)', group: 'scenes', run: (app, args) => addModifier(app, 'knotting', { ...args, params: KNOT_PULL }) },
   ...REFINE_KINDS.filter((k) => !isPointFx({ kind: k })).map((k) => ({
     id: `timeline.mod.add.${k}`, title: `${FX_KINDS[k].label} over the range or scene`, group: 'scenes',
     when: inRefine, why: () => REFINE_WHY, run: (app, args) => addModifier(app, k, args) })),

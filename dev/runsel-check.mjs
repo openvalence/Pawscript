@@ -32,7 +32,6 @@ try {
     app.setMode('track');
     app.doc.media = { ...app.doc.media, width: 1920, height: 1080 };
     app.doc.scenes = [{ start_ms: 0, end_ms: 8000 }, { start_ms: 8000, end_ms: 14000 }];
-    for (const k of ['g3_n', 'g4_n']) fx.auto.channels[k] = fx.auto.channels.g1_n.map(([t]) => [t, 0]);
     const mk = (n, name) => {
       const notes = [0, 1].map((k) => ({ code: 'primary', scene_index: k, message: 'proj', data: { chosen: 'proj' } }));
       const run = D.makeRun({ n, tracker: { id: name === 'CoTracker3' ? 'cotracker_points' : 'tapnext_points', name }, params: fx.auto.params, range: { start: 0, end: 14000 }, roi: null,

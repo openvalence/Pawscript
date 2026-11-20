@@ -50,7 +50,7 @@ async function fakeTrack(req, onEvent, onFrames) {
   }
   for (let k = 0; (k * 1000) / 3 + req.start_ms < req.end_ms; k++) pts.push({ at: Math.round(req.start_ms + (k * 1000) / 3), pos: k % 2 ? 100 : 0 });
   const events = (req.spans || []).filter((s) => s.state !== 'active').map((s) => ({ t_ms: s.start_ms, end_ms: s.end_ms, kind: s.state, label: `${s.state} ${((s.end_ms - s.start_ms) / 1000).toFixed(1)} s` }));
-  const scenes = SCENES.filter(([a, b]) => b > req.start_ms && a < req.end_ms).map(([a, b]) => ({ start_ms: Math.max(a, req.start_ms), end_ms: Math.min(b, req.end_ms), sign: 1, auto_sign: null }));
+  const scenes = SCENES.filter(([a, b]) => b > req.start_ms && a < req.end_ms).map(([a, b]) => ({ start_ms: Math.max(a, req.start_ms), end_ms: Math.min(b, req.end_ms), sign: 1 }));
   return { result: { type: 'result', samples, points: pts, events, media, scenes, confidence: samples.map(([t]) => [t, 0.9]) } };
 }
 

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isValid, posAt } from '../src/lib/core/script.js';
-import { applyFx, fxGhost, baseTurns, liveFx, fxSchema, FX_KIND_IDS, fitProfile, moveCurve } from '../src/lib/fx.js';
+import { applyFx, fxGhost, baseTurns, liveFx, fxSchema, FX_KIND_IDS, fitProfile, moveCurve, fxParams } from '../src/lib/fx.js';
 import { createCatalogue } from '../src/lib/graph/nodes/index.js';
 
 // tracked-looking strokes: 0..20 s slow (half-stroke 500 ms), 20..40 s fast (180 ms); bottoms ~5, tops ~90, uneven
@@ -56,16 +56,51 @@ test('knotting: one knot cycle on every tracked stroke, landing on the tracked t
   assert.ok(inside.includes(17) && inside.includes(64));
 });
 
-test('orgasm: keeps every tracked turn time, pulls depth to the deep end, flutters only where the base is fast', () => {
-  const t0 = 10000, t1 = 30000, out = applyFx(BASE, [{ id: 'o', kind: 'orgasm', t0, t1, params: { edgeMs: 1000 } }]);
+test('orgasm (paw-d1g7): keeps every tracked turn time, pulls depth into its band, lays the reference tremor on it (slow or fast strokes alike)', () => {
+  const t0 = 10000, t1 = 30000, out = applyFx(BASE, [{ id: 'o', kind: 'orgasm', t0, t1 }]);
   const times = new Set(out.map((a) => a.at));
   for (const t of BASE.filter((a) => a.at >= t0 && a.at <= t1).map((a) => a.at)) assert.ok(times.has(t), `base point ${t} kept`);
   const mid = out.filter((a) => a.at > t0 + 1000 && a.at < t1 - 1000);
-  assert.ok(mid.every((a) => a.pos <= 40), 'inside the deep band (0..40) once eased in');
+  assert.ok(mid.every((a) => a.pos <= 40), 'inside the deep band (0..40) once eased in: the tremor never passes the ceiling');
   const baseIn = (a, b) => BASE.filter((x) => x.at > a && x.at < b).length, outIn = (a, b) => out.filter((x) => x.at > a && x.at < b).length;
-  assert.equal(outIn(12000, 19000), baseIn(12000, 19000), 'slow strokes: no flutter added');
-  assert.ok(outIn(21000, 28000) > baseIn(21000, 28000), 'fast strokes: flutter added between turns');
-  assert.equal(applyFx(BASE, [{ id: 'o', kind: 'orgasm', t0, t1, params: { pulse: 0 } }]).length, BASE.length, 'pulse 0: no flutter');
+  assert.ok(outIn(12000, 19000) > baseIn(12000, 19000) && outIn(21000, 28000) > baseIn(21000, 28000), 'the tremor on slow and fast strokes');
+  const own = new Set(BASE.map((a) => a.at));
+  assert.ok(applyFx(BASE, [{ id: 'o', kind: 'orgasm', t0, t1, params: { tremor: 0 } }]).filter((a) => a.at > t0 + 1000 && a.at < t1 - 1000).every((a) => own.has(a.at)), 'tremor 0: the strokes only');
+});
+
+test('paw-d1g7 orgasm over a held-deep base: the reference tremor, a 5..20 flutter every 333 ms (it did nothing there before); on a Handy its peaks stay', async () => {
+  const { TREMOR_FIT } = await import('../src/lib/gen/generators.js');
+  const hold = [{ at: 0, pos: 0 }, { at: 20000, pos: 0 }];
+  for (const ctx of [{}, { maxSpeed: 360, minGapMs: 60 }, { maxSpeed: 200, minGapMs: 100 }]) {
+    const out = applyFx(hold, [{ id: 'o', kind: 'orgasm', t0: 5000, t1: 15000 }], ctx), mid = out.filter((a) => a.at > 7000 && a.at < 13000);
+    assert.ok(isValid(out));
+    assert.ok(Math.max(...mid.map((a) => a.pos)) >= 15 && Math.max(...mid.map((a) => a.pos)) <= 20, JSON.stringify(ctx));
+    assert.equal(Math.min(...mid.map((a) => a.pos)), 0, 'anchored deep');
+    const top = Math.max(...mid.map((a) => a.pos)), peaks = mid.filter((a) => a.pos === top).map((a) => a.at), gaps = peaks.slice(1).map((t, i) => t - peaks[i]);
+    assert.ok(gaps.length > 10 && gaps.every((g) => Math.abs(g - TREMOR_FIT.periodMs) <= 20), `${JSON.stringify(ctx)} period ${gaps}`);
+  }
+  assert.deepEqual(applyFx(hold, [{ id: 'o', kind: 'orgasm', t0: 5000, t1: 15000, params: { tremor: 10 } }]).filter((a) => a.at > 7000 && a.at < 13000).reduce((m, a) => Math.max(m, a.pos), 0), 10, 'tremor depth scales it');
+});
+
+test('paw-d1g7 markers: a spurt inside an orgasm takes the orgasm\'s spurt shape at its own velocity; its own shape is not read; outside an orgasm a spurt is its own', () => {
+  const strokes = [];
+  for (let t = 0; t <= 20000; t += 500) strokes.push({ at: t, pos: (t / 500) % 2 ? 60 : 50 });
+  const free = { maxSpeed: 0, minGapMs: 1 }, org = (params = {}) => ({ id: 'o', kind: 'orgasm', t0: 2000, t1: 18000, params: { tremor: 0, mix: 100, lo: 40, hi: 60, ...params } });
+  const sp = (params = {}) => ({ id: 's', kind: 'spurt', t0: 10000, t1: 10000, params });
+  const dip = (fx) => { const o = applyFx(strokes, fx, free), base = applyFx(strokes, fx.filter((e) => e.kind !== 'spurt'), free); return Math.round(posAt(base, 10000) - posAt(o, 10000)); };
+  assert.equal(dip([org(), sp()]), 25, 'the orgasm\'s amount (default 25)');
+  assert.equal(dip([org({ amount: 10 }), sp({ amount: 60 })]), 10, 'the orgasm\'s amount, not the spurt\'s own');
+  assert.equal(dip([org({ amount: 10 }), sp({ vel: 2 })]), 20, 'its velocity scales it');
+  assert.equal(dip([sp({ amount: 30 })]), 30, 'a free spurt: its own amount');
+});
+
+test('paw-d1g7 the Modifiers row: an orgasm\'s markers sit on its block (its row), not in a sub-row under it', async () => {
+  const { fxRows, markerOwners } = await import('../src/features/timeline/fx-edit.js');
+  const L = [{ id: 'o', kind: 'orgasm', t0: 1000, t1: 9000 }, { id: 'a', kind: 'spurt', t0: 3000, t1: 3000 }, { id: 'b', kind: 'spurt', t0: 9000, t1: 9000 }, { id: 'k', kind: 'knotting', t0: 2000, t1: 4000 }, { id: 'f', kind: 'spurt', t0: 12000, t1: 12000 }];
+  const r = fxRows(L);
+  assert.deepEqual(['o', 'a', 'b', 'k', 'f'].map((id) => r.row.get(id)), [0, 0, 0, 1, 0]);
+  assert.equal(r.rows, 2, 'the markers add no row');
+  assert.deepEqual([...markerOwners(L).keys()], ['a', 'b']);
 });
 
 test('reshape: keeps every tracked turn (time and pos) and re-draws the moves between them', () => {
@@ -195,12 +230,11 @@ test('spurt: a ringing about the trace, deeper on the frame, alternating and dec
   assert.deepEqual(high, [70, 100, 81]);
   // an old saved absolute `depth` is ignored (amount 25)
   assert.deepEqual(ring(flat, { depth: 0 }), ring(flat, {}));
-  // speed cap: every swing in full, the first on the frame; the approach starts earlier by what the cap needs
+  // speed cap (paw-xu4v: the one limiter, last): the swings keep their times, their size gives way
   const capped = ring(flat, { amount: 40 }, { maxSpeed: 450 });
   assert.ok(isValid(capped));
-  assert.equal(capped.find((a) => a.at === t).pos, 10, 'the full swing, on the frame');
-  assert.ok(capped.some((a) => a.pos === 80) && capped.some((a) => a.pos === 28), 'the later swings in full too');
-  assert.equal(capped.find((a) => a.pos === 50 && a.at > 4000 && a.at < t).at, t - Math.ceil((40 * 1000) / (0.97 * 450)), 'the approach starts earlier');
+  assert.deepEqual(capped.filter((a) => a.at >= t - 50 && a.at <= t + 150).map((a) => a.at), [t - 50, t, t + 50, t + 100, t + 150], 'every swing on its time');
+  assert.equal(Math.min(...capped.map((a) => a.pos)), capped.find((a) => a.at === t).pos, 'the deepest swing on the frame');
   for (let i = 1; i < capped.length; i++) assert.ok(Math.abs(capped[i].pos - capped[i - 1].pos) * 1000 / (capped[i].at - capped[i - 1].at) <= 450, 'under the cap');
   // two spurts 300 ms apart: both ring, both deeper on their frame
   const two = applyFx(flat, [{ id: 'a', kind: 'spurt', t0: t, t1: t }, { id: 'b', kind: 'spurt', t0: t + 300, t1: t + 300 }], { maxSpeed: 0 });
@@ -228,7 +262,7 @@ test('editing a baked effect un-bakes it (params, span, kind, a copy): the edit 
   const { markBaked } = await import('../src/lib/fx.js');
   const baked = markBaked([{ id: 'o', kind: 'orgasm', t0: 21000, t1: 30000, params: {} }]);
   assert.equal(applyFx(BASE, baked), BASE, 'baked: skipped');
-  const edits = [setFxParams(baked, 'o', { hi: 60 }), dragFx(baked, 'o', 'body', { dt: 1000 }), dragFx(baked, 'o', 't1', { t: 32000 }), setFxKind(baked, 'o', 'climax'),
+  const edits = [setFxParams(baked, 'o', { hi: 60 }), dragFx(baked, 'o', 'body', { dt: 1000 }), dragFx(baked, 'o', 't1', { t: 32000 }), setFxKind(baked, 'o', 'throbbing'),
     duplicateFx(baked, 'o', { newId: () => 'o2' }).list.filter((e) => e.id === 'o2')];
   for (const L of edits) { assert.ok(L.length === 1 && !('baked' in L[0])); assert.notEqual(applyFx(BASE, L), BASE); }
   assert.equal(toggleMute(baked, 'o')[0].baked, true, 'mute is not an edit of the output: still baked');
@@ -248,28 +282,28 @@ test('a scene selection goes to its linked run, else the newest run covering it'
 // ---- knotting, mode 'single': one slow insertion (push, pop, settle, the tie) ----
 const SLOW = Object.freeze([{ at: 0, pos: 90 }, { at: 1000, pos: 20 }, { at: 2000, pos: 85 }, { at: 3000, pos: 60 }, { at: 9000, pos: 55 }, { at: 10000, pos: 80 }, { at: 11000, pos: 10 }].map(Object.freeze));
 
-test('knotting single: auto on a span without 2 tracked turns; push from the start level onto the knot, pop to full depth, settle, held to the end', () => {
-  const t0 = 3000, t1 = 8000, e = { id: 'k', kind: 'knotting', t0, t1 }, out = applyFx(SLOW, [e]);
+test('knotting single: auto on a span without 2 tracked turns; from the tracked level to the catch, the press, a one-frame pop, the drift to the tie, the pull-out onto the trace', () => {
+  const t0 = 3000, t1 = 8000, e = { id: 'k', kind: 'knotting', t0, t1 }, FREE = { maxSpeed: 0 }, out = applyFx(SLOW, [e], FREE);
   assert.ok(isValid(out));
   outsideIdentical(out, SLOW, t0, t1);
-  assert.deepEqual(applyFx(SLOW, [{ ...e, params: { mode: 'single' } }]), out, 'auto = single here');
+  assert.deepEqual(applyFx(SLOW, [{ ...e, params: { mode: 'single' } }], FREE), out, 'auto = single here');
   const at = (t) => out.find((a) => a.at === t)?.pos;
-  // defaults: from 100, push 0.75 of the span ending at popAt 0.8 (t 7000) on the knot (lo 0 + popDepth 15), pop >= 80 ms, tie 5
-  assert.equal(at(3000), 100, "the base point on t0 yields"); assert.equal(at(3250), 100); assert.equal(at(7000), 15);
-  const popEnd = out.find((a) => a.at > 7000);
-  assert.equal(popEnd.pos, 0); assert.ok(popEnd.at - 7000 >= 80 && popEnd.at - 7000 <= 120, 'the pop is quick');
-  assert.equal(at(8000), 5, 'held at the tie level at the span end');
-  assert.ok(out.filter((a) => a.at > t0 && a.at <= 7000).every((a, i, l) => !i || a.pos <= l[i - 1].pos), 'the push only goes deeper');
-  // from = null: the push starts where the trace is
-  assert.equal(applyFx(SLOW, [{ ...e, params: { from: null } }]).find((a) => a.at === 3000).pos, 60);
-  // ease: more points on the push, still monotone, same ends
-  const eased = applyFx(SLOW, [{ ...e, params: { easeIn: 0.6, easeOut: 0.8 } }]);
-  assert.ok(eased.filter((a) => a.at > 3250 && a.at < 7000).length >= 4);
+  // defaults: from the trace (60), the push from t0 to popAt 0.49 (5450): the catch 30 at 0.32 (4600), the knot depth 20 at
+  // 5450, the pop to 0 in one frame (33 ms, no grid), the tie 17 by + 0.27 span (6833), the pull-out over the last 0.2:
+  // the tie at 7000, then toward popTo 64 (capped at the trace's end level 56) by 7360, the trace at 8000
+  assert.equal(at(3000), 60, 'from the tracked level'); assert.equal(at(4600), 30); assert.equal(at(5450), 20);
+  assert.equal(at(5483), 0, 'the pop takes one frame'); assert.equal(at(6833), 17); assert.equal(at(7000), 17);
+  assert.equal(at(7360), 56); assert.equal(at(8000), Math.round(posAt(SLOW, 8000)), 'pulled out onto the trace');
+  assert.ok(out.filter((a) => a.at > t0 && a.at <= 5483).every((a, i, l) => !i || a.pos <= l[i - 1].pos), 'the push only goes deeper');
+  // pullOut 0: held at the tie; a set start level wins over the trace
+  const held = applyFx(SLOW, [{ ...e, params: { pullOut: 0, from: 100 } }], FREE);
+  assert.equal(held.find((a) => a.at === 3000).pos, 100); assert.equal(held.find((a) => a.at === 8000).pos, 17);
+  assert.ok(held.filter((a) => a.at >= 6833 && a.at <= 8000).every((a) => a.pos === 17), 'held at the tie to the end');
 });
 
 test('knotting cycles: unchanged by the single-mode params, and forced cycles where auto would pick single', () => {
   const t0 = 4000, t1 = 16000, base = applyFx(BASE, [{ id: 'k', kind: 'knotting', t0, t1 }]);
-  assert.deepEqual(applyFx(BASE, [{ id: 'k', kind: 'knotting', t0, t1, params: { mode: 'cycles', push: 0.3, popAt: 0.4, popDepth: 40, settle: 0.3, hold: 50, easeIn: 1, from: 20 } }]), base);
+  assert.deepEqual(applyFx(BASE, [{ id: 'k', kind: 'knotting', t0, t1, params: { mode: 'cycles', push: 0.3, popAt: 0.4, pressTakes: 0.2, settle: 0.3, pullOut: 0, from: 20 } }]), base);
   assert.deepEqual(applyFx(BASE, [{ id: 'k', kind: 'knotting', t0, t1, params: { mode: 'bogus' } }]), base, 'an unknown mode is auto');
   const single = applyFx(SLOW, [{ id: 'k', kind: 'knotting', t0: 3000, t1: 8000 }]);
   assert.notDeepEqual(applyFx(SLOW, [{ id: 'k', kind: 'knotting', t0: 3000, t1: 8000, params: { mode: 'cycles' } }]), single);
@@ -289,13 +323,12 @@ test('fitKnotIn: push / pop timing off noisy samples of either sign; null where 
   assert.equal(f.mode, 'single');
   assert.ok(Math.abs(f.popAt - 0.62) <= 0.03, `pop at ${f.popAt}`);   // 3.6 s of a 0.5..5.5 s span
   assert.ok(Math.abs(f.push - 0.52) <= 0.06, `push ${f.push}`);      // 1.0 .. 3.6 s
-  assert.ok(f.popDepth >= 25 && f.popDepth <= 45, `pop depth ${f.popDepth}`);   // the pop is a third of the travel
   assert.ok(f.settle <= 0.05);
   const g = fitKnotIn({ t, v: v.map((x) => 5 - 3 * x) }, 500, 5500);   // any scale, other sign: same timing
   assert.deepEqual([g.popAt, g.push], [f.popAt, f.push]);
-  // no pop: the arrival is the pop time, popDepth not set
+  // no pop: the arrival is the pop time
   const smooth = fitKnotIn({ t, v: t.map((ms) => (ms < 1000 ? 0.9 : ms < 4000 ? 0.9 - (0.7 * (ms - 1000)) / 3000 : 0.2)) }, 500, 5500);
-  assert.equal(smooth.popDepth, undefined); assert.ok(Math.abs(smooth.popAt - 0.69) <= 0.03, `arrival ${smooth.popAt}`);
+  assert.ok(Math.abs(smooth.popAt - 0.69) <= 0.03, `arrival ${smooth.popAt}`);
   // strokes all around, nothing monotone in the span worth a push: null
   const strokes = t.map((ms) => 0.5 + 0.4 * Math.sin(ms / 160));
   assert.equal(fitKnotIn({ t, v: strokes }, 500, 5500), null);
@@ -306,10 +339,10 @@ test('knotting single popover: every handle reads back its value; twins are its 
   const { curveModel, curveTwins } = await import('../src/features/timeline/fx-edit.js');
   const { fxParams } = await import('../src/lib/fx.js');
   const { snapTo } = await import('../src/ui/kit/curve.js');
-  for (const params of [{ mode: 'single' }, { mode: 'single', push: 0.5, popAt: 0.7, popDepth: 25, lo: 4, settle: 0.12, hold: 10, easeIn: 0.4, easeOut: -0.3, from: 85 }]) {
+  for (const params of [{ mode: 'single' }, { mode: 'single', push: 0.5, popAt: 0.7, pressTakes: 0.2, knotIn: 34, press: 25, lo: 4, settle: 0.12, knotOut: 10, popTo: 70, from: 85 }, { mode: 'single', pullOut: 0 }]) {
     const p = fxParams({ kind: 'knotting', params }), m = curveModel('knotting', p);
-    assert.equal(m.handles.length, 9);
-    for (const h of m.handles) assert.ok(Math.abs(snapTo(h.toValue(h.x, h.y), h) - h.value) <= (h.step || 1) + 1e-9, `${h.key}: ${h.toValue(h.x, h.y)} vs ${h.value}`);
+    assert.equal(m.handles.length, p.pullOut ? 11 : 10, 'the level the pull-out passes only with a pull-out');
+    for (const h of m.handles) if (h.value != null) assert.ok(Math.abs(snapTo(h.toValue(h.x, h.y), h) - h.value) <= (h.step || 1) + 1e-9, `${h.key}: ${h.toValue(h.x, h.y)} vs ${h.value}`);
     assert.deepEqual(curveTwins('knotting', p).map((x) => x.key).sort(), m.handles.map((h) => h.key).sort());
   }
 });
@@ -317,7 +350,7 @@ test('knotting single popover: every handle reads back its value; twins are its 
 // ---- knotting, mode 'unknot': the knot coming out (tie, pull with tugs, pop out, settle) ----
 const TIED = Object.freeze([{ at: 0, pos: 90 }, { at: 1000, pos: 10 }, { at: 2000, pos: 5 }, { at: 9000, pos: 8 }, { at: 10000, pos: 95 }, { at: 11000, pos: 20 }].map(Object.freeze));
 
-test('knotting unknot: auto when the trace is deeper before the span than after; held at the tie, pulled out, pop >= 80 ms, settled at `to`', async () => {
+test('knotting unknot: auto when the trace is deeper before the span than after; held at the tie, pulled to the catch, a one-frame pop, settled at `to`', async () => {
   const { knotMode, fxParams } = await import('../src/lib/fx.js');
   const t0 = 3000, t1 = 8000, e = { id: 'u', kind: 'knotting', t0, t1 };
   assert.equal(knotMode(fxParams(e), TIED, t0, t1), 'unknot', 'deeper before, < 2 turns: unknot');
@@ -328,17 +361,20 @@ test('knotting unknot: auto when the trace is deeper before the span than after;
   outsideIdentical(out, TIED, t0, t1);
   assert.deepEqual(applyFx(TIED, [e]), applyFx(TIED, [{ ...e, params: { mode: 'unknot' } }]), 'auto = unknot here');
   const at = (t) => out.find((a) => a.at === t)?.pos;
-  // defaults: tie 5 until popAt 0.8 - pull 0.6 (t 4000), the pull reaches knotOut 17 at 7000, the pop lands on popTo 64, settles onto 100 by + 0.08 span
-  assert.equal(at(3000), 5); assert.equal(at(4000), 5); assert.equal(at(7000), 17);
-  const pop = out.find((a) => a.at > 7000);
-  assert.equal(pop.pos, 64); assert.ok(pop.at - 7000 >= 80 && pop.at - 7000 <= 120, `the pop is quick (${pop.at - 7000} ms)`);
+  // defaults (the one level set): the tie 17 until popAt 0.49 - pull 0.35 (t 3700), the pull reaches the catch 30 at 5450,
+  // the pop lands on popTo 64, settles onto 100 by + 0.27 span
+  assert.equal(at(3000), 17); assert.equal(at(3700), 17); assert.equal(at(5450), 30);
+  const free = applyFx(TIED, [{ ...e, params: { tugs: 0 } }], { maxSpeed: 0 }), pop = free.find((a) => a.at > 5450);
+  assert.equal(pop.pos, 64); assert.equal(pop.at - 5450, 33, 'the pop takes one frame');
   assert.equal(at(8000), 100, 'settled and held at `to`');
   assert.ok(out.filter((a) => a.at >= t0 && a.at <= t1).every((a, i, l) => !i || a.pos >= l[i - 1].pos), 'without tugs it only comes out');
-  // speed cap: a bigger pop takes longer, never shorter than 80 ms
-  const big = applyFx(TIED, [{ ...e, params: { tugs: 0, popTo: 100 } }], { maxSpeed: 300 }), bp = big.find((a) => a.at > 7000);
-  assert.ok(bp.at - 7000 >= Math.ceil((83 * 1000) / (0.97 * 300)));
-  // tugs: slips back in during the pull, still ending at the knot level; `to` as tracked = the trace at the span end
-  const tug = applyFx(TIED, [{ ...e, params: { tugs: 3, tugAmp: 6 } }]).filter((a) => a.at > 4000 && a.at <= 7000);
+  // speed cap (paw-xu4v): the pop keeps its time and gives way in size; nothing over the cap, still settled at `to`
+  const big = applyFx(TIED, [{ ...e, params: { tugs: 0, popTo: 100 } }], { maxSpeed: 300 }), bp = big.find((a) => a.at > 5450);
+  assert.equal(bp.at - 5450, 33);
+  for (let i = 1; i < big.length; i++) assert.ok(Math.abs(big[i].pos - big[i - 1].pos) * 1000 / (big[i].at - big[i - 1].at) <= 300, 'under the cap');
+  assert.equal(big.find((a) => a.at === 8000).pos, 100);
+  // tugs: slips back in during the pull, still ending at the catch; `to` as tracked = the trace at the span end
+  const tug = applyFx(TIED, [{ ...e, params: { tugs: 3, tugAmp: 6 } }]).filter((a) => a.at > 3700 && a.at <= 5450);
   assert.equal(tug.filter((a, i) => i && a.pos < tug[i - 1].pos).length, 3, 'three slips back in');
   assert.equal(applyFx(TIED, [{ ...e, params: { to: null } }]).find((a) => a.at === 8000).pos, Math.round(posAt(TIED, 8000)));
 });
@@ -373,7 +409,7 @@ test('unknot popover: every handle reads back its value (tug count too); twins a
   const { curveModel, curveTwins } = await import('../src/features/timeline/fx-edit.js');
   const { fxParams } = await import('../src/lib/fx.js');
   const { snapTo } = await import('../src/ui/kit/curve.js');
-  for (const params of [{ mode: 'unknot' }, { mode: 'unknot', tugs: 0 }, { mode: 'unknot', tugs: 5, tugAmp: 9, pull: 0.4, popAt: 0.7, knotOut: 25, popTo: 70, settle: 0.15, hold: 8, to: 90 }, { mode: 'unknot', tugs: 1 }]) {
+  for (const params of [{ mode: 'unknot' }, { mode: 'unknot', tugs: 0 }, { mode: 'unknot', tugs: 5, tugAmp: 9, pull: 0.4, popAt: 0.7, knotIn: 25, popTo: 70, settle: 0.15, knotOut: 8, to: 90 }, { mode: 'unknot', tugs: 1 }]) {
     const p = fxParams({ kind: 'knotting', params }), m = curveModel('knotting', p);
     assert.equal(m.handles.length, p.tugs ? 9 : 8);
     for (const h of m.handles) assert.ok(Math.abs(snapTo(h.toValue(h.x, h.y), h) - h.value) <= (h.step || 1) + 1e-9, `${h.key}: ${h.toValue(h.x, h.y)} vs ${h.value}`);
@@ -449,10 +485,12 @@ test('throbbing: the measured heartbeat at defaults (40 ms down by 10, 290 ms ba
   // lub-dub: a second dip of half at +120 ms
   const dub = applyFx(flat, [{ ...e, params: { double: 0.5 } }]);
   assert.deepEqual(dub.filter((a) => a.at >= 1000 && a.at <= 1450).map((a) => [a.at - 1000, a.pos]), [[0, 100], [40, 90], [120, 100], [160, 95], [450, 100]]);
-  // a speed cap lengthens the dip, the amount is kept, the dip stays on its time (the beat starts earlier: paw-r9nh)
+  // a speed cap (paw-xu4v: the limiter, last): the dip stays on its time, its size gives way; a minimum interval longer
+  // than the attack moves the beat's start back along the hold (the dip still on its time)
   const capped = applyFx(flat, [{ ...e, params: { amount: 30 } }], { maxSpeed: 300 });
-  assert.equal(capped.find((a) => a.at === 1040).pos, 70);
-  assert.equal(capped.find((a) => a.at === 1040 - Math.ceil((30 * 1000) / (0.97 * 300))).pos, 100);
+  assert.equal(capped.find((a) => a.at === 1040).pos, 88);
+  const gap = applyFx(flat, [e], { maxSpeed: 360, minGapMs: 60 });
+  assert.deepEqual(gap.filter((a) => a.at >= 900 && a.at <= 1400).map((a) => [a.at, a.pos]), [[980, 100], [1040, 90], [1330, 100]]);
   // jitter: seeded (deterministic), the beats move
   const j = applyFx(flat, [{ ...e, t1: 9000, params: { jitter: 0.2 } }]);
   assert.deepEqual(applyFx(flat, [{ ...e, t1: 9000, params: { jitter: 0.2 } }]), j);
@@ -465,7 +503,8 @@ test('throbbing popover and fit: every handle reads back its value; the period i
   const { snapTo } = await import('../src/ui/kit/curve.js');
   for (const params of [{}, { amount: 20, attack: 60, release: 200, period: 900, double: 0.4, rampIn: 0.2, rampOut: 0.3, dir: 'swell' }]) {
     const p = fxParams({ kind: 'throbbing', params }), m = curveModel('throbbing', p);
-    assert.equal(m.handles.length, 7);
+    assert.equal(m.handles.length, 5, 'paw-ajvq: no build / fade handles of its own (the strength envelope has them)');
+    if (params.rampIn) assert.deepEqual([p.envIn, p.envOut, p.rampIn, p.rampOut], [0.2, 0.3, undefined, undefined], 'an older build / fade is the strength envelope');
     for (const h of m.handles) assert.ok(Math.abs(snapTo(h.toValue(h.x, h.y), h) - h.value) <= (h.step || 1) + 1e-9, `${h.key}: ${h.toValue(h.x, h.y)} vs ${h.value}`);
   }
   assert.equal(fxParams({ kind: 'throbbing', params: { dir: 'sideways' } }).dir, 'dip');
@@ -485,4 +524,74 @@ test('a single throb (Shift+U) is a throbbing range one beat long: its dip on th
   const p = fxParams(e), m = curveModel('throbbing', p, true);
   assert.ok(!m.handles.some((h) => ['period', 'rampIn', 'rampOut'].includes(h.key)), 'one beat: no period, build or fade');
   assert.ok(!curveTwins('throbbing', p, m.handles, true).some((t) => t.key === 'jitter'));
+});
+
+// ---- paw-xu4v: base mix on the kinds that ride on the trace, one limiter last ----
+const strokesHz = (t0, t1, hz, lo, hi) => { const o = []; let top = true; for (let t = t0; t <= t1; t += 500 / hz) { o.push({ at: Math.round(t), pos: top ? hi : lo }); top = !top; } return o; };
+const travelIn = (s, a, b) => { const T = baseTurns(s, a, b); return Math.max(0, ...T.slice(1).map((x, i) => Math.abs(x.pos - T[i].pos))); };
+const vmaxOf = (s) => { let m = 0; for (let i = 1; i < s.length; i++) m = Math.max(m, (Math.abs(s[i].pos - s[i - 1].pos) * 1000) / (s[i].at - s[i - 1].at)); return m; };
+
+test('base mix: 100 keeps every stroke under a throb (base + beat), 50 halves them, 0 holds the center line; the span edges sit on the trace', async () => {
+  const { fxParams } = await import('../src/lib/fx.js');
+  const b = strokesHz(0, 12000, 2, 10, 90), e = (params) => ({ id: 't', kind: 'throbbing', t0: 1000, t1: 11000, params }), free = { maxSpeed: 0, minGapMs: 1 };
+  // the mix alone (no beat): the strokes' travel inside the span scales with it
+  assert.equal(applyFx(b, [e({ amount: 0, mix: 100 })], free), b, 'mix 100, no beat: the base itself');
+  assert.equal(travelIn(applyFx(b, [e({ amount: 0, mix: 50 })], free), 3000, 9000), 40);
+  assert.ok(travelIn(applyFx(b, [e({ amount: 0, mix: 0 })], free), 3000, 9000) <= 1, 'mix 0: held at the center line');
+  for (const mix of [0, 50]) {
+    const out = applyFx(b, [e({ mix })], free);
+    assert.ok(isValid(out));
+    outsideIdentical(out, b, 1000, 11000);
+    for (const t of [1000, 11000]) assert.equal(out.find((a) => a.at === t).pos, Math.round(posAt(b, t)), `mix ${mix}: on the trace at ${t}`);
+  }
+  // mix 100: every base point in the span is still there, at the base plus the beat's offset there (nothing deleted)
+  const out = applyFx(b, [e({ mix: 100 })], free), beat = applyFx([{ at: 0, pos: 50 }, { at: 12000, pos: 50 }], [e({ mix: 100 })], free), at = new Map(out.map((a) => [a.at, a.pos]));
+  for (const p of b.filter((a) => a.at > 1000 && a.at < 11000)) assert.equal(at.get(p.at), clampPos(p.pos + posAt(beat, p.at) - 50), `base point ${p.at}`);
+  // orgasm: the strokes' travel in its 0..40 band follows the mix too
+  for (const [mix, tr] of [[100, 40], [50, 20], [0, 0]]) assert.equal(travelIn(applyFx(b, [{ id: 'o', kind: 'orgasm', t0: 1000, t1: 11000, params: { mix, tremor: 0 } }], free), 4000, 8000), tr, `orgasm mix ${mix}`);
+  // the defaults (BASE_MIX): orgasm 50, throbbing 0, spurt 100
+  assert.deepEqual(['orgasm', 'throbbing', 'spurt'].map((kind) => fxParams({ kind }).mix), [50, 0, 100]);
+});
+const clampPos = (v) => Math.min(100, Math.max(0, Math.round(v)));
+
+test('one limiter last: no step over the cap and no gap under the minimum interval among the points a modifier changed; outside untouched', () => {
+  const b = strokesHz(0, 12000, 2, 10, 90), changed = (out) => { const B = new Set(b); return out.map((a, i) => i && (!B.has(a) || !B.has(out[i - 1]))); };
+  const cases = [
+    ['spurt mid-stroke', [{ id: 's', kind: 'spurt', t0: 4125, t1: 4125 }]],
+    ['throbbing on strokes', [{ id: 't', kind: 'throbbing', t0: 2000, t1: 8000, params: { mix: 100 } }]],
+    ['knot cycles (no pop allowance over the cap)', [{ id: 'k', kind: 'knotting', t0: 2000, t1: 8000 }]],
+    ['reshape dwell', [{ id: 'r', kind: 'shape', t0: 2000, t1: 8000, params: { dwellTop: 0.3, dwellBottom: 0.3, accelIn: 0.5, accelOut: 0.5 } }]],
+    ['orgasm with spurts', [{ id: 'o', kind: 'orgasm', t0: 2000, t1: 8000, params: { mix: 100 } }, ...[4000, 4400, 4800].map((t) => ({ id: `s${t}`, kind: 'spurt', t0: t, t1: t }))]],
+  ];
+  for (const [name, fx] of cases) for (const ctx of [{ maxSpeed: 360, minGapMs: 60 }, { maxSpeed: 330, minGapMs: 60 }]) {
+    const out = applyFx(b, fx, ctx), ch = changed(out);
+    assert.ok(isValid(out), name);
+    for (let i = 1; i < out.length; i++) {
+      if (!ch[i]) continue;
+      const dt = out[i].at - out[i - 1].at;
+      assert.ok(dt >= ctx.minGapMs, `${name} @ ${ctx.maxSpeed}: gap ${dt} ms at ${out[i].at}`);
+      assert.ok((Math.abs(out[i].pos - out[i - 1].pos) * 1000) / dt <= ctx.maxSpeed, `${name} @ ${ctx.maxSpeed}: over the cap at ${out[i].at}`);
+    }
+    outsideIdentical(out, b, 1500, 8500);
+  }
+  // the anchors hold: a spurt next to a base turn on 3 Hz strokes, the step into the next base point is under the cap too
+  const fast = strokesHz(0, 4000, 3, 20, 80), s = applyFx(fast, [{ id: 's', kind: 'spurt', t0: 2000, t1: 2000 }], { maxSpeed: 400 });
+  assert.ok(vmaxOf(s.filter((a) => a.at >= 1700 && a.at <= 2400)) <= 400);
+  // old projects: a stored pop allowance or a spurt's old absolute depth still plays (no crash, a valid script)
+  const old = applyFx(b, [{ id: 'k', kind: 'knotting', t0: 2000, t1: 8000, params: { popSpeed: 900 } }, { id: 's', kind: 'spurt', t0: 9100, t1: 9100, params: { depth: 0 } }], { maxSpeed: 200, minGapMs: 100 });
+  assert.ok(isValid(old));
+});
+
+// ---- paw-ajvq: one envelope per modifier ----
+test('paw-ajvq: no kind has a build / fade of its own (rampIn / rampOut / edgeMs are gone; an older one is the strength envelope) and the orgasm stays continuous at its edges', () => {
+  for (const k of FX_KIND_IDS) for (const key of ['rampIn', 'rampOut', 'edgeMs']) assert.ok(!fxSchema(k).some((s) => s.key === key), `${k}.${key}`);
+  assert.deepEqual([fxParams({ kind: 'orgasm', params: { rampIn: 0.4, edgeMs: 900 } }).envIn, fxParams({ kind: 'orgasm', params: { rampIn: 0.4, envIn: 0.1 } }).envIn], [0.4, 0.1]);
+  const strokes = [];
+  for (let t = 0; t <= 20000; t += 250) strokes.push({ at: t, pos: (t / 250) % 2 ? 90 : 10 });
+  const out = applyFx(strokes, [{ id: 'o', kind: 'orgasm', t0: 5000, t1: 15000, params: { mix: 100 } }]);
+  for (const te of [5000, 15000]) {
+    assert.ok(Math.abs(posAt(out, te) - posAt(strokes, te)) <= 1, `on the trace at ${te}`);
+    const near = out.filter((a) => Math.abs(a.at - te) <= 60).map((a) => Math.abs(a.pos - posAt(strokes, a.at)));
+    assert.ok(Math.max(...near) <= 12, `no jump next to ${te}: ${near}`);
+  }
 });

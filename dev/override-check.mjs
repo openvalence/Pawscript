@@ -28,8 +28,7 @@ try {
     app.doc.media = { ...app.doc.media, width: 1920, height: 1080 };
     app.doc.scenes = [{ start_ms: 0, end_ms: 8000 }, { start_ms: 8000, end_ms: 14000, tags: ['orbit'] }];   // shot B: turntable
     const c = fx.auto.channels;
-    for (const k of ['g3_n', 'g4_n']) c[k] = c.g1_n.map(([t]) => [t, 0]);
-    for (const [to, from, dy] of [['sem_c1_hips', 'g1', 0], ['sem_c2_hips', 'g2', 0], ['sem_c1_penis', 'g1', 0.03]]) {
+    for (const [to, from, dy] of [['sem_c1_hips', 'who_c1', 0], ['sem_c2_hips', 'who_c2', 0], ['sem_c1_penis', 'who_c1', 0.03]]) {
       c[to + '_x'] = c[from + '_x'].map(([t, v]) => [t, v == null ? null : v + 0.01]);
       c[to + '_y'] = c[from + '_y'].map(([t, v]) => [t, v == null ? null : v + dy]);
       c[to + '_n'] = c[from + '_n'];
@@ -105,7 +104,7 @@ try {
   const combined = (await page.locator('[data-testid="override-strip"]').count()) > 0;
   const cv = await (combined ? page.locator('[data-testid="override-strip"]') : page.locator('.tl:has(.pick .src) canvas').first()).boundingBox();
   const X = (ms) => cv.x + (ms / 14000) * cv.width, Y = combined ? cv.y + cv.height / 2 : cv.y + 24;
-  await page.evaluate(() => TR.setSource('g1_proj')); await page.waitForTimeout(500);   // the shot's own channel (a baseline needs one)
+  await page.evaluate(() => TR.setSource('who_c1_proj')); await page.waitForTimeout(500);   // the shot's own channel (a baseline needs one)
   const base = await page.evaluate(() => sig());
   const h1 = await page.evaluate(() => hist());
   await page.mouse.move(X(2010), Y); await page.mouse.down(); await page.mouse.move(X(3500), Y, { steps: 6 }); await page.mouse.move(X(5003), Y, { steps: 6 }); await page.mouse.up();

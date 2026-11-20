@@ -5,7 +5,7 @@
 <script>
   import { Button } from '../../ui/kit/index.js';
   import ModelsList from './ModelsList.svelte';
-  import { models, runtimeEntry } from './store.svelte.js';
+  import { models, chosenEntry } from './store.svelte.js';
   import { fmtBytes } from './logic.js';
   import { dropOnModels } from './drop.js';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -35,7 +35,7 @@
 
 <div class="fs" data-testid="first-start">
   <img src={new URL('../../assets/brand/pawscript-app.svg', import.meta.url).href} alt="" width="48" height="48" />
-  <h1>{runtime ? `Pawscript needs to download its runtime (${fmtBytes(runtimeEntry()?.files[0].bytes)}) and the models you pick` : 'Download the tracker models'}</h1>
+  <h1>{runtime ? `Pawscript needs to download its runtime (${fmtBytes(chosenEntry(app)?.files[0].bytes)}) and the models you pick` : 'Download the tracker models'}</h1>
   <p class="k-hint">
     {runtime ? 'The runtime runs the trackers and reads your videos; it stays next to the app.' : 'The trackers need them; the editor works without.'}
     Only what you tick is downloaded, from the Pawscript models server, and every file is checked before it is kept.

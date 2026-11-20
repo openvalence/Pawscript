@@ -12,7 +12,7 @@ export async function firstStartDone({ backend, storage }, target = document.get
   try {
     if (!(await refresh(app)) || !models.info) return true;
   } catch { return true; }
-  const runtime = needsRuntime();
+  const runtime = needsRuntime(app);
   if (!runtime && (models.info.fake || models.ready || app.settings.get('models.setupDone'))) return true;
   document.body.classList.add('kit-root');
   target.replaceChildren();

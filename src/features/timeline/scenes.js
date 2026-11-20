@@ -130,9 +130,7 @@ export function chipsOf(s) {
     if (d.knot) out.push({ text: '◆', tone: 'knot' });
   }
   if (s.kind === 'still') out.push({ text: '‖ still', tone: 'describe' });
-  // only a notable direction: reversed, or the user's sign differs from the detected one
-  const sign = s.sign ?? s.auto_sign;
-  if (sign === -1 || (s.auto_sign != null && s.sign != null && s.sign !== s.auto_sign)) out.push({ text: sign > 0 ? '↑' : '↓', tone: 'sign' });
+  if (s.sign === -1) out.push({ text: '↓', tone: 'sign' });   // only a notable direction: reversed
   return out;
 }
 

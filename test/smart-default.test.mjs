@@ -81,7 +81,7 @@ test('an old project (runs without the flag) composes byte-identical channels: t
   const shots = two({ derives: { run3: { cam: CAM, fuse: { w: { 'c1:core~c2:core': 2 } }, match: true } } }, { derives: { run3: { smart: true, match: true } } });
   const p = channelPatch(run, run.channel, {}, [], { aspect: ASPECT, derives: runDerives(run, shots) });
   const out = JSON.stringify({ at: Array.from(p.points0.at), pos: Array.from(p.points0.pos), lane: p.lane ? Array.from(p.lane.v) : null, match: p.match });
-  assert.equal(createHash('sha256').update(out).digest('hex'), '5a028c11d5b9d192de0101695c3f69988db65f0ec33fbd131ccfc9ffee72c5ac');   // HEAD 290c7af, before paw-lji3
+  assert.equal(createHash('sha256').update(out).digest('hex'), 'bceb851a01bd8d315ff42efa5b1c54d7773a1f42b05dacf1933cfa70d7ef9943');   // paw-dnrv: undrift off by default (was 5a028c11 at HEAD 290c7af, before paw-lji3)
   assert.equal(deriveClean({ cam: CAM }).smart, undefined, 'an absent flag stays absent (classic)');
 });
 

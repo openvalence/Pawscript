@@ -32,3 +32,16 @@ export function pictureTarget(st, map, last = null) {
   const at = last ? map(last[0], last[1]) : null, on = at && at[0] >= x0 && at[0] <= x1 && at[1] >= y0 && at[1] <= y1;
   return [st.left + (on ? at[0] : (x0 + x1) / 2), st.top + (on ? at[1] : (y0 + y1) / 2)];
 }
+
+/** paw-gj8y: the Groups bar's button size and width for a stage H px tall, planned for the FULL button set (16 buttons, two of
+ *  them 2 px taller, two separators) so the picture never moves when Notes / Accept all / Copy come and go. One column when
+ *  the least size fits; a stage shorter than that plans two or more columns at the least size (the bar wraps there, and
+ *  folding the bar keeps the width).
+ * @param {number} H  stage height, css px
+ * @returns {{h: number, w: number, cols: number, barW: number}}  button height, width, columns, the bar's whole width */
+export function groupsBar(H, { hMin = 22, hMax = 28 } = {}) {
+  const N = 16, FIXED = 39;   // buttons; the val buttons' extra 4 px + separators 10 + gaps 17 + padding and border 8
+  const h = Math.max(hMin, Math.min(hMax, Math.floor((H - FIXED) / N))), w = h + 2;
+  const cols = Math.max(1, Math.ceil((N * h + FIXED - 8) / Math.max(1, H - 8)));
+  return { h, w, cols, barW: cols * w + (cols - 1) * 3 + 7 };
+}

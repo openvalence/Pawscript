@@ -90,7 +90,7 @@ async function about(app) {
     title: 'Pawscript',
     message: `${buildLine()}\nGPU: ${m.gpus.join('; ')}\n${paths?.data_dir ? `Your data: ${paths.data_dir}\n` : ''}\n`
       + 'Funscript editor and semi-automatic scripter.\nNo telemetry: online only when you ask, to download models or check for an update.\n'
-      + 'For adults (18+) only.\n'
+      + 'Made for explicit content: for users of legal age only.\n'
       + `Free software under the GPL (GPL-3.0-or-later), published by OpenValence. Source: ${SOURCE_URL}\n`
       + `Found a problem? Help › Copy bug report, then: ${CONTACT}.\n\n`
       + `Features: ${(app.features || []).join(', ') || 'none'}\nCommands: ${app.commands.list().length}`,

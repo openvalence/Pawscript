@@ -439,7 +439,7 @@ function buildGeom(run, k, name, A) {
     if (elong < GEO.ELONG || across) {
       const bq = who ? own.map((p) => idOf(who, p)).map((id) => (id != null ? centreOf(id) : null)).find(Boolean) : null;
       const rq = who ? RECV_AXIS.flatMap((p) => ['c1', 'c2', 'x'].filter((w0) => w0 !== who).map((w0) => idOf(w0, p))).map((id) => (id != null ? centreOf(id) : null)).find(Boolean) : null;
-      const deg = (run.notes || []).find((x) => (x?.code === 'primary' || x?.code === 'primary_used') && (x.scene_index ?? 0) === k)?.data?.axis?.deg ?? sc?.axis_deg;
+      const deg = (run.notes || []).find((x) => x?.code === 'primary' && (x.scene_index ?? 0) === k)?.data?.axis?.deg ?? sc?.axis_deg;
       if (ev != null) { th = ev; axisFrom = 'where the visible points change over the shot'; }
       else if (bq && rq && Math.hypot(rq[0] - bq[0], rq[1] - bq[1]) > 1e-3) { th = Math.atan2(rq[1] - bq[1], rq[0] - bq[0]); axisFrom = 'its base towards the partner'; }
       else if (fin(deg)) { th = (-deg * Math.PI) / 180; axisFrom = "the shot's stroke axis"; }

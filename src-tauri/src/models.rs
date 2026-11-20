@@ -48,8 +48,13 @@ pub fn default_folder() -> PathBuf {
 
 /// The models folder the sidecar is started with: settings.json `models.dir` when absolute, else the default.
 pub fn folder() -> PathBuf {
+  setting("models.dir").map(PathBuf::from).filter(|d| d.is_absolute()).unwrap_or_else(default_folder)
+}
+
+/// A string setting from settings.json (trimmed), None when unset or not a string.
+pub fn setting(key: &str) -> Option<String> {
   let set = SETTINGS.get().and_then(|p| fs::read(p).ok()).and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
-  set.as_ref().and_then(|v| v.get("models.dir")?.as_str().map(|s| PathBuf::from(s.trim()))).filter(|d| d.is_absolute()).unwrap_or_else(default_folder)
+  set?.get(key)?.as_str().map(|s| s.trim().to_string())
 }
 
 /// A manifest path under `dir`, or refused (an absolute path, a drive, `..`, a reserved name).

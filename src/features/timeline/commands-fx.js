@@ -7,7 +7,7 @@ import { grabRow } from './interact.js';
 import { spurtOrgasmHint } from './commands-mods.js';
 import { sceneAtPlayhead } from './scenes.js';
 import { playheadFrameStart, gridOf, frameStartOf, frameAt, frameTime, clockOf } from '../../lib/lane.js';
-import { addFx, setFxKind, toggleMute, duplicateFx, linkFx, unlinkFx, linkMembers, addSpurt, withInner } from './fx-edit.js';
+import { addFx, setFxKind, toggleMute, duplicateFx, linkFx, unlinkFx, linkMembers, addSpurt, withInner, innerOf } from './fx-edit.js';
 import { FX_KINDS, FX_KIND_IDS, REFINE_WHY, fitProfile, fitKnotIn, fitKnotOut, fitInsertion, knotMode, fxParams, throbPeriod, isPointFx, singleThrob } from '../../lib/fx.js';
 import { run as runXform } from '../../lib/xform.js';
 import { trackerRuns, chooseRun } from './generate-logic.js';
@@ -58,7 +58,7 @@ export function fitUnknot(app, t0, t1) {
   const { track } = runUnder(app, t0, t1);
   return track?.t?.length ? fitKnotOut(track, t0, t1) : null;
 }
-/** "Fit" for an insertion over [t0, t1]: push timing off the run's track (lib/fx fitInsertion). -> params | null. */
+/** "Fit" for a push / pull over [t0, t1]: its timing off the run's track (lib/fx fitInsertion). -> params | null. */
 export function fitInsert(app, t0, t1) {
   const { track } = runUnder(app, t0, t1);
   return track?.t?.length ? fitInsertion(track, t0, t1) : null;
@@ -109,16 +109,41 @@ function spanFor(app, args) {
 /** The frame under the playhead (ms). */
 const frameNow = (app) => Math.round(app.player.snap ? app.player.snap(app.player.timeMs) : app.player.timeMs);
 
-/** A spurt (one cumshot) at the playhead's frame, while watching: each press is one more spurt. It joins the recipe of
- *  the spurt before it (fx-edit addSpurt / recipeSpurt: same link, same params; an unlinked one with its own params gets linked with it);
- *  unlinked = a plain spurt at the defaults (Alt+U). */
+/** A spurt (one cumshot) at the playhead's frame, while watching: each press is one more spurt. With an orgasm selected
+ *  (paw-d1g7) it is a marker of that orgasm (markerIn). Else it joins the recipe of the spurt before it (fx-edit addSpurt /
+ *  recipeSpurt: same link, same params; an unlinked one with its own params gets linked with it; inside an orgasm it is
+ *  that orgasm's marker, never linked); unlinked = a plain spurt at the defaults (Alt+U). */
 export function spurtAtPlayhead(app, t = frameNow(app), { unlinked = false } = {}) {
   if (fxOf(app).some((e) => e.kind === 'spurt' && e.t0 === t)) return app.toast('A spurt is already on this frame', 'quiet');
+  const org = fxOf(app).find((e) => e.id === tl.fx && e.kind === 'orgasm');
+  if (org) return markerIn(app, org, t);
   const id = newId('fx'), r = addSpurt(fxOf(app), { id, t, dur: durOf(app), scenes: scenesOf(app), unlinked, newLink: () => newId('link') });
   commitFx(app, r.linked ? 'Add spurt (linked)' : 'Add spurt', r.list);
   tl.fx = id;
   app.usage?.note?.('timeline:fx.spurt');
   spurtOrgasmHint(app, t);   // outside every orgasm, a quiet offer to mark / grow one
+}
+/** paw-d1g7: a marker of orgasm o at t (one undo step); t outside it grows the orgasm to t (and 500 ms past it) first.
+ *  The orgasm stays selected, so U taps along with playback. */
+export function markerIn(app, o, t) {
+  const grow = t < o.t0 || t > o.t1, id = newId('fx');
+  let list = fxOf(app);
+  if (grow) list = list.map((e) => (e === o ? (({ baked: _, ...q }) => ({ ...q, t0: Math.max(0, Math.min(q.t0, t - 500)), t1: Math.min(durOf(app), Math.max(q.t1, t + 500)) }))(e) : e)).sort((a, b) => a.t0 - b.t0);
+  commitFx(app, grow ? 'Add spurt (orgasm grown)' : 'Add spurt', addFx(list, { id, kind: 'spurt', t0: t, t1: t, dur: durOf(app) }));
+  tl.fx = o.id; tl.fxSel = [];
+  app.usage?.note?.('timeline:fx.spurt', { marker: true, grow });
+}
+/** paw-d1g7: the marker of the orgasm under t nearest t (within 300 ms), or null. */
+export function markerNear(app, t = frameNow(app)) {
+  const o = modAt(fxOf(app), t, 'orgasm');
+  return o ? innerOf(fxOf(app), o).filter((e) => Math.abs(e.t0 - t) <= 300).sort((a, b) => Math.abs(a.t0 - t) - Math.abs(b.t0 - t))[0] ?? null : null;
+}
+/** X on the stroke lane (Track tab): that marker goes (one undo step). */
+export function removeMarker(app) {
+  const m = markerNear(app);
+  if (!m) return app.toast('No spurt of this orgasm near the playhead', 'quiet');
+  commitFx(app, 'Delete spurt', fxOf(app).filter((e) => e !== m));
+  if (tl.fx === m.id) tl.fx = null;
 }
 /** A single throb (Shift+U): a throbbing range one beat long with its dip on the playhead's frame (lib/fx singleThrob). */
 export function throbAtPlayhead(app, t = frameNow(app)) {
@@ -133,15 +158,14 @@ export const ballsWhy = (app, t = app.player.timeMs) => ballsReason(app, t, { ru
 /**
  * The balls -> spurts suggestion at t (a suggestion only: nothing is placed until placeSpurts). When ballsWhy is on: the
  * tracker run under the scene at t (the doc scene, else the run's own scene there) with a balls contraction channel
- * (runs-channel ballsScale: the pinned group's sem_balls_scale, v4.6, else a part named 'balls' with a _scale channel,
- * v3.3 / v3.4) -> {ch, seeded, t0, t1, times} (seeded = the channel is the pinned group's; times = runs-channel
- * scalePeaks of that channel over the scene, sign -1 = contraction peaks, +1 = swelling), else null.
+ * (balls.js ballsChannel: the pinned balls group's _scale) -> {ch, t0, t1, times} (times = runs-channel scalePeaks of
+ * that channel over the scene, sign -1 = contraction peaks, +1 = swelling), else null.
  */
 export function ballsSpurts(app, t, sign = -1) {
   const w = ballsWhy(app, t);
   if (!w.enabled) return null;
   const { run, t0, t1 } = w.at;
-  return { ch: w.ch, seeded: w.ch.startsWith('sem_'), t0, t1, times: scalePeaks(run.channels[w.ch], t0, t1, { sign }) };
+  return { ch: w.ch, t0, t1, times: scalePeaks(run.channels[w.ch], t0, t1, { sign }) };
 }
 /** Palette / scene menu: spurts on the balls contraction peaks of the scene at args.t (else the playhead), placed at once
  *  (one undo step); off = the reason on the status line. */
@@ -169,23 +193,24 @@ export function placeSpurts(app, times) {
 
 /** "+ a modifier" of `kind` (every add goes here): a spurt on the playhead's frame; an event kind with no span given
  *  acts on the one of its kind under the playhead when there is one (selects it; Refine opens its curve); else a new
- *  one over args {t0, t1}, else the range, else the scene at the playhead (knotting 8 s or less: one knot). */
+ *  one over args {t0, t1}, else the range, else the scene at the playhead (knotting 8 s or less: one knot). args.params:
+ *  the new one's params (a push / pull: lib/fx KNOT_PUSH / KNOT_PULL; always a new one). */
 export function addModifier(app, kind, args) {
   if (FX_KINDS[kind]?.point) {   // a spurt goes on the playhead's frame (inside the span when one is given, else its start)
     const t = frameNow(app);
     return spurtAtPlayhead(app, args?.t1 > args?.t0 && (t < args.t0 || t > args.t1) ? Math.round(args.t0) : t);
   }
-  const here = !(args?.t1 > args?.t0) && FX_KINDS[kind]?.event ? modAt(fxOf(app), app.player.timeMs, kind) : null;
+  const here = !(args?.t1 > args?.t0) && !args?.params && FX_KINDS[kind]?.event ? modAt(fxOf(app), app.player.timeMs, kind) : null;
   if (here) { tl.fx = here.id; tl.fxSel = []; if (app.mode === 'refine') tl.fxPop = here.id; return; }
   const span = spanFor(app, args), id = newId('fx');
   if (!(span.t1 - span.t0 >= minLen(app))) return app.toast('Too short for a modifier', 'quiet');
-  let next = [...fxOf(app), makeMod(id, kind, Math.max(0, span.t0), Math.min(durOf(app), span.t1), args?.mode ? { mode: args.mode } : null, app.doc.axes?.stroke)].sort((a, b) => a.t0 - b.t0);
+  let next = [...fxOf(app), makeMod(id, kind, Math.max(0, span.t0), Math.min(durOf(app), span.t1), args?.params ? { ...args.params } : args?.mode ? { mode: args.mode } : null, app.doc.axes?.stroke)].sort((a, b) => a.t0 - b.t0);
   if (kind === 'shape') {   // a Reshape starts from the motion's own profile (then it is adjustable)
     const e = next.find((x) => x.id === id), fit = fitShape(app, e.t0, e.t1);
     if (fit) next = next.map((x) => (x.id === id ? { ...x, params: fit } : x));
     else app.toast('Reshape: no tracked samples to fit, drag the handles or track the scene', 'quiet');
   }
-  commitFx(app, `Add ${FX_KINDS[kind].label}`, next);
+  commitFx(app, `Add ${args?.params?.mode === 'none' ? (args.params.to > 50 ? 'pull' : 'push') : FX_KINDS[kind].label}`, next);
   tl.fx = id; tl.fxSel = [];
   app.usage?.note?.('timeline:fx.add', kind);
 }

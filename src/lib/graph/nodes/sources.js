@@ -184,7 +184,7 @@ export const scenes = defineNode({
   help: 'The tracking feature\'s scene list as spans (value = sign: -1 = flipped).',
   ins: [], outs: [spans()], params: [],
   reads: () => [['scenes']], halo: () => 0, local: true,
-  eval: (_in, _p, ctx) => ({ spans: normSpans((ctx.read('scenes') || []).map((s) => ({ t0: s.start_ms, t1: s.end_ms, kind: 'scene', value: s.sign ?? s.auto_sign ?? 1 }))) }),
+  eval: (_in, _p, ctx) => ({ spans: normSpans((ctx.read('scenes') || []).map((s) => ({ t0: s.start_ms, t1: s.end_ms, kind: 'scene', value: s.sign ?? 1 }))) }),
 });
 
 // features/timeline/kinds.js SPAN_KIND (copied: lib never imports features)

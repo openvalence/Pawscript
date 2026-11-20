@@ -230,8 +230,8 @@ export function groupsAside(list = []) {
 /** Shot i as people read it: its number through the video, '1', '2', '3' ... (paw-2lp7.5, owner: "shots are just 123"; it was
  *  '3.2', scene 3's second shot, while scenes held shots). '' out of range. */
 export const shotLabel = (list = [], i) => (list[i] ? String(i + 1) : '');
-/** Camera-handling channels: each shot keeps its own (its camera tag picks proj / proj_cam / pair; runs-channel cameraDefault). */
-export const CAMERA_CHANNELS = /^(primary|proj|proj_cam|cam_[xy]|pair|pair_dist|pair_proj)$/;
+/** Camera-handling channels: each shot keeps its own (its camera tag picks proj / proj_cam / who_pair_proj; runs-channel cameraDefault). */
+export const CAMERA_CHANNELS = /^(primary|proj|proj_cam|cam_[xy]|pair|who_pair_proj)$/;
 /** The other shots of shot i's scene that a signal pick of `channel` on a run over [t0, t1) reaches: the run covers more
  *  than half of each; none for a camera-handling channel (each shot keeps its camera handling). The caller drops shots
  *  linked to another run and skipped ones. */

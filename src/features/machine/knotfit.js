@@ -38,23 +38,23 @@ export const verdictText = (v) => (!v || v.ok ? '' : Number.isFinite(v.need) ? (
   : Number.isNaN(v.need) ? 'knot would not go in within this modifier' : 'knot would not go in with this toy and experience');
 
 /**
- * One knot timing for the Machine: candidates of the push share (longer = the carriage nears the knot sooner), the ease
- * onto the knot (more = it presses near the knot level longer), the pop's drop (smaller = the push itself goes deep
- * enough for the real knot, the rim travelling in with it) and the tie (held at the full depth: the knot held deep long
- * enough), each simulated from the last checkpoint before the span
+ * One knot timing for the Machine: candidates of the push share (longer = the carriage nears the knot sooner), the press
+ * share (longer = it presses near the knot level longer), the knot depth (deeper = the push itself goes deep enough for
+ * the real knot, the rim travelling in with it) and the tie (the full depth: the knot held deep long enough), each
+ * simulated from the last checkpoint before the span
  * (MachineSim reuses the rest); the candidate whose knot goes in closest to the effect's pop (t0 + popAt x span) wins,
  * ties to the least change. scriptFor(params) -> the final script with those params on this effect.
- * -> {params: {push, easeOut, popDepth, hold}, at, lag, off (ms the knot goes in after the pop; < 0 before)} | {fail: true,
- * need} (no candidate gets it in).
+ * -> {params: {push, pressTakes, press, knotOut}, at, lag, off (ms the knot goes in after the pop; < 0 before)} | {fail:
+ * true, need} (no candidate gets it in).
  */
 export function fitKnotTiming({ toy, rig, P }, scriptFor, t0, t1, p) {
-  const span = t1 - t0, tPop = t0 + p.popAt * span, sim = new MachineSim();
-  const pushes = [], eases = [...new Set([p.easeOut || 0, 0.4, 0.8])], holds = [...new Set([p.hold, p.lo])], drops = [...new Set([p.popDepth, 0.6 * p.popDepth, 0.3 * p.popDepth, 0].map((x) => Math.round(x)))];
+  const span = t1 - t0, tPop = t0 + p.popAt * span, sim = new MachineSim(), drop = p.press - p.lo;
+  const pushes = [], presses = [...new Set([p.pressTakes, 0.1, 0.2])], ties = [...new Set([p.knotOut, p.lo])], depths = [...new Set([drop, 0.6 * drop, 0.3 * drop, 0].map((x) => Math.round(p.lo + x)))];
   for (let x = Math.max(0.05, p.push); x <= p.popAt + 1e-9; x = +(x + 0.05).toFixed(2)) pushes.push(x);
   if (!pushes.includes(p.popAt)) pushes.push(p.popAt);
   let best = null, lastFail = null;
-  for (const push of pushes) for (const easeOut of eases) for (const popDepth of drops) for (const hold of holds) {
-    const q = { push, easeOut, popDepth, hold };
+  for (const push of pushes) for (const pressTakes of presses) for (const press of depths) for (const knotOut of ties) {
+    const q = { push, pressTakes, press, knotOut };
     sim.configure(scriptFor(q), toy, rig, P);
     sim.ctx.events = [];
     sim.stateAt(t1 + AFTER);
@@ -62,7 +62,7 @@ export function fitKnotTiming({ toy, rig, P }, scriptFor, t0, t1, p) {
     sim.ctx.events = null;
     const v = knotVerdict(ev, t0, t1);
     if (!v.ok) { if (Number.isFinite(v.need) || !lastFail) lastFail = v; continue; }
-    const score = Math.abs(v.at - tPop) + 200 * (Math.abs(push - p.push) + Math.abs(easeOut - (p.easeOut || 0))) + 5 * Math.abs(popDepth - p.popDepth) + 5 * Math.abs(hold - p.hold);
+    const score = Math.abs(v.at - tPop) + 200 * (Math.abs(push - p.push) + Math.abs(pressTakes - p.pressTakes)) + 5 * Math.abs(press - p.press) + 5 * Math.abs(knotOut - p.knotOut);
     if (!best || score < best.score) best = { score, params: q, at: v.at, lag: v.lag };
   }
   return best ? { params: best.params, at: best.at, lag: best.lag, off: best.at - tPop } : { fail: true, need: lastFail?.need ?? Infinity };

@@ -31,7 +31,7 @@ test('the verdict on a Knotting span: in, failed with how much longer, still pre
 const toy = BUILTIN_TOYS.find((t) => t.id === 'b-knot'), rig = { offsetMm: -10, strokeMm: 180 }, t0 = 30000, t1 = 36000;
 const base = [];
 for (let k = 0; k < 20; k++) base.push({ at: k * 1500, pos: 100 }, { at: k * 1500 + 750, pos: 25 });
-const P0 = { push: 0.3, popAt: 0.6, from: 100, lo: 0, popDepth: 10, settle: 0.08, hold: 5, easeIn: 0, easeOut: 0 };
+const P0 = { push: 0.3, popAt: 0.6, from: 100, lo: 0, knotIn: 30, press: 10, pressTakes: 0, settle: 0.08, knotOut: 5, popTo: 64, pullOut: 0 };
 const scriptFor = (q) => [...base, ...knotInKeys({ ...P0, ...q }, 100, 0.02).map(([u, pos]) => ({ at: Math.round(t0 + u * (t1 - t0)), pos })).filter((x, i, a) => !i || x.at > a[i - 1].at)];
 const tPop = t0 + P0.popAt * (t1 - t0);
 

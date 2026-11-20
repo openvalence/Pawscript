@@ -6,13 +6,13 @@ A Pawscript project: one UTF-8 JSON file, by default beside the video with the s
 `clip.pawproj`). Pawscript writes it continuously (about a second after each change), atomically (a temp file in the
 same folder, then a rename).
 
-## Shape (version 3)
+## Shape (version 4)
 
 The smallest file Pawscript opens (only `format`, `version` and `axes` are required on read; every other key is
 optional):
 
 ```json
-{ "format": "pawproj", "version": 3, "axes": { "stroke": [[0, 100], [500, 0], [1000, 100]] } }
+{ "format": "pawproj", "version": 4, "axes": { "stroke": [[0, 100], [500, 0], [1000, 100]] } }
 ```
 
 The core keys, as Pawscript writes them:
@@ -20,7 +20,7 @@ The core keys, as Pawscript writes them:
 | key | what |
 |---|---|
 | `format` | `"pawproj"` |
-| `version` | integer, now 3 |
+| `version` | integer, now 4 |
 | `app` | `{"name": "Pawscript", ...}`; other keys a file had there are kept |
 | `createdAt`, `savedAt` | ISO 8601 times |
 | `media` | the video, or `null`: `{path, relativePath?, name, size, hash: {algo, value} \| null, durationMs, fps, isVfr, width, height, hasAudio, frameCount, fpsRational: {num, den} \| null, startMs?}` (unknown numbers `null`) |
@@ -83,7 +83,9 @@ Read but no longer written: `fx` (version 2's effects, turned into `modifiers` o
 
 ## Versions
 
-Older versions (0, 1, 2) are migrated on read; a newer one is refused ("update Pawscript"). Version 3 differs from 2 in
+Older versions (0, 1, 2, 3) are migrated on read; a newer one is refused ("update Pawscript"). Version 4 differs from 3 in
+the modifier kinds: an `insertion` / `pullout` modifier is read as a `knotting` with `params.mode` `none` (its `from`,
+`to`, `push` kept, `arrive` as `popAt`), a `climax` modifier is dropped, and a toast says so. Version 3 differs from 2 in
 keeping effects (`fx`) and modifier spans apart (both become `modifiers`), and 2 from 1 in what plan kind `climax` means.
 
 ## Beside it

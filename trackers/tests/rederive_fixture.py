@@ -1,5 +1,5 @@
 """Parity fixture for the frontend re-derive (src/lib/rederive.js, paw-a3n): a synthetic two-scene points run whose
-projected channels come from the sidecar's own stroke_proj (and the pair_dist rule with a given axis), written to
+projected channels come from the sidecar's own stroke_proj (and groups.axis_dist with a given axis), written to
 test/fixtures/rederive-run.json. The JS test re-derives them from the stored centroids / camera and must match;
 test_rederive_fixture.py fails when the sidecar's maths drifts from the committed fixture.
 Run (from trackers/): .venv/Scripts/python.exe tests/rederive_fixture.py"""
@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
+from pawtrack.groups import axis_dist
 from pawtrack.points import stroke_proj
 
 ASPECT = 16 / 9
@@ -35,20 +36,16 @@ def channels(params, scenes):
     out = {}
     for t, C, K, g1, g2 in scenes:
         ch = {"centroid_x": C[:, 0], "centroid_y": C[:, 1], "cam_x": K[:, 0], "cam_y": K[:, 1],
-              "g1_x": g1[:, 0], "g1_y": g1[:, 1], "g2_x": g2[:, 0], "g2_y": g2[:, 1],
-              "g1_n": np.where(np.isnan(g1[:, 0]), 0.0, 0.5), "g2_n": np.full(len(t), 0.3),
+              "who_c1_x": g1[:, 0], "who_c1_y": g1[:, 1], "who_c2_x": g2[:, 0], "who_c2_y": g2[:, 1],
+              "who_c1_n": np.where(np.isnan(g1[:, 0]), 0.0, 0.5), "who_c2_n": np.full(len(t), 0.3),
               "sem_hips_x": g2[:, 0], "sem_hips_y": g2[:, 1],
               "proj": stroke_proj(t, C, ASPECT, params)[0], "proj_cam": stroke_proj(t, C - K, ASPECT, params)[0],
-              "g1_proj": stroke_proj(t, g1, ASPECT, params)[0], "g2_proj": stroke_proj(t, g2, ASPECT, params)[0],
+              "who_c1_proj": stroke_proj(t, g1, ASPECT, params)[0], "who_c2_proj": stroke_proj(t, g2, ASPECT, params)[0],
               "sem_hips_proj": stroke_proj(t, g2, ASPECT, params)[0]}
-        if params["axis"] == "custom":   # groups.group_tracks pair_dist with a given axis, then group_channels' 0..1
-            u = np.array([(params["axis_x1"] - params["axis_x0"]) * ASPECT, params["axis_y1"] - params["axis_y0"]])
-            u = u / np.hypot(*u)
-            r = (g1 - g2) * [ASPECT, 1.0]
-            d = r @ u
-            d = d if np.nanmean(d) >= 0 else -d
+        if params["axis"] == "custom":   # groups.axis_dist with the given axis, then who_channels' 0..1
+            d = axis_dist(g1, g2, ASPECT, np.array([(params["axis_x1"] - params["axis_x0"]) * ASPECT, params["axis_y1"] - params["axis_y0"]]))
             lo, hi = np.nanmin(d), np.nanmax(d)
-            ch["pair_proj"] = (d - lo) / (hi - lo)
+            ch["who_pair_proj"] = (d - lo) / (hi - lo)
         for k, v in ch.items():
             out.setdefault(k, []).extend([[int(a), None if not np.isfinite(b) else float(f"{b:.7g}")] for a, b in zip(t, v)])
     return out

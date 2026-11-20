@@ -231,7 +231,7 @@ fn dev_root() -> Option<PathBuf> {
 /// `uv run --project trackers --extra sam2 --extra describe pawtrack` (explicit extras: they are never dropped).
 fn command() -> Command {
   let root = root();
-  let py = root.join("python").join("python.exe");
+  let py = crate::gpu::python_exe(&root);
   let words: Vec<String> = match std::env::var("PAWTRACK_CMD") {
     Ok(s) if !s.trim().is_empty() => s.split_whitespace().map(String::from).collect(),
     _ if py.is_file() => vec![py.to_string_lossy().into_owned(), "-m".into(), "pawtrack.cli".into()],

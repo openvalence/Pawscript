@@ -1,82 +1,8 @@
-"""pawtrack.partlabel on synthetic heat maps and member sets (no model); one GPU test with the real tagger."""
+"""pawtrack.partlabel: one GPU test with the real tagger (the other helpers are covered by their callers' tests)."""
 import numpy as np
 import pytest
 
 from pawtrack import partlabel as PL
-from test_cli import video  # noqa: F401 (fixture)
-
-GRID = (24, 42)  # (ph, pw), 16:9 at seqlen 1024
-
-
-def blob(cx, cy, r=0.06):
-    ph, pw = GRID
-    y, x = np.mgrid[0:ph, 0:pw]
-    return np.exp(-(((x + 0.5) / pw - cx) ** 2 + ((y + 0.5) / ph - cy) ** 2) / (2 * r * r)).astype(np.float32)
-
-
-def scene(rng, n_body=80, n_part=12):
-    """A body spread over the frame and a compact part (12 points) at (0.5, 0.7); xy (N, 2), part / body masks."""
-    body = rng.uniform([0.2, 0.2], [0.8, 0.8], (n_body, 2))
-    part = rng.normal([0.5, 0.7], 0.015, (n_part, 2))
-    xy = np.r_[body, part]
-    isp = np.r_[np.zeros(n_body, bool), np.ones(n_part, bool)]
-    return xy, isp
-
-
-def test_part_gets_the_tag_body_falls_back():
-    xy, isp = scene(np.random.default_rng(0))
-    heat = {"penis": blob(0.5, 0.7), "head": blob(0.25, 0.25)}
-    sets = {"g1": np.ones(len(xy), bool)[None], "g1p1": isp[None]}
-    r = PL.label([heat], xy[None], np.ones((1, len(xy)), bool), sets)
-    assert r["g1p1"]["label"] == "penis" and r["g1p1"]["score"] > 0
-    assert r["g1"]["label"] == "body" and r["g1"]["score"] == 0.0
-    assert r["g1p1"]["tags"]["penis"] > r["g1p1"]["tags"].get("head", 0)
-
-
-def test_margin_and_floor():
-    assert PL.decide({"penis": 0.8, "balls": 0.75}, 0.1)[0] == "body"           # too close to the runner-up
-    assert PL.decide({"penis": 0.2}, 0.1)[0] == "body"                          # under the body floor
-    assert PL.decide({"penis": 0.8, "balls": 0.5}, 0.1)[:2] == ("penis", 0.3)   # score = margin over max(2nd, floor)
-    assert PL.decide({}, 0.1) == ("body", 0.0, None)
-
-
-def test_geometry_small_tag_on_a_big_group():
-    assert PL.decide({"balls": 0.9}, 0.8) == ("body", 0.0, "balls")             # balls as big as its parent: suspect
-    assert PL.decide({"tail": 0.9}, 0.8)[0] == "tail"                            # not a SMALL tag: no size rule
-    xy, isp = scene(np.random.default_rng(1))
-    heat = {"balls": np.ones(GRID, np.float32)}                                  # everything glows
-    r = PL.label([heat], xy[None], np.ones((1, len(xy)), bool), {"g1": np.ones(len(xy), bool)[None]})
-    assert r["g1"]["label"] == "body" and r["g1"]["suspect"] == "balls"
-
-
-def test_k_frame_aggregation_and_stability():
-    xy, isp = scene(np.random.default_rng(2))
-    on, off = {"balls": blob(0.5, 0.7)}, {"balls": blob(0.9, 0.1)}
-    K = 5
-    xys, vis = np.repeat(xy[None], K, 0), np.ones((K, len(xy)), bool)
-    sets = {"g1": np.ones((K, len(xy)), bool), "g1p1": np.repeat(isp[None], K, 0)}
-    r = PL.label([on, on, on, on, off], xys, vis, sets)["g1p1"]
-    assert r["label"] == "balls" and r["frames"] == 5 and r["stable"] == 0.8  # 4 of 5 frames agree
-    vis[3:, isp] = False  # part hidden on two frames: they do not count
-    r = PL.label([on, on, on, off, off], xys, vis, sets)["g1p1"]
-    assert r["frames"] == 3 and r["stable"] == 1.0
-
-
-def test_masks_and_tap():
-    lab = np.array([[1, 1, 2, -1], [1, 1, 2, 0]], np.int8)
-    part = np.array([[0, 1, 0, 0], [0, 1, 0, 0]], np.int8)
-    m = PL.masks({"labels": lab, "part": part})
-    assert set(m) == {"g1", "g1p1", "g2"} and m["g1p1"][:, 1].all() and not m["g1p1"][:, 0].any()
-    assert set(PL.masks({"labels": lab})) == {"g1", "g2"}
-    assert PL.parent("g1p2") == "g1" and PL.parent("g3") is None
-    tap = PL.Tap(cap=4)
-    frames = [(i * 40, np.zeros((4, 8, 3), np.uint8)) for i in range(1000)]
-    assert len(list(tap(iter(frames)))) == 1000  # passes every frame through
-    assert len(tap.buf) <= 8 and len({b[0] for b in tap.buf}) == len(tap.buf)
-    d = np.diff([b[0] for b in tap.buf])
-    assert (d == d[0]).all()  # evenly spaced
-    pk = [t for t, _ in tap.pick(5)]
-    assert len(pk) == 5 and pk == sorted(pk) and pk[0] < 8000 and pk[-1] > 28000
 
 
 def _cuda():

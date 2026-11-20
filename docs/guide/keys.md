@@ -360,15 +360,16 @@ Keys shared with the point editor (digits, Delete, Enter, Ctrl+A, Esc, S, Shift+
 | G | `timeline.fx.grab` | Grab the selected effects: they follow the mouse in time (frame-snapped, Shift free), type ms for an exact shift; Enter / click confirms, Esc / right click cancels |
 | Enter | `timeline.fx.edit` | Open the selected effect's curve |
 | Esc | `timeline.fx.escape` | Clear the effect selection (hidden) |
-| U | `fx.spurtAtPlayhead` | A spurt (one cumshot) on the playhead's frame; press again for the next (anywhere). It follows the spurt before it (same scene, else within 10 s) when that one is linked or has its own params: same link, same params |
+| U | `fx.spurtAtPlayhead` | A spurt (one cumshot) on the playhead's frame; press again for the next (anywhere). With an orgasm selected: a marker of that orgasm (its spurt shape, its own velocity), the orgasm stays selected; outside it the orgasm grows to the playhead first (one undo step). Else it follows the spurt before it (same scene, else within 10 s) when that one is linked or has its own params: same link, same params; inside an orgasm it is that orgasm's marker |
 | Alt+U | `fx.spurtUnlinked` | A spurt on the playhead's frame at the default params, not joining the spurt before it |
 | Shift+U | `fx.throbAtPlayhead` | A throb one-shot: ONE beat with its dip on the playhead's frame; press again for the next. Follows the throb one-shot before it (same scene, else within 10 s) when that one is linked or tuned |
 | — | `fx.spurtsFromBalls` | Spurts on the balls contraction peaks of the scene at the playhead (one undo step); grayed with the reason when there is no run, no balls group, too little balls, or a pre-v4.6 run |
 | — | `timeline.flatten` | Flatten: write what plays (the modifiers and autorange over the script) into the points, one undo step; the baked modifiers turn hollow |
 | Ctrl+← / → | `timeline.fx.nudgeLeft` / `nudgeRight` | Nudge the selected modifiers one frame (rapid presses are one undo step) |
-| drag, Shift, Alt+drag, double-click | | On the modifiers row: an edge snaps to stroke turns (Shift: free), Alt+drag copies, double-click fits the span (a push or pull: turn to turn; the rest: the shot). The curve popover's **Strength over the span** sets how it builds and fades (Flat, Build, Fade, Swell) |
+| drag, Shift, Alt+drag, double-click | | On the modifiers row: an edge snaps to stroke turns (Shift: free), Alt+drag copies, double-click fits the span (a Push: turn to turn; the rest: the shot). The curve popover's **Strength over the span** sets how it builds and fades (Flat, Build, Fade, Swell) |
 | — | `timeline.fx.unbake` | Un-bake the selected effect (live again) |
-| — | `timeline.mod.add.shape` / `.climax` | Add an effect over the range, else the scene at the playhead |
+| — | `timeline.mod.add.shape` | Add a Reshape over the range, else the scene at the playhead (Refine) |
+| — | `timeline.mod.add.push` / `.pull` | A Knotting in mode Push (one slow push to full depth, no pop) / a pull out to 100, over the range, else the scene at the playhead; also **Push** / **Pull** in the Effects and Scenes row right-click menus |
 | — | `timeline.fx.mute`, `timeline.fx.duplicate` | Mute / unmute, duplicate the selected effect (a copy stays linked) |
 | Shift+click, drag | | On the effects row: add / remove an effect from the selection; a drag on empty row space box-selects (Shift adds, Ctrl subtracts); a click there clears the selection and moves the playhead |
 | — | `timeline.fx.link` / `timeline.fx.unlink` | Link the selected effects (per kind: one set of params; also on the row's right-click menu) / unlink them (each keeps its params) |
@@ -421,6 +422,7 @@ The scene commands (`track.detectScenes`, `track.describeAll`, …) are the Scen
 | X | `tracking.axisDraw` | Draw the stroke axis on the video (Track tab, video open, graph not focused). While the tool is active: Esc cancels (`tracking.axisCancel`), Delete removes a drawn axis (`tracking.axisDelete`); both hidden |
 | Tab | `tracking.groups` | The Groups tool, opened and closed with Tab (a held Tab toggles once; G is move, always, and never opens it): paint the groups the points trackers pin, on the scene's seed frame (Track tab, video open; with keyboard navigation on Tab moves the focus, so open it from the Track menu or the palette). While it is open: hold Space and move the mouse sideways to scrub around the frame (Left / Right one frame, Shift finer; the one exception to Space = play / pause: inside the tool Space never plays), `[` / `]` brush size (`tracking.groupsSmaller` / `tracking.groupsBigger`), Delete / Backspace deletes the active group (`tracking.groupsDelete`), Esc cancels a stroke, else closes the tool (`tracking.groupsClose`), 1 / 2 / 3 paint Bottom / Top / Extra (`tracking.groupsWho1` / `tracking.groupsWho2` / `tracking.groupsWho3`); all hidden. Enter accepts the take's suggestions and re-found groups, or keeps a grab / scale (`tracking.groupsConfirm`); `tracking.groupsSuggest` (menu only): Suggest; `tracking.groupsSwap` (menu only): swap Bottom and Top; `tracking.groupsRetrain` (menu only): retrain the seeder from the painted groups |
 | — | `tracking.axisClear` | Clear the stroke axis |
+| X | `tracking.markerDelete` | Delete the spurt of the orgasm under the playhead nearest it (within 300 ms), Track tab, stroke lane focused (hidden; before the axis tool's X) |
 | Delete, Backspace | `tracking.knotDelete` | Delete the baseline knot last clicked on the stroke lane (Track tab) while the lane has focus (hidden; elsewhere Delete stays the point delete) |
 | F | `track.flipAtPlayhead` | Flip the direction of the scene at the playhead in the selected run (Track tab) |
 | — | `track.flipRun` | Flip the whole run (a selected run) |
@@ -588,7 +590,7 @@ Pairs that share a key by design (the earlier registration wins when both apply)
 | Ctrl+D | `timeline.plan.duplicate` (plan focused) | `graph.duplicate` (graph focused), then `lanes.duplicate` |
 | Ctrl+G | `nav.goto` (yields while `graph.group` applies) | `graph.group` |
 | F8 / Shift+F8 | `review.nextProblem/prevProblem` | `graph.nextProblem/prevProblem` |
-| X | `tracking.axisDraw` (yields while the graph has focus) | `graph.swapAB`, then `lanes.deleteSelected` (axis selection, not the Track tab) |
+| X | `tracking.markerDelete` (stroke lane focused, an orgasm spurt near the playhead), then `tracking.axisDraw` (yields while the graph has focus) | `graph.swapAB`, then `lanes.deleteSelected` (axis selection, not the Track tab) |
 | Tab | `tracking.groups` (Track tab; inside a text field Tab stays the field's; with keyboard navigation on Tab moves the focus) | nothing else |
 | [ / ] | `tracking.groupsSmaller` / `groupsBigger` (Groups tool open) | `player.slower` / `player.faster` |
 | 1 / 2 / 3 | `tracking.groupsWho1` / `groupsWho2` / `groupsWho3` (Groups tool open) | `lanes.mode.point` / `.segment` / `.stroke` (Blender keymap) |

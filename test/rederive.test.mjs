@@ -19,7 +19,7 @@ function close(a, b, tol, what) {
 test('parity: re-derived with the tracked options = the sidecar channels (auto and custom axis, gaps bridged / kept)', () => {
   for (const variant of ['auto', 'custom']) {
     const run = runOf(variant), { channels, changed } = deriveChannels(run, [], { aspect: fx.aspect, force: true });
-    const names = ['proj', 'proj_cam', 'g1_proj', 'g2_proj', 'sem_hips_proj', ...(variant === 'custom' ? ['pair_proj'] : [])];
+    const names = ['proj', 'proj_cam', 'who_c1_proj', 'who_c2_proj', 'sem_hips_proj', ...(variant === 'custom' ? ['who_pair_proj'] : [])];
     for (const k of names) { assert.ok(changed.includes(k), `${variant} ${k} recomputed`); close(channels[k].v, run.channels[k].v, 2e-4, `${variant} ${k}`); }
   }
 });
@@ -76,7 +76,7 @@ test('camera strength: 0 = the image centroid (raw), 100 = the sidecar camera re
   const full = deriveChannels(run, [{ cam: { mode: 'auto', strength: 100, source: 'all' } }, null], { aspect: a }).channels;   // an override with full removal
   close(sc0(full.proj), sc0(run.channels.proj_cam), 2e-4, 'strength 100 = proj_cam');
   close(sc0(full.proj_cam), sc0(run.channels.proj_cam), 2e-4, 'override: proj = proj_cam');
-  close(sc0(full.g1_proj), sc0(run.channels.g1_proj), 2e-4, 'strength 100: groups as tracked');
+  close(sc0(full.who_c1_proj), sc0(run.channels.who_c1_proj), 2e-4, 'strength 100: groups as tracked');
   assert.ok(sc0(s50.proj).some((v, i) => Math.abs(v - sc0(full.proj)[i]) > 1e-3 && Math.abs(v - sc0(s0.proj)[i]) > 1e-3), 'half way differs from both');
 });
 

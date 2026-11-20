@@ -8,3 +8,7 @@ You do not need it: **TAPNext++** is the point tracker, and it did as well or be
 
 - A project or setting that used CoTracker3 tracks with TAPNext++ instead (one note says so), or with Optical flow (box) on a PC without an NVIDIA card.
 - Runs already tracked with CoTracker3 still load and play.
+
+## License
+
+If you add CoTracker3 yourself (a developer's own venv, `--extra cotracker`), Pawscript lists it as a tracker marked **Non-commercial only**, and shows a note when you pick it. Its code and weights are [CC BY-NC 4.0](https://github.com/facebookresearch/co-tracker/blob/main/LICENSE.md): scripts made with CoTracker cannot be used commercially. Installing it and keeping to its license is your part.

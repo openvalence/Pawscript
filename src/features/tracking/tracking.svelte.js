@@ -9,11 +9,11 @@
 import { rooted } from '../../lib/rooted.svelte.js';
 import { untrack } from 'svelte';
 import { playheadFrameStart, gridOf, frameAt } from '../../lib/lane.js';
-import { suggestGroupsRequest, listRequest, scenesRequest, loopRequest, describeRequest, describeAllRequest, trackRequest, trackCuts, scoreRequest, defaultParams, roiOk, roiAccepts, trackerFor } from '../../lib/protocol.js';
+import { suggestGroupsRequest, listRequest, scenesRequest, loopRequest, describeRequest, describeAllRequest, trackRequest, trackCuts, scoreRequest, defaultParams, roiOk, roiAccepts, trackerFor, NC_BADGE, NC_LINE } from '../../lib/protocol.js';
 import { PALETTE, newFrames, appendFrames, makeRun, cycleMarks, pointsList, sceneAt, flipPatch, addSpan, spansForRequest, effSign, linkFor, sceneForRun, runForScene, runTitle, runSummary, replacedBy } from '../../lib/runs.js';
 import { channelPatch, keepOf, runFromGhost, carrierClean, stitchPoints, decisionsOf, relParse, relSources, ANCHORS } from '../../lib/runs-channel.js';
 import { tlFor } from '../timeline/state.svelte.js';
-import { normalize, lowerBound } from '../../lib/core/script.js';
+import { normalize, lowerBound, posAt } from '../../lib/core/script.js';
 import { withProposals, continuations, bridgeRuns, proposeSpans, printTimes, grey16, bridgeScript, holdScript, afterScript, easeScript, REST, defaultTrackerFor, INTERNAL_TRACK, fillSpans, fillScript } from '../../lib/scenes-continue.js';
 import { createScrubber } from '../video/scrub.js';
 import { linkShots, loopLinks, linkBox, pyramid, grey, printSize } from '../../lib/crop-match.js';   // paw-3uyu
@@ -116,7 +116,6 @@ export function gpuNote(gpu) {
   if (gpu?.state === 'none') return 'No graphics card the trackers can use was found. Trackers that need a GPU are off; the CPU trackers still work.';
   return '';
 }
-const GRID_TRACKERS = new Set(['tapnext_points', 'cotracker_points']);
 const REST_MS = 120;   // paw-o60v.2: a fusion drag resting this long composes everything (Detail, HOW, linked fills) as the release will
 const BRIDGE = 'scene-bridge';
 const WHY_SHORT = { turn: 'a turn', mid: 'the half-stroke\'s midpoint (Detail)', shoulder: 'a shoulder: a slow transition at the turn (Detail by render)', hold: 'a hold at the turn (Detail)', detail: 'a Free detail point', clamped: 'a turn shortened by max speed', end: 'the signal\'s end' };
@@ -350,8 +349,9 @@ class Tracking {
   get selected() { return this.selectedGhost ? this.run(this.selectedId) : null; }
   /** The pinned reference ghost (scoring target). */
   get reference() { return this.ghosts.find((g) => g.source?.kind === 'reference') || null; }
-  get canTrack() {
-    const t = this.tracker, s = this.span;
+  get canTrack() { return this.#canTrackWith(this.tracker); }
+  #canTrackWith(t) {
+    const s = this.span;
     return !!(this.videoPath && t && (!this.locked || this.preempt) && s.t1 > s.t0 && roiOk(t.roi, this.trackRoi));
   }
   /** The roi the next panel Track uses: the pending one (set by code), else an internal view's box, else the whole frame when
@@ -379,12 +379,13 @@ class Tracking {
   /** The background seeder training after a save (groups.svelte.js retrain auto): any panel job preempts it. */
   get #seederBusy() { return this.busy === 'seed' && this.owner === 'seeder'; }
   /** Why Track is disabled ('' = it is not). */
-  get trackBlock() {
-    const t = this.tracker;
+  get trackBlock() { return this.#blockOf(this.tracker); }
+  #blockOf(t) {
     if (!this.videoPath) return 'Open a video first.';
     if (!t) return this.listed ? 'No tracker selected.' : 'Trackers not loaded.';
     if (this.locked && !this.preempt) return 'Busy: ' + (this.planBusy ? 'tracking tagged scenes' : TITLES[this.busy] || this.busy || 'describing') + '.';
     if (!roiOk(t.roi, this.trackRoi) && this.internalPlan?.tracker === t.id) return 'Internal view: paint the inserted part with Groups (Tab) first.';
+    if (!roiOk(t.roi, this.trackRoi) && this.paintedParts().length) return `${t.name || t.id} tracks one part at a time: pick it in Track ROI.`;   // paw-j9b8: a box tracker that takes no painted groups
     if (!roiOk(t.roi, this.trackRoi)) return 'Paint the part with Groups (Tab) first.';
     return '';
   }
@@ -399,7 +400,7 @@ class Tracking {
   /** A tracker the GPU state turns off (greyed in the pickers, with gpuNote as the reason). */
   gpuOff(t) { return !!(t?.gpu && this.gpuNote); }
   /** The tracker pickers' options: the GPU-only ones greyed when the GPU is off. */
-  get trackerChoices() { return this.trackers.map((x) => ({ value: x.id, label: x.name, ...(this.gpuOff(x) && { disabled: true, hint: 'needs a GPU' }) })); }
+  get trackerChoices() { return this.trackers.map((x) => ({ value: x.id, label: x.name, ...(x.id === 'cotracker_points' && { hint: NC_BADGE }), ...(this.gpuOff(x) && { disabled: true, hint: 'needs a GPU' }) })); }
   /** 0..1 of the running job (0 before its first frame); while the shaft pass shows a frame (v4.44 t_ms): where that
    *  frame sits in the job's range, so the lanes' band moves through the scene with the picture. */
   get progressFrac() {
@@ -581,7 +582,9 @@ class Tracking {
       this.loopVals = defaultParams(this.loopParams);
       this.describeVals = defaultParams(this.describeParams || []);
       const by = {};
-      for (const t of this.trackers) by[t.id] = { ...defaultParams(t.params), ...this.#prefs(t), ...(this.paramsBy[t.id] || {}) };
+      // a re-list after a sidecar update keeps only the params it still takes (paw-57dw: group_labels went; the sidecar refuses unknown ones)
+      const kept = (t) => Object.fromEntries(Object.entries(this.paramsBy[t.id] || {}).filter(([k]) => t.params?.some((p) => p.key === k)));
+      for (const t of this.trackers) by[t.id] = { ...defaultParams(t.params), ...this.#prefs(t), ...kept(t) };
       this.paramsBy = by;
       this.listed = true;
       const last = this.app.settings.get('tracking.lastTracker');
@@ -611,9 +614,11 @@ class Tracking {
     for (const t of this.trackers) if (this.paramsBy[t.id]) Object.assign(this.paramsBy[t.id], this.#prefs(t));
   }
   #noted = false;
+  #ncToasted = false;
   /** paw-vdr4: the one plain note when a CoTracker3 pick (a setting, an old project, a plan) runs on another tracker. */
   #fellBack(note) { if (note && !this.#noted) { this.#noted = true; this.app.toast(note, 'info'); } }
   selectTracker(id, remember = true) {
+    if (id === 'cotracker_points' && remember && !this.#ncToasted) { this.#ncToasted = true; this.app.toast(NC_LINE, 'warn'); }   // paw-0ous: first pick
     this.trackerId = id;
     if (remember) {   // the user's pick: it also wins over an internal-view default for the current scene
       this.app.settings.set('tracking.lastTracker', id);
@@ -1013,9 +1018,9 @@ class Tracking {
    *  each continuation of cutaways only (no internal view; mode 'carry' = carried strokes, 'hold' when every cutaway is
    *  blank: the viewer sees nothing), then each other blank scene ('hold': the level before, easing into the next) and
    *  structure scene (mode = its tag: intro holds at rest and eases into the next scene's first point, idle holds at
-   *  rest, outro eases to rest and holds, after = the afterglow recipe) and an untracked scene with an Insertion / Pull-out
-   *  modifier (mode 'insertion': ONE push / pull over its span from where the scene before left the script, else 100,
-   *  held; a Knotting modifier over an insertion makes it one knot-in; lib/fx.js insertionScript). A neighbour's points:
+   *  rest, outro eases to rest and holds, after = the afterglow recipe) and an untracked scene with a knotting in mode
+   *  push / pull or One knot over it (mode 'insertion': ONE push / pull, or one knot-in, over its span from where the scene
+   *  before left the script, else 100, held; lib/fx.js insertionScript). A neighbour's points:
    *  the axis's where it has some in that scene, else its linked run's. A filled span (`fills`) is mode 'fill' and wins
    *  over every other bridge that touches it. paw-2lp7.1: and each positioning range (mode 'positioning': easeScript, one slow
    *  move from the level before to the first stroke after). */
@@ -1040,11 +1045,11 @@ class Tracking {
     const lastOf = (i) => { if (i < 0) return null; const s = src(i), k = lowerBound(s, sc[i].end_ms) - 1; return k >= 0 && s[k].at >= sc[i].start_ms ? s[k].pos : null; };
     const firstOf = (i) => { if (i >= sc.length) return null; const s = src(i), k = lowerBound(s, sc[i].start_ms); return k < s.length && s[k].at < sc[i].end_ms ? s[k].pos : null; };
     const fx = liveFx(this.app.doc.fx), spans = (s) => base.length && base[0].at <= s.start_ms && base[base.length - 1].at >= s.end_ms;
-    const pushOf = (s) => fx.find((x) => (x.kind === 'insertion' || x.kind === 'pullout') && x.t0 < s.end_ms && x.t1 > s.start_ms);
+    const pushOf = (s) => fx.find((x) => x.kind === 'knotting' && (x.params?.mode === 'none' || x.params?.mode === 'single') && x.t0 < s.end_ms && x.t1 > s.start_ms);
     const insertion = (s, before) => {
-      const e = pushOf(s), knot = e.kind === 'insertion' ? fx.find((x) => x.kind === 'knotting' && x.t0 < e.t1 && x.t1 > e.t0) : null;
+      const e = pushOf(s);
       if (axis === 'stroke' && spans(s)) return [];   // the live modifier does it on the stroke itself (lib/finish.js): not twice
-      return insertionScript(s.start_ms, s.end_ms, e.t0, e.t1, { params: e.params, knot: knot ? knot.params ?? {} : null, from: before ?? REST, kind: e.kind });
+      return insertionScript(s.start_ms, s.end_ms, e.t0, e.t1, { params: e.params, from: before ?? REST });
     };
     const open = (k) => !filled(sc[k].start_ms, sc[k].end_ms) && !has(base, sc[k].start_ms + 1, sc[k].end_ms) && !this.sceneLink(k);
     for (let i = 0; i < sc.length; i++) {
@@ -1067,14 +1072,24 @@ class Tracking {
     // has no points inside: the owner's points there never change. Neighbours: the shot's points (src), else a visible run
     // ghost over the shot; none before it in the shot: the shot before's last point, none after: the next shot's first
     const own = (i) => { const s = src(i); return has(s, sc[i].start_ms, sc[i].end_ms) ? s : this.ghosts.find((g) => g.source?.kind === 'tracker' && g.visible !== false && (g.axis ?? 'stroke') === axis && has(g.script || [], sc[i].start_ms, sc[i].end_ms))?.script || s; };
-    sc.forEach((s, i) => {
-      for (const [t0, t1] of s.positioning || []) {
-        if (has(base, t0 + 1, t1) || filled(t0, t1) || out.some((b) => b.t0 < t1 && b.t1 > t0)) continue;
-        const p = own(i), k = lowerBound(p, t0), j = lowerBound(p, t1);
-        const script = easeScript(t0, t1, k > 0 && p[k - 1].at >= s.start_ms ? p[k - 1].pos : lastOf(i - 1), j < p.length && p[j].at < s.end_ms ? p[j].pos : firstOf(i + 1));
+    // paw-d9pz: one range across cuts is split per shot (withPositioning); its pieces that meet at a cut ease ONCE over the
+    // whole extent, each piece its slice of that one curve (not each from the same start: a drop at every cut)
+    const pieces = [];
+    sc.forEach((s, i) => { for (const [t0, t1] of s.positioning || []) if (!has(base, t0 + 1, t1) && !filled(t0, t1) && !out.some((b) => b.t0 < t1 && b.t1 > t0)) pieces.push({ t0, t1, i }); });
+    for (let a = 0, b; a < pieces.length; a = b + 1) {
+      for (b = a; b + 1 < pieces.length && pieces[b + 1].i === pieces[b].i + 1 && pieces[b + 1].t0 === pieces[b].t1;) b++;
+      const P = pieces[a], Q = pieces[b], p = own(P.i), q = own(Q.i), k = lowerBound(p, P.t0), j = lowerBound(q, Q.t1);
+      const curve = easeScript(P.t0, Q.t1, k > 0 && p[k - 1].at >= sc[P.i].start_ms ? p[k - 1].pos : lastOf(P.i - 1), j < q.length && q[j].at < sc[Q.i].end_ms ? q[j].pos : firstOf(Q.i + 1));
+      if (!curve.length) continue;
+      for (let m = a; m <= b; m++) {
+        const { t0, t1 } = pieces[m], mid = curve.filter((x) => x.at > t0 && x.at < t1);
+        // at a cut the piece ends / starts on the curve's level there, so a short piece between two curve points still moves
+        const head = m > a && !(mid[0]?.at === t0 + 1) ? [{ at: t0 + 1, pos: Math.round(posAt(curve, t0 + 1)) }] : [];
+        const tail = m < b && !(mid.at(-1)?.at === t1 - 1) ? [{ at: t1 - 1, pos: Math.round(posAt(curve, t1 - 1)) }] : [];
+        const script = [...head, ...mid, ...tail];
         if (script.length) out.push({ t0, t1, script, mode: 'positioning' });
       }
-    });
+    }
     return out.sort((x, y) => x.t0 - y.t0);
   }
   /** Fills on the stroke axis ($derived, the shots' `fill`): [{lo, hi, a, c, t0, t1, mode, script, need}] per run of shots
@@ -1374,29 +1389,31 @@ class Tracking {
     return true;
   }
   /** full: a new run of everything (the command track.full), never only the groups painted since (addPlan). */
-  async track(over = {}, { full = false, beside = false } = {}) {
+  async track(over = {}, { full = false, beside = false, as = null } = {}) {
+    const pick = as || this.tracker, parOf = () => (as ? this.paramsBy[as.id] || {} : this.params);   // `as`: a fixed role's tracker (Track: TAPNext++); the panel's pick stays as it is
     // Esc then T (or T while a background score runs): wait for that job to end instead of dropping the new run
     // (or T during a camera check: drop the check, the new run gets its own)
     if (this.busy === 'camera' && !this.owner) this.cancelOwner('');
     if (this.#seederBusy) this.cancelOwner('seeder');   // its features so far are cached: the next save resumes
     if (this.stopping || this.busy === 'score' || this.busy === 'camera' || this.busy === 'seed') await this.chain;
-    if (!this.canTrack) return;
-    const add = !full && !beside && this.direction === 'both' && !Object.keys(over).length ? this.addPlan() : null;
+    // paw-j9b8: never refuse silently: Track ROI's every-part row calls this without checking canTrack
+    if (!(as ? this.#canTrackWith(as) : this.canTrack)) { const w = this.#blockOf(pick); if (w) this.app.toast(w.replace(/\.$/, ''), 'quiet'); return; }
+    const add = !full && !beside && this.direction === 'both' && !Object.keys(over).length ? this.addPlan(this.span, pick) : null;
     if (add) return this.#trackAdded(add);
     if (this.direction !== 'both') {
-      const t = this.tracker, roi = t.roi === 'none' ? null : this.trackRoi, plan = this.internalPlan?.tracker === t.id ? this.internalPlan : null;
+      const t = pick, roi = t.roi === 'none' ? null : this.trackRoi, plan = this.internalPlan?.tracker === t.id ? this.internalPlan : null;
       this.error = ''; this.notice = ''; this.roi = null;
-      this.app.usage?.note('tracking:track', this.tracker.id);
-      return this.#trackOneWay(t, this.direction, roi, this.withAxis(t, { ...$state.snapshot(this.params), ...plan?.params, ...over }), !beside);
+      this.app.usage?.note('tracking:track', pick.id);
+      return this.#trackOneWay(t, this.direction, roi, this.withAxis(t, { ...$state.snapshot(parOf()), ...plan?.params, ...over }), !beside);
     }
-    this.app.usage?.note('tracking:track', this.tracker.id);
-    const t = this.tracker, s = this.span, range = { start: s.t0, end: s.t1 }, roi = t.roi === 'none' ? null : this.trackRoi, plan = this.internalPlan?.tracker === t.id ? this.internalPlan : null;
+    this.app.usage?.note('tracking:track', pick.id);
+    const t = pick, s = this.span, range = { start: s.t0, end: s.t1 }, roi = t.roi === 'none' ? null : this.trackRoi, plan = this.internalPlan?.tracker === t.id ? this.internalPlan : null;
     this.error = ''; this.notice = '';
     this.roi = null;   // the box belongs to this run now (run.roi)
     // a range over an off-screen scene: that scene is left out (no run spans it, the bridge fills it); the action pieces
     // around it run one by one with the panel's tracker (lib/track-plan.js, panelOnly). Scenes mode 'one': as drawn.
     if (this.scenesMode !== 'one') {
-      const items = this.plan({ range: { t0: s.t0, t1: s.t1 }, force: true, panelOnly: true });
+      const items = this.plan({ range: { t0: s.t0, t1: s.t1 }, force: true, panelOnly: true, trackerId: as?.id });
       const skipped = items.filter((x) => x.action === 'skip');
       if (skipped.length) {
         const work = items.filter((x) => x.action === 'track').map((x) => ({ ...x, tracker: t.id, roi, params: { ...plan?.params, ...over } }));
@@ -1410,7 +1427,7 @@ class Tracking {
         return;
       }
     }
-    const r = await this.runTrack(t, range, this.withAxis(t, { ...$state.snapshot(this.params), ...plan?.params, ...over }), roi, this.spansFor(range.start, range.end), { scenes: this.scenesMode, name: plan?.label, replace: !beside, take: !beside });
+    const r = await this.runTrack(t, range, this.withAxis(t, { ...$state.snapshot(parOf()), ...plan?.params, ...over }), roi, this.spansFor(range.start, range.end), { scenes: this.scenesMode, name: plan?.label, replace: !beside, take: !beside });
     if (r.moved) return;
     if (r.cancelled) { this.notice = 'Track cancelled.'; return; }
     if (r.error) { this.error = 'Tracking failed: ' + r.error; return; }
@@ -1420,21 +1437,23 @@ class Tracking {
   /** Grid -- a point grid over the whole picture (settings 'tracking.gridPoints'), offline,
    *  through the panel's Track (range, spans, ghost, overlays). Selects the tracker and sets the whole-frame box. */
   get canGrid() { return !!(this.videoPath && this.gridTracker && (!this.locked || this.preempt) && this.span.t1 > this.span.t0); }
-  /** The point tracker a grid run uses: the selected one if it is one, else TAPNext++ (paw-vdr4: never CoTracker3 by default).
-   *  paw-l64q: none the GPU state turns off (it would run on the CPU at under a frame a second): then null, and T says why
+  /** The point tracker a grid run uses: always TAPNext++ (paw-bunr: Track has one fixed tracker; the panel's pick is for the
+   *  custom tracks). paw-l64q: none the GPU state turns off (it would run on the CPU at under a frame a second): then null, and T says why
    *  and names the CPU route (quickbar.js gridBlock). */
   get gridTracker() {
     const ok = (t) => (t && !this.gpuOff(t) ? t : null);
-    return ok(GRID_TRACKERS.has(this.tracker?.id) && this.tracker) || ok(this.trackers.find((x) => x.id === 'tapnext_points'));
+    return ok(this.trackers.find((x) => x.id === 'tapnext_points'));
   }
-  gridFrame({ beside = false } = {}) {
-    if (!this.canGrid) return;
+  /** Track ROI's tracker (paw-bunr): always SAM (a CPU install: the first box tracker, roi-part.js roiTracker). */
+  get partTracker() { return roiTracker(this.trackers, '', (x) => this.gpuOff(x)); }
+  /** `tracker`: a custom point track runs the panel's pick (any grid tracker) instead of TAPNext++. */
+  gridFrame({ beside = false, tracker = null } = {}) {
+    if (!tracker && !this.canGrid) return;
     this.app.usage?.note('tracking:gridFrame');
-    const t = this.gridTracker;
-    this.selectTracker(t.id);
+    const t = tracker || this.gridTracker;
     this.roi = { kind: 'box', x: 0, y: 0, w: 1, h: 1 };
     const n = Math.round(+this.app.settings.get('tracking.gridPoints', 512)) || 512;
-    return this.track({ box_seed: 'grid', box_points: Math.min(4096, Math.max(4, n)), ...(t.id === 'cotracker_points' ? { mode: 'offline' } : {}) }, { beside });
+    return this.track({ box_seed: 'grid', box_points: Math.min(4096, Math.max(4, n)), ...(t.id === 'cotracker_points' ? { mode: 'offline' } : {}) }, { beside, as: t });
   }
   /** paw-x8we Track ROI: one painted part (name) in the range, over the shot its seed is on. The tracker: roi-part.js roiTracker
    *  (SAM by default: its painted mask seeds it, the run's signal is the part's size against the seed frame); the box any tracker
@@ -1447,7 +1466,7 @@ class Tracking {
     if (!this.canPart) return;
     const s = this.span, p = paintedParts(this.scenes, s.t0, s.t1).find((x) => x.name === name);
     if (!p) { this.app.toast(`${partLabel(name)} is not painted in the range`, 'quiet'); return; }
-    const t = roiTracker(this.trackers, this.trackerId, (x) => this.gpuOff(x));
+    const t = this.partTracker;
     if (!t) { this.app.toast(`No tracker installed takes a part${this.gpuNote ? ` (${this.gpuNote})` : ''}`, 'warn'); return; }
     const range = partRange(this.scenes, p.group.t_ms, s), roi = { ...partBox(p.group.poly), t_ms: p.group.t_ms };
     if (!(range.end > range.start)) return;
@@ -1607,8 +1626,8 @@ class Tracking {
    * covering its frame except some new ones (lib/runs-add.js newForRun: not in that run; none changed), and those runs
    * cover span; else null (Track makes a new run, as before). Points trackers only.
    */
-  addPlan(span = this.span) {
-    if (!this.tracker?.params?.some((x) => x.key === 'sem_groups')) return null;
+  addPlan(span = this.span, tracker = this.tracker) {
+    if (!tracker?.params?.some((x) => x.key === 'sem_groups')) return null;
     const groups = trackGroups(this.scenes, span.t0, span.t1), list = this.#addable;
     if (!groups.length || !list.length) return null;
     const by = new Map();
@@ -1684,7 +1703,7 @@ class Tracking {
       const frames = newFrames();
       this.live = { frames, roi: null };
       app.usage?.note('tracking:addStart', { run: run.id, t_ms: b.t_ms, groups: b.groups.map((g) => g.name).join(','), t0: a, t1: e });
-      const r = await this.job('track', trackRequest({ video: path, tracker: t.id, start_ms: a, end_ms: e, roi: { kind: 'box', x: 0, y: 0, w: 1, h: 1, t_ms: b.t_ms }, params: run.params, tags: this.rangeTags({ start: a, end: e }),
+      const r = await this.job('track', trackRequest({ video: path, tracker: t.id, start_ms: a, end_ms: e, roi: { kind: 'box', x: 0, y: 0, w: 1, h: 1, t_ms: b.t_ms }, params: Object.fromEntries(Object.entries(run.params || {}).filter(([k]) => t.params?.some((p) => p.key === k))), tags: this.rangeTags({ start: a, end: e }),
         cuts: throughCuts(trackCuts('document', this.scenes, a, e)), groups: b.groups, groups_only: true }), {
         owner, range: { t0: a, t1: e },
         onFrames: (batch) => { if (this.path !== path) return; appendFrames(frames, batch); this.tick++; if (!app.player.playing && !app.player.el?.seeking) app.player.seek(batch[batch.length - 1].t_ms); },
@@ -1720,8 +1739,8 @@ class Tracking {
   // ---- Track tagged scenes (lib/track-plan.js) ----
   /** The plan over the whole video (or `range`), from the scenes as drawn (proposals applied) and the panel's tracker,
    *  params and ROI (pending, else a part painted on an internal view). */
-  plan({ force = false, range = { t0: 0, t1: this.app.durationMs }, panelOnly = false, only = null } = {}) {
-    const id = this.userTrackerId, live = this.liveScenes();
+  plan({ force = false, range = { t0: 0, t1: this.app.durationMs }, panelOnly = false, only = null, trackerId = '' } = {}) {
+    const id = trackerId || this.userTrackerId, live = this.liveScenes();
     const runs = this.ghosts.filter((g) => g.source?.kind === 'tracker' && g.source.range).map((g) => ({ id: g.id, t0: g.source.range.t0, t1: g.source.range.t1, tag: g.source.tag }));
     // paw-x8we: no box is drawn any more: the bounds of a part painted on an internal view stand in for it there (only there: elsewhere
     // a plan with no box still takes the whole-frame grid, as before)
@@ -2072,7 +2091,7 @@ class Tracking {
   runsInfo() {
     return this.runs.filter((r) => !r.restored && !r.derived).map((r) => ({   // (paw-ef73.33: derived runs have no frames) runs restored from a project's ghosts lack frames / samples / events
       id: r.id, n: r.n, name: r.name, tracker: r.tracker, range: { t0: r.range.start, t1: r.range.end }, roi: r.roi,
-      scenes: r.scenes.map((s, i) => ({ t0: s.start_ms, t1: s.end_ms, sign: effSign(r, i), autoSign: s.auto_sign ?? null })),
+      scenes: r.scenes.map((s, i) => ({ t0: s.start_ms, t1: s.end_ms, sign: effSign(r, i) })),
       orient: r.orient || [], flipSpans: r.flipSpans || [], events: r.events, frames: r.frames, confidence: r.confidence, tag: r.tag || '',
       cameraMotion: r.cameraMotion ?? null, lowMotion: r.lowMotion ?? null, notes: r.notes || [], decisions: decisionsOf(r.notes),
       motion: motionStats(r.points, statWindows(this.scenes, r.range.start, r.range.end)),
@@ -2106,9 +2125,6 @@ class Tracking {
     return [...new Set([...inheritTargets(this.scenes, i, { t0: r.range.start, t1: r.range.end }, channel), ...own])]
       .filter((j) => !skipReason(live[j]) && (this.links[linkFor(this.links, this.scenes[j])]?.run ?? r.id) === r.id);
   }
-  /** A pick in the panel / on the video: for the run's scene (sceneOf; paw-9qm: that scene's source, one undo step),
-   *  else the run's default. */
-  pickChannel(id, channel, via = 'code') { const r = this.run(id); if (!r) return; const i = this.sceneOf(r); if (i >= 0) this.setSource(channel, null, id, via); else this.setChannel(id, channel, i); }
 
   // ---- paw-9qm: the signal row under the run (TrackingLane): source, pair, what it is measured against; per shot (its
   // derive: source / against / cam, undoable) or per range inside the run (the scene fact `signal`, lib/signal-source.js).
@@ -3315,22 +3331,6 @@ class Tracking {
   /** The scene the panel and the quick bar work on: the timeline's selected scene, else the one at the playhead; -1 none. */
   get currentScene() { const tl = tlFor(this.app); return this.scenes[tl.scene] ? tl.scene : sceneAt(this.scenes, playheadFrameStart(this.app.player)); }
   get channelFit() { return this.app.settings.get('tracking.channelFit', {}) || {}; }
-  /** The channel-fit controls changed: the default and every channel link take the new fit, every run using a channel
-   *  rebuilds. ponytail: one fit for all (per-link fits differ only in older files); a per-scene fit form if ever wanted. */
-  setChannelFit(patch) {
-    this.app.settings.set('tracking.channelFit', { ...this.channelFit, ...patch });
-    this.links = this.links.map((l) => (l.channel !== 'primary' ? { ...l, fit: { ...this.channelFit } } : l));
-    for (const r of this.runs) if (r.channel !== 'primary' || r.sceneChannels?.some((c) => c !== 'primary')) this.#recompose(r.id);
-  }
-  /** Motion group k (1..4) of a grid run becomes its lane channel (g{k}_proj, sidecar v3.1). */
-  pickGroup(k, id = this.selectedId) {
-    const r = this.run(id), ch = `g${k}_proj`;
-    if (!r) return;
-    if (!r.channels[ch]) { this.notice = `No ${ch} channel in this run (re-track with the current sidecar).`; return; }
-    this.app.usage?.note('tracking:pickGroup', `g${k}`);
-    this.pickChannel(id, ch, 'video');
-    this.notice = `signal: g${k}`;
-  }
 
   // ---- span labels (persisted per video in settings 'tracking.spans:<path>') ----
   saveSpans(spans) { this.spans = spans; if (this.path) this.app.settings.set('tracking.spans:' + this.path, spans); }

@@ -69,7 +69,7 @@ def test_cadence_turns_empty_without_rhythm():
     assert len(cadence_turns(t, [np.zeros((36, 64), np.float32)] * 240)) == 0
 
 
-def test_process_scene_on_by_default_and_off_leaves_the_gap():
+def test_process_scene_off_by_default_and_opt_in_fills_the_gap():
     t, th = blob()
     v = (np.sin(2 * np.pi * 2 * t / 1000) + 1) / 2
     v[100:112] = v[100]  # the tracker lost lock for half a second: one stroke flat
@@ -77,5 +77,5 @@ def test_process_scene_on_by_default_and_off_leaves_the_gap():
     _, off, _ = process_scene(list(t), v.copy(), th, {**P, "pipe_cadence_fill": False}, [])
     dec = {}
     _, on, _ = process_scene(list(t), v.copy(), th, {**P, "pipe_cadence_fill": True}, [], dec)
-    assert dflt == on and dec["cadence_fill"]["inserted"] == len(on) - len(off) and "applied" in dec["sign"]   # on by default since the fast-motion probe
+    assert dflt == off and dec["cadence_fill"]["inserted"] == len(on) - len(off) and "applied" in dec["sign"]   # opt-in (paw-dnrv)
     assert len(on) > len(off) and alternates(on[1:-1])

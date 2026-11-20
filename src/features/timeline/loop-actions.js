@@ -11,6 +11,7 @@ import { shotLabel } from './shots.js';
 import { firstSeen, loopWords } from './loop-info.js';
 import { loopLooks } from './loop-look.svelte.js';
 import { scriptOf as axisScript } from '../../lib/script-of.js';   // paw-x7w7: baked + live
+import { detectedMods } from './acts.js';
 
 /** The frame grid loops sit on (lane.js gridOf: the player's clock; paw-kxz4). */
 export const fmOf = (app) => gridOf(app.player);
@@ -87,10 +88,24 @@ export async function tileLoop(app, id) {
 // the frames' prints, else on the repeated pictures), never across a modifier boundary or a spurt marker (loops.js fxStop); a
 // drag of the tiles' end goes where it is dragged (tiledHand). Passes that go on at another phase: an offer on the tiles' end.
 const MATCH_FRAMES = 1200;   // frames read at most (50 s at 24 fps)
-/** -> {end, why: null | 'differs' | 'modifier', shift (frames: the cycle goes on that much later; 0 = no), k (the pass it goes on from)} */
+/** paw-d9pz: the first orgasm after c the tiles would run into: a Detect cumshots proposal, or the start of a shot the tagger
+ *  saw an orgasm in when the shot holding t0 (the cycle) shows none. -> ms, else Infinity. */
+export function orgasmStop(scenes, c, t0) {
+  const org = (s) => detectedMods(s).includes('orgasm'), own = (scenes || []).find((s) => s.start_ms <= t0 && t0 < s.end_ms);
+  let e = Infinity;
+  for (const s of scenes || []) {
+    if (s.start_ms > c && s.start_ms < e && !(own && org(own)) && org(s)) e = s.start_ms;
+    for (const p of s.cum || []) if (p.t > c && p.t < e) e = p.t;
+  }
+  return e;
+}
+/** -> {end, why: null | 'differs' | 'modifier' | 'orgasm' | 'end', shift (frames: the cycle goes on that much later; 0 = no), k (the pass it goes on from)}.
+ *  paw-d9pz: an automatic loop stops at its detected end (loop.auto.end); only a drag of the tiles' end goes past it. */
 export async function matchedEnd(app, loop, end, { k0 = 1, s0 = 0, look = end } = {}) {
-  const grid = fmOf(app), fm = frameLen(grid) || 1000 / 30, P = periodFor(app, loop), c1 = L.cycleEnd(loop, P), stop = L.fxStop(app.doc.fx, c1);
-  const e = Math.min(end, stop), why = stop < end ? 'modifier' : null, at = (f) => (frameLen(grid) ? frameTime(f, grid) : Math.round(f * fm));
+  const grid = fmOf(app), fm = frameLen(grid) || 1000 / 30, P = periodFor(app, loop), c1 = L.cycleEnd(loop, P);
+  const stops = [['modifier', L.fxStop(app.doc.fx, c1)], ['orgasm', orgasmStop(scenesOf(app), c1, loop.t0)], ['end', loop.auto?.end > c1 ? loop.auto.end : Infinity]];
+  const [kind, stop] = stops.reduce((a, b) => (b[1] < a[1] ? b : a));
+  const e = Math.min(end, stop), why = stop < end ? kind : null, at = (f) => (frameLen(grid) ? frameTime(f, grid) : Math.round(f * fm));
   const f0 = frameLen(grid) ? frameAt(loop.t0, grid) : Math.round(loop.t0 / fm), F = Math.max(1, Math.round(P / fm));
   // the passes are read up to `look` (past a loop the repeats marked right after: the shifted passes often are one), tiled up to e
   const L1 = Math.min(Math.max(e, look), stop), maxFrames = Math.min(MATCH_FRAMES, (frameLen(grid) ? frameAt(L1 - 1, grid) : Math.floor((L1 - 1) / fm)) - f0 + 1);
@@ -120,12 +135,14 @@ async function tileMatched(app, id, end, label) {
   const l0 = getLoop(app, id), m = l0 ? await busyHint(app, "Reading the loop's frames…", () => matchedEnd(app, l0, end, { look: Math.max(end, Math.min(lookEnd(app, l0), end + 3 * periodFor(app, l0))) })) : null, loop = getLoop(app, id);
   if (!loop || !m) return null;
   const cont = m.shift && !loop.shifted ? { at: m.end, shift: m.shift, k: m.k } : undefined;
-  if (m.end <= L.cycleEnd(loop, periodFor(app, loop))) { app.toast(m.why === 'modifier' ? 'Not tiled: a modifier or spurt marker right after the cycle' : 'Not tiled: the next pass already differs from the cycle', 'quiet'); return null; }
+  if (m.end <= L.cycleEnd(loop, periodFor(app, loop))) { app.toast(m.why === 'modifier' ? 'Not tiled: a modifier or spurt marker right after the cycle' : m.why === 'orgasm' ? 'Not tiled: an orgasm right after the cycle' : 'Not tiled: the next pass already differs from the cycle', 'quiet'); return null; }
   const r = applyTiles(app, loop, m.end, label, { tiledHand: undefined, cont, ...(loop.shifted && m.end <= loop.shifted.at ? { shifted: undefined } : {}) }, !!m.why);
   if (r && m.why) {
     const where = `Tiled ${r.tiles.length} repetition${r.tiles.length > 1 ? 's' : ''} to ${fmtMs(r.end)}`;
     const sh = cont ? ` (the same cycle ${Math.abs(cont.shift)} frame${Math.abs(cont.shift) > 1 ? 's' : ''} ${cont.shift > 0 ? 'later' : 'earlier'}: click the tiles' end to continue)` : '';
     if (m.why === 'modifier') app.toast(`${where}: a modifier or spurt marker starts there (drag the tiles' end to go past it)`, 'ok');
+    else if (m.why === 'orgasm') app.toast(`${where}: an orgasm starts there (drag the tiles' end to go past it)`, 'ok');
+    else if (m.why === 'end') app.toast(`${where}: the detected loop ends there (drag the tiles' end to go past it)`, 'ok');
     else app.toast(`${where}: the pictures differ from the cycle after that${sh}`, 'ok', cont ? { action: { label: 'Continue shifted', run: () => continueShifted(app, id) } } : {});
   }
   return r;

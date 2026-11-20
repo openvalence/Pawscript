@@ -18,6 +18,19 @@ const base = strokes(0, 60000);
 const spurt = { id: 's1', kind: 'spurt', t0: 50000, t1: 50000 };
 const doc = (o = {}) => ({ axes: { stroke: base }, scenes, fx: [], finish: null, ...o });
 
+test('paw-xu4v: the modifiers get the device profile limits, never the lanes speed color top', async () => {
+  const { getProfile } = await import('../src/lib/analyze/profiles.js');
+  const ctx = (id) => fxCtxOf({ profile: getProfile(id), maxSpeed: 400 });
+  assert.deepEqual([ctx('handy').maxSpeed, ctx('handy').minGapMs], [360, 60]);
+  assert.deepEqual([ctx('launch').maxSpeed, ctx('launch').minGapMs], [200, 100]);
+  assert.deepEqual([ctx('generic').maxSpeed, ctx('generic').minGapMs], [250, 80]);
+  assert.equal(ctx('nucleus-capstan').maxSpeed, 600, 'a kinematic profile: from its vMax over the stroke');
+  assert.equal(fxCtxOf({ maxSpeed: 400 }).maxSpeed, 400, 'no profile: the env value');
+  // a spurt under a Launch plays at most 200 pos/s
+  const out = finalScript(doc({ fx: [spurt] }), 'stroke', { profile: getProfile('launch'), maxSpeed: 400 });
+  for (let i = 1; i < out.length; i++) if (out[i].at > 49000 && out[i].at < 51000) assert.ok((Math.abs(out[i].pos - out[i - 1].pos) * 1000) / (out[i].at - out[i - 1].at) <= 200);
+});
+
 test('no layer: the final IS the points (same array); other axes never have layers', () => {
   const d = doc({ axes: { stroke: base, roll: strokes(0, 1000) } });
   assert.equal(finalScript(d), base);
@@ -55,7 +68,7 @@ test('save / load round trip: modifiers are the `modifiers` block (format 3) and
   const mods = [{ id: 'k', kind: 'knotting', t0: 30000, t1: 34000, params: { mode: 'single' } }, { id: 'o', kind: 'orgasm', t0: 41000, t1: 59000, params: {}, muted: true }, spurt];
   const d = { media: null, axes: { stroke: base }, chapters: [], bookmarks: [], loops: [], plan: [], ghosts: [], scenes: [sc(0, 60000, PEN)], fx: mods, finish: { autorange: false } };
   const text = serialize(projectDoc(d)), raw = JSON.parse(text);
-  assert.equal(raw.version, 3);
+  assert.equal(raw.version, 4);
   assert.deepEqual(raw.modifiers, mods);
   assert.equal(raw.fx, undefined);
   const back = appDocFrom(parse(text).doc ?? parse(text));
@@ -72,9 +85,9 @@ test('an older project (format 2): its effects and modifier spans become modifie
     fx: [{ id: 'k1', kind: 'knotting', t0: 11000, t1: 15000, params: { mode: 'single' } }, { id: 's1', kind: 'spurt', t0: 21000, t1: 21000 }, { id: 't1', kind: 'throb', t0: 27000, t1: 27000 }] };
   const d = appDocFrom(parse(JSON.stringify(v2)).doc ?? parse(JSON.stringify(v2)));
   const by = (k) => d.fx.filter((e) => e.kind === k);
-  assert.deepEqual(by('knotting').map((e) => [e.id, e.t0, e.t1]), [['k1', 11000, 15000]], 'a span with its tied effect IS that modifier (one, not two)');
+  assert.deepEqual(by('knotting').filter((e) => e.params.mode !== 'none').map((e) => [e.id, e.t0, e.t1]), [['k1', 11000, 15000]], 'a span with its tied effect IS that modifier (one, not two)');
   assert.deepEqual(by('orgasm').map((e) => [e.t0, e.t1, !!e.muted]), [[20000, 25000, true]], 'a span with no effect: a muted modifier (it plays as before)');
-  assert.deepEqual(by('insertion').map((e) => [e.t0, e.t1, !!e.muted]), [[0, 10000, false]], 'the insertion tag: an Insertion modifier over its span');
+  assert.deepEqual(by('knotting').filter((e) => e.params.mode === 'none').map((e) => [e.t0, e.t1, !!e.muted, e.params.to]), [[0, 10000, false, 0]], 'the insertion tag: a push (knotting, no pop) over its span');
   assert.equal(by('spurt').length, 1);
   assert.ok(by('throbbing').some((e) => e.t1 > e.t0 && e.t1 - e.t0 < 1000), 'a throb one-shot: a throbbing range one beat long');
   assert.ok(by('throbbing').some((e) => e.t0 === 26000 && e.muted), 'the throbbing span: a muted modifier');
@@ -82,6 +95,21 @@ test('an older project (format 2): its effects and modifier spans become modifie
   assert.ok(!tags.some((t) => typeof t === 'object' || t === 'insertion'), JSON.stringify(tags));
   assert.ok(!tags.includes('-orgasm'), "the detection's removal goes: the detection is a suggestion now, never a tag (paw-8b4h)");
   assert.match(d.project.converted, /older version/);
+});
+
+test('paw-ajvq an older project (format 3) with the gone kinds opens: Insertion / Pull-out become knotting pushes (their timing kept), Climax run-in is dropped, a note says so', () => {
+  const v3 = { format: 'pawproj', version: 3, axes: { stroke: [[0, 50], [40000, 50]] }, modifiers: [
+    { id: 'i', kind: 'insertion', t0: 1000, t1: 5000, params: { to: 12, arrive: 0.7, easeIn: 0.3 } },
+    { id: 'p', kind: 'pullout', t0: 6000, t1: 9000 },
+    { id: 'c', kind: 'climax', t0: 10000, t1: 20000, params: { lo: 10 } },
+    { id: 'o', kind: 'orgasm', t0: 21000, t1: 30000, params: { rampIn: 0.4, edgeMs: 2000 } }] };
+  const d = appDocFrom(parse(JSON.stringify(v3)));
+  assert.deepEqual(d.fx.map((e) => [e.id, e.kind]), [['i', 'knotting'], ['p', 'knotting'], ['o', 'orgasm']]);
+  assert.deepEqual(d.fx[0].params, { mode: 'none', to: 12, popAt: 0.7 }, 'its own depth and arrival; the eases are gone');
+  assert.deepEqual(d.fx[1].params, { mode: 'none', to: 100 });
+  assert.match(d.project.converted, /2 insertion \/ pull-out modifiers are knotting pushes now; 1 Climax run-in modifier dropped/);
+  assert.ok(isFinite(applyFx(d.axes.stroke, d.fx).length), 'it plays');
+  assert.equal(JSON.parse(serialize(d, { savedAt: '2026-11-19T00:00:00.000Z' })).version, 4, 'saved as format 4');
 });
 
 // ---- the app half: Accept writes the base only, the toggle and Flatten are single undo steps ----

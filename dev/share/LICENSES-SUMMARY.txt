@@ -23,6 +23,9 @@ unclear  Hydra 3.5 tagger (RedRocket): Apache-2.0 according to its model card on
 unclear  NVIDIA CUDA / cuBLAS / cuDNN DLLs inside the PyTorch wheel: NVIDIA's redistribution terms allow shipping them
          with an application (that is how PyTorch ships them), but no NVIDIA licence text came with the wheel.
          LICENSES\NVIDIA-CUDA-NOTE.txt.
+unclear  AMD ROCm libraries inside the AMD runtime (runtime-rocm.zip, downloaded instead of or beside runtime.zip on a
+         PC with an AMD card): built from ROCm components AMD publishes as MIT / BSD-2 / Apache-2.0, but AMD's wheels
+         carry no licence files for most of them. LICENSES\AMD-ROCm-NOTE.txt.
 
 MODELS (the models folder: trackers\.cache, trackers\.models, or the folder chosen in Settings > Models; in the full
 folder they are inside, the small download fetches the ones you pick from the Pawscript models server)
@@ -65,3 +68,14 @@ omegaconf, antlr4 runtime, iopath, portalocker, fsspec, filelock, jinja2, markup
 python-dateutil, cycler, fonttools, typing-extensions, tzdata, colorama, cffi, pycparser, setuptools, pip, pytest,
 pluggy, iniconfig, pygments                     BSD / MIT / Apache-2.0 / PSF     yes
 tqdm                                            MPL-2.0 AND MIT                  yes
+
+AMD RUNTIME (runtime-rocm.zip: python-rocm\, ffmpeg.exe, ffprobe.exe; for AMD Radeon RX 9000 / RX 7000 cards)
+---------------------------------------------------------------------------------------------------------------
+The same packages as RUNTIME above (Python 3.12.16), except:
+PyTorch 2.15.0+rocm10.2.0, torchvision 0.29.2   BSD-3-Clause (+ bundled MIT /
+                                                Apache-2.0 / BSD parts)          yes
+ROCm 10.2.0 SDK (rocm, rocm-sdk-core,           MIT / BSD-2 / Apache-2.0 with
+rocm-sdk-libraries, rocm-sdk-device-gfx*,       LLVM exceptions (AMD's list;
+amd-torch(vision)-device-gfx* kernels)          no licence files in the wheels)  unclear (see above)
+rocm-bootstrap 0.3.0 (AMD)                      MIT                              yes
+No NVIDIA CUDA libraries.

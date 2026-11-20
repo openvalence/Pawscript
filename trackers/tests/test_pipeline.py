@@ -1,10 +1,10 @@
-"""Points pipeline: local range, sub-frame turns, invert, activity gate; the score command."""
+"""Points pipeline: local range (and its floor), sub-frame turns, invert, activity gate flags, span labels; the score command."""
 import numpy as np
 import pytest
 
 from pawtrack.cli import process_scene
 from pawtrack.loops import FOLD_PARAMS
-from pawtrack.pipeline import PIPE_PARAMS, _subframe, apply_gate, gate_states, to_points
+from pawtrack.pipeline import PIPE_PARAMS, _subframe, apply_gate, finish_range, gate_states, to_points
 from pawtrack.registry import coerce
 from test_cli import run
 
@@ -27,6 +27,16 @@ def test_local_range_keeps_small_strokes():
     glob = strokes(to_points(T, v, {**P, "pipe_norm_window_ms": 0}))
     loc = strokes(to_points(T, v, P))
     assert glob < 0.3 * n_turns and loc > 0.9 * n_turns, (glob, loc)
+
+
+def test_local_range_floor_keeps_a_hold_still():
+    """paw-dnrv: strokes, then a hold whose jitter is 1 % of them. The 3 s range alone stretches the jitter to full
+    strokes; with the floor (a share of the scene's median stroke) it stays a few pos wide."""
+    v = np.where(T < 30000, 0.5 + 0.5 * np.sin(2 * np.pi * T / 800), 0.2 + 0.005 * np.sin(2 * np.pi * T / 300))
+    tail = lambda pts: [q["pos"] for q in pts if q["at"] > 34000]
+    off = tail(to_points(T, v, {**P, "pipe_norm_floor": 0.0}))
+    on = tail(to_points(T, v, P))
+    assert P["pipe_norm_floor"] > 0 and max(off) - min(off) > 60 and max(on) - min(on) < 10, (max(off) - min(off), max(on) - min(on))
 
 
 def test_subframe_turn_time():
@@ -57,8 +67,6 @@ def test_gate_states():
     st = gate_states(T, energy(), P)
     at = lambda ms: st[np.searchsorted(T, ms)]
     assert (at(1000), at(10000), at(22000), at(30000), at(55000)) == ("idle", "active", "still", "active", "idle")
-    st = gate_states(T, energy(), {**P, "pipe_gate_inside": "carry"})
-    assert st[np.searchsorted(T, 22000)] == "carry"
     st = gate_states(T, energy(), {**P, "pipe_gate_min_ms": 6000})  # inside span too short now
     assert st[np.searchsorted(T, 22000)] == "active" and st[np.searchsorted(T, 55000)] == "idle"
     st = gate_states(T, energy(), P, [{"start_ms": 0, "end_ms": 5000, "state": "carry"},
@@ -69,25 +77,43 @@ def test_gate_states():
         gate_states(T, energy(), P, [{"start_ms": 0, "end_ms": 1, "state": "nope"}])
 
 
-def test_apply_gate_idle_carry_still():
-    period = 800  # ms, strokes 10..90
-    pts = [{"at": int(a), "pos": 90 if k % 2 else 10} for k, a in enumerate(np.arange(0, 60000, period / 2))]
-    st = gate_states(T, energy(), {**P, "pipe_gate_inside": "carry"})
+def strokes800():
+    return [{"at": int(a), "pos": 90 if k % 2 else 10} for k, a in enumerate(np.arange(0, 60000, 400))]
+
+
+def moving():
+    return [np.full((4, 4), 100.0) + (i % 7) * 10 for i in range(len(T))]  # always "moving": no still spans
+
+
+def test_automatic_spans_only_flag():
+    """paw-dnrv: the gate's own idle / still spans are events; the points stay as tracked."""
+    pts = strokes800()
     ev = []
-    out = apply_gate(pts, T, st, ev)
-    assert [e["kind"] for e in ev] == ["idle", "carry", "idle"]
-    assert all(e["end_ms"] > e["t_ms"] for e in ev)
-    idle = [q["pos"] for q in out if q["at"] < 5000]
-    assert len(set(idle)) == 1  # a hold
+    out = apply_gate(pts, T, gate_states(T, energy(), P), ev)
+    assert [e["kind"] for e in ev] == ["idle", "still", "idle"] and all(e["end_ms"] > e["t_ms"] for e in ev)
+    assert out == pts
+
+
+def test_labelled_idle_holds_and_carry_keeps_the_rhythm():
+    pts = strokes800()
+    ev = []
+    labels = [{"start_ms": 0, "end_ms": 5000, "state": "idle"}, {"start_ms": 20000, "end_ms": 24000, "state": "carry"}]
+    gap = [q for q in pts if not 20000 <= q["at"] < 24000]
+    out = finish_range([(list(T), moving())], gap, P, labels, ev)
+    assert [e["kind"] for e in ev] == ["idle", "carry"]
+    assert len({q["pos"] for q in out if q["at"] < 5000}) == 1  # a hold
     car = [q for q in out if 20000 < q["at"] < 24000]
-    gaps = np.diff([q["at"] for q in car])
-    assert len(car) >= 6 and abs(np.median(gaps) - period / 2) <= 2  # the neighbour's rhythm
+    assert len(car) >= 6 and abs(np.median(np.diff([q["at"] for q in car])) - 400) <= 2  # the neighbour's rhythm
     assert {q["pos"] for q in car} <= {10, 90}
     ats = [q["at"] for q in out]
     assert ats == sorted(set(ats))
+
+
+def test_a_stroke_gap_is_left_as_tracked():
+    """paw-dnrv: no automatic carry: a 6 s gap between turns is not filled with a guessed rhythm."""
+    pts = [q for q in strokes800() if not 20000 < q["at"] < 26000]
     ev = []
-    assert apply_gate(pts, T, gate_states(T, energy(), P), ev) is not None
-    assert "still" in [e["kind"] for e in ev]
+    assert finish_range([(list(T), moving())], pts, P, None, ev) == pts and ev == []
 
 
 def test_score_command():
@@ -106,46 +132,14 @@ def test_score_command():
     assert code == 0 and ev[-1]["overall"]["f1"] == 0 and ev[-1]["overall"]["r_pos"] is None  # NaN -> null
 
 
-def test_carry_through_stroke_gap():
-    from pawtrack.pipeline import finish_range
-    pts = [{"at": int(a), "pos": 90 if k % 2 else 10} for k, a in enumerate(np.arange(0, 60000, 400))
-           if not 20000 < a < 26000]  # a 6 s gap in 800 ms strokes
-    th = [np.full((4, 4), 100.0) + (i % 7) * 10 for i in range(len(T))]  # always "moving": no still spans
-    ev = []
-    out = finish_range([(list(T), th)], pts, {**P, "pipe_carry_gaps": True}, None, ev)
-    assert [e["kind"] for e in ev] == ["carry"] and 19000 < ev[0]["t_ms"] < 21000
-    gap = [q["at"] for q in out if 20500 < q["at"] < 25500]
-    assert len(gap) >= 10 and abs(np.median(np.diff(gap)) - 400) <= 2
-    ev = []
-    finish_range([(list(T), th)], pts, {**P, "pipe_carry_gaps": False}, None, ev)
-    assert ev == []
-
-
-def test_energy_sign():
-    from pawtrack.pipeline import energy_sign
-    rng = np.random.default_rng(0)
-    t = T[:720]
-    v = 0.5 + 0.5 * np.sin(2 * np.pi * t / 1000)
-    th = [rng.normal(0, 1 + 20 * (1 - x), (8, 8)) for x in v]  # the picture churns at the low end
-    info = {}
-    assert energy_sign(t, v, th, P, info) == 1 and energy_sign(t, 1 - v, th, P) == -1
-    assert info["score"] > 0 and info["energy_top"] < info["energy_bottom"]
-
-
-def test_orgasm_and_climax_labels():
-    """orgasm label -> synthesized deep pulses (what the v3 "climax" label did); climax label -> the fast run-in:
-    points kept as tracked, only the event."""
-    from pawtrack.pipeline import finish_range
-    pts = [{"at": int(a), "pos": 90 if k % 2 else 10} for k, a in enumerate(np.arange(0, 60000, 400))]
-    th = [np.full((4, 4), 100.0) + (i % 7) * 10 for i in range(len(T))]
+def test_orgasm_and_climax_labels_only_flag():
+    """climax (the fast run-in) and orgasm (v4.62: no more synthesized pulses) keep the tracked points."""
+    pts = strokes800()
     ev = []
     labels = [{"start_ms": 24000, "end_ms": 30000, "state": "climax"}, {"start_ms": 30000, "end_ms": 40000, "state": "orgasm"}]
-    out = finish_range([(list(T), th)], pts, P, labels, ev)
+    out = finish_range([(list(T), moving())], pts, P, labels, ev)
     assert [e["kind"] for e in ev] == ["climax", "orgasm"] and ev[1]["t_ms"] == pytest.approx(30000, abs=42)
-    c = [q for q in out if 30100 < q["at"] < 39800]
-    assert {q["pos"] for q in c} == {1, 34} and abs(np.median(np.diff([q["at"] for q in c])) - 1000 / 6.8) <= 2
-    r = [q for q in out if 24100 < q["at"] < 29900]
-    assert {q["pos"] for q in r} == {10, 90}  # run-in: the tracked strokes
+    assert out == pts
 
 
 def test_rdp_terminates_on_nan_repeated_and_reversed_times():

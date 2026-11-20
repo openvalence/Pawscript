@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeRun, newFrames } from '../src/lib/runs.js';
 import { channelPatch, anchorStrokes } from '../src/lib/runs-channel.js';
+import { deriveClean } from '../src/lib/rederive.js';
 import { runOf, T, N, ASPECT } from './fusion-synth.mjs';
 import { BEFORE } from './runs-anchor.before.mjs';
 
@@ -45,13 +46,16 @@ const CASES = {
   driftStrokes: () => [rawRun(0.6), 'g2_proj', { strokes: {} }],
 };
 
+// paw-dnrv: the strokes step's undrift is opt-in since; the dump was made with it on
+const withUndrift = (d) => (d?.smart || d?.strokes ? { ...d, strokes: { ...(d.strokes || {}), undrift: true } } : d);
 test("'middle' = the points before the anchor existed, number for number (every path)", () => {
   for (const [k, mk] of Object.entries(CASES)) {
-    const [run, ch, d] = mk(), m = pts(run, ch, d);
-    assert.deepEqual({ at: m.at, pos: m.pos }, BEFORE[k], k);
+    const [run, ch, d] = mk(), m = pts(run, ch, d), u = pts(run, ch, withUndrift(d));
+    assert.deepEqual({ at: u.at, pos: u.pos }, BEFORE[k], k);
     assert.equal(m.pinned, null, k);
     const h = turns(m, ...HALF);
-    if (k !== 'driftClassic') assert.ok(Math.abs(mean(h.tops) + mean(h.bottoms) - 100) < 12, `${k}: the half strokes sit round the middle (${mean(h.bottoms).toFixed(1)}..${mean(h.tops).toFixed(1)})`);
+    if (!k.startsWith('drift')) assert.ok(Math.abs(mean(h.tops) + mean(h.bottoms) - 100) < 12,   // a raw drift rides through 'middle' (undrift is opt-in); 'in' / 'out' take it out
+      `${k}: the half strokes sit round the middle (${mean(h.bottoms).toFixed(1)}..${mean(h.tops).toFixed(1)})`);
   }
 });
 
@@ -94,4 +98,14 @@ test('anchorStrokes: a wobble at a turn rides along, a hold is one turn, the end
   assert.deepEqual(anchorStrokes([[0, 1, 'turn', 'x']], 'in'), [[0, 1, 'turn', 'x']]);
   assert.equal(anchorStrokes(q, 'middle'), q);
   assert.deepEqual(anchorStrokes([[0, 50, 'end'], [10, 20, 'turn', 'b'], [20, 60, 'turn']], 'in'), [[0, 30, 'end'], [10, 0, 'turn', 'b'], [20, 40, 'turn']]);
+});
+
+test('paw-d323: the strokes step takes the drift out of a raw channel, not of the fused one; a shot setting wins', () => {
+  const run = rawRun(0.6), same = (x, y) => assert.deepEqual({ at: x.at, pos: x.pos }, { at: y.at, pos: y.pos });
+  same(pts(run, 'g2_proj', { strokes: {} }), pts(run, 'g2_proj', { strokes: { undrift: true } }));
+  assert.notDeepEqual(pts(run, 'g2_proj', { strokes: {} }).pos, pts(run, 'g2_proj', { strokes: { undrift: false } }).pos, 'off by hand: the drift stays');
+  same(pts(fz, 'fused', { smart: true }), pts(fz, 'fused', { smart: true, strokes: { undrift: false } }));
+  assert.notDeepEqual(pts(fz, 'fused', { smart: true }).pos, pts(fz, 'fused', { smart: true, strokes: { undrift: true } }).pos, 'on by hand: undrift');
+  assert.equal(deriveClean({ strokes: { undrift: false } }).strokes.undrift, false, 'the setting survives a load');
+  assert.equal(deriveClean({ strokes: { undrift: 1 } }).strokes.undrift, undefined);
 });

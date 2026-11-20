@@ -18,8 +18,8 @@ export const slotKey = (slot, sn) => (slot < 4 ? 'g' + (slot + 1) : slot === 4 ?
 /**
  * The channels of the run scene [tMin, tMax) on show (every slot with points on any of its frames, so a part hidden for a
  * moment keeps its row): [{slot, key, label, name (a pinned group's name | null), stem (its channel stem, 'sem_c1_penis' |
- * 'g2' | null)}], pinned parts first (by name; slot -1: one without points of its own on the frames), then g1..g4, still,
- * unassigned.
+ * null)}], pinned parts first (by name; slot -1: one without points of its own on the frames), then the group pass' moving
+ * groups g1..g4 (points only: no channels of their own), still, unassigned.
  */
 export function dockChannels(run, fr, tMin = -Infinity, tMax = Infinity) {
   if (!fr?.ov?.length) return [];
@@ -42,7 +42,7 @@ export function dockChannels(run, fr, tMin = -Infinity, tMax = Infinity) {
     if (any) { const id = sn.indexOf(name) + 1; part(name, id ? 5 + id : -1); }
   }
   out.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  for (let s = 0; s < 4; s++) if (fin(has[s])) out.push({ slot: s, key: 'g' + (s + 1), label: names['g' + (s + 1)]?.label ? `${names['g' + (s + 1)].label} ${s + 1}` : 'g' + (s + 1), name: null, stem: 'g' + (s + 1) });
+  for (let s = 0; s < 4; s++) if (fin(has[s])) out.push({ slot: s, key: 'g' + (s + 1), label: 'g' + (s + 1), name: null, stem: null });
   if (fin(has[4])) out.push({ slot: 4, key: 'still', label: 'Still', name: null, stem: null });
   if (fin(has[5])) out.push({ slot: 5, key: 'other', label: 'Unassigned', name: null, stem: null });
   return out;

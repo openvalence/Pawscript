@@ -14,17 +14,16 @@ const NOTE = {
       centroid_y: { std: 0.0418, travel: 0.129, valid: 0.5 },
     },
     axis: { mode: 'auto', deg: 90 }, camera: { cam_conf: 0.75, std: 0.0416 },
-    sign: { mode: 'auto', auto: -1, invert: false, applied: -1, energy_top: 63.6, energy_bottom: 25.5, score: -0.428 },
+    sign: { mode: 'shaft', invert: false, applied: -1 },
     cadence_fill: { inserted: 2 }, low_motion: { ptp_px: 0.9, thr_px: 4 }, held_input: 'held input auto: scene step 2 ratio 0.5',
   },
 };
 
-test('decisionsOf: records by scene_index; old notes keep just the message; other codes ignored', () => {
+test('decisionsOf: records by scene_index; other codes (and v3 primary_used notes) ignored', () => {
   const d = decisionsOf([{ code: 'low_motion', message: 'x', scene_index: 0 }, NOTE, { code: 'primary_used', message: 'points primary auto -> dist01', scene_index: 2 }]);
-  assert.equal(d.length, 3);
+  assert.equal(d.length, 2);
   assert.equal(d[0], undefined);
   assert.equal(d[1].chosen, 'proj'); assert.equal(d[1].message, NOTE.message);
-  assert.deepEqual(d[2], { message: 'points primary auto -> dist01' });
   assert.deepEqual(decisionsOf(undefined), []);
   assert.equal(decisionsOf([{ code: 'primary', message: 'm' }])[0].message, 'm');   // no scene_index: scene 0
 });
@@ -44,20 +43,19 @@ test('decisionLines: axis, sign, camera, low motion, cadence fill, held input', 
   const L = decisionLines(NOTE.data);
   assert.equal(L.length, 6);
   assert.match(L[0], /^axis: auto 90°/);
-  assert.equal(L[1], 'sign: auto → −1 (score -0.428: picture motion at the top 63.6, at the bottom 25.5) · applied −1');
+  assert.equal(L[1], 'sign: shaft · applied −1');
   assert.equal(L[2], 'camera: conf 0.75 · moves 0.0416 fh (std)');
   assert.match(L[3], /^low motion: 0.9 px peak-to-peak < 4 px/);
   assert.equal(L[4], 'cadence fill: 2 strokes inserted');
   assert.equal(L[5], 'held input: held input auto: scene step 2 ratio 0.5');   // a string (message) is shown as is
-  assert.equal(decisionLines({ sign: { mode: 'auto', auto: null, why: 'too few strokes', invert: true, applied: -1 } })[0],
-    'sign: auto undecided (too few strokes), inverted · applied −1');
+  assert.equal(decisionLines({ sign: { mode: 'keep', invert: true, applied: -1 } })[0], 'sign: keep, inverted · applied −1');
   assert.deepEqual(decisionLines({ message: 'old' }), []);
   assert.equal(decisionLines({ seed: { frame_ms: 72300, mode: 'roi', reason: 'the ROI was drawn at 72310 ms' } })[0], 'seed: roi at 72.3 s (the ROI was drawn at 72310 ms)');
 });
 
 test('primaryHow: a fixed sentence per primary', () => {
   assert.match(primaryHow('proj_cam'), /camera removed, projected on the stroke axis, normalised 0..1 per scene/);
-  assert.match(primaryHow('g3_proj'), /^motion group 3's centroid/);
+  assert.equal(primaryHow('g3_proj'), '');   // paw-57dw: no motion groups
   assert.match(primaryHow('p0_y'), /^point 1's y position \(image up = higher\)/);
   assert.equal(primaryHow('nope'), '');
   assert.equal(primaryHow(undefined), '');

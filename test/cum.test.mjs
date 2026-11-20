@@ -1,7 +1,7 @@
 // Cumshot proposals (src/lib/cum.js) and the sidecar request (src/lib/protocol.js cumRequest).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cumProposals, cumShown, cumPlacement, linkedSpurt, cumThreshold, CUM_STRONG, cumTipText } from '../src/lib/cum.js';
+import { cumProposals, cumShown, cumPlacement, velOfScore, cumThreshold, CUM_STRONG, cumTipText } from '../src/lib/cum.js';
 import { cumRequest } from '../src/lib/protocol.js';
 
 const RES = { spurts: [
@@ -34,24 +34,15 @@ test('cumPlacement: skips frames that have a spurt, snaps, never doubles', () =>
   const list = [{ t: 1000, score: 0.9 }, { t: 1500, score: 0.3 }, { t: 1510, score: 0.6 }, { t: 2000, score: 0.1 }];
   const fx = [{ id: 'a', kind: 'spurt', t0: 1020, t1: 1020 }, { id: 'b', kind: 'shape', t0: 1900, t1: 2100 }];
   const snap = (t) => Math.round(t / 40) * 40;
-  assert.deepEqual(cumPlacement(fx, list, { frameMs: 40, snap }), [{ t0: 1520 }, { t0: 2000 }]);   // 1000 -> the spurt at 1020; 1510 -> 1520, taken by 1500
-  assert.deepEqual(cumPlacement(fx, list, { frameMs: 40, snap, threshold: 0.5 }), [{ t0: 1520 }]);
+  assert.deepEqual(cumPlacement(fx, list, { frameMs: 40, snap }), [{ t0: 1520, vel: 0.8 }, { t0: 2000, vel: 0.6 }]);   // 1000 -> the spurt at 1020; 1510 -> 1520, taken by 1500
+  assert.deepEqual(cumPlacement(fx, list, { frameMs: 40, snap, threshold: 0.5 }), [{ t0: 1520, vel: 1.1 }]);
   assert.deepEqual(cumPlacement([], [], {}), []);
 });
 
-test('cumPlacement: joins the linked spurt group of the scene', () => {
-  const fx = [
-    { id: 'x', kind: 'spurt', t0: 500, t1: 500, link: 'L0', params: { amount: 10 } },    // another scene
-    { id: 'y', kind: 'spurt', t0: 1100, t1: 1100, link: 'L1', params: { amount: 40, count: 3 } },
-    { id: 'z', kind: 'knotting', t0: 1000, t1: 3000, link: 'K' },
-  ];
-  assert.deepEqual(linkedSpurt(fx, SCENE), { link: 'L1', params: { amount: 40, count: 3 } });
-  assert.equal(linkedSpurt(fx, { start_ms: 2000, end_ms: 3000 }), null);
-  const out = cumPlacement(fx, [{ t: 2000, score: 0.9 }], { span: SCENE });
-  assert.deepEqual(out, [{ t0: 2000, link: 'L1', params: { amount: 40, count: 3 } }]);
-  out[0].params.amount = 1;
-  assert.equal(fx[1].params.amount, 40, 'params are copied');
-  assert.deepEqual(cumPlacement(fx, [{ t: 2000, score: 0.9 }], {}), [{ t0: 2000 }], 'no span: no link');
+test('paw-d1g7 cumPlacement: each placed proposal is a marker with a velocity from its score (no spurt link: the orgasm holds the shape)', () => {
+  assert.deepEqual([0, 0.25, 0.5, 0.9, 1, 3].map(velOfScore), [0.5, 0.75, 1, 1.4, 1.5, 1.5]);
+  const fx = [{ id: 'y', kind: 'spurt', t0: 1100, t1: 1100, link: 'L1', params: { amount: 40 } }];
+  assert.deepEqual(cumPlacement(fx, [{ t: 2000, score: 0.9 }], {}), [{ t0: 2000, vel: 1.4 }]);
 });
 
 test('cumRequest shape', () => {

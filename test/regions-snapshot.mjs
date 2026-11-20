@@ -93,7 +93,7 @@ export const DOCS = {
     { id: 'm1', kind: 'orgasm', t0: 8000, t1: 10500, params: {} },
     { id: 'm2', kind: 'knotting', t0: 2000, t1: 5000, params: { mode: 'single' } },
     { id: 'm3', kind: 'idle', t0: 15000, t1: 18000, params: {} },
-    { id: 'm4', kind: 'insertion', t0: 11000, t1: 12000, params: {} },
+    { id: 'm4', kind: 'knotting', t0: 11000, t1: 12000, params: { mode: 'none', to: 0 } },
   ], script: strokes([[0, 15000]]) },
   range: { scenes: shots([4000, 4000, 4000, 3000], [
     { tags: ['anal', 'penetration'], range: { lo: 20, hi: 70 } },

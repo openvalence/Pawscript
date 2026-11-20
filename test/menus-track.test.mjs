@@ -86,9 +86,9 @@ test('Track: at most 12 entries at its top level (the everyday commands, then a 
 });
 
 test('source menu words: no channel id in a label; a channel without data in the shot is known', () => {
-  const words = ['primary', 'proj_cam', 'proj', 'cam_x', 'cam_y', 'g1_proj', 'g2p1_rel', 'pair_proj', 'who_c1_proj', 'who_pair_proj', 'p0_y', 'centroid_auto'].map(channelWord);
+  const words = ['primary', 'proj_cam', 'proj', 'cam_x', 'cam_y', 'who_c1_proj', 'who_pair_proj', 'p0_y', 'centroid_auto'].map(channelWord);
   for (const w of words) assert.doesNotMatch(w, /_|\bg\d|\bproj\b|\bcam [xy]\b|sidecar|\brel\b/, w);
-  assert.deepEqual(words.slice(0, 7), ["Tracker's choice", 'All points, camera removed', 'All points', 'Camera left / right', 'Camera up / down', 'Body 1', 'Body 2 part 1']);
+  assert.deepEqual(words.slice(0, 5), ["Tracker's choice", 'All points, camera removed', 'All points', 'Camera left / right', 'Camera up / down']);
   const run = { channels: { g1_proj: { t: [0, 100, 200, 300], v: [NaN, NaN, 0.4, 0.6] }, sem_c1_hips_x: { t: [0, 100], v: [0.1, 0.2] }, sem_c2_penis_x: { t: [0, 100], v: [NaN, NaN] } } };
   assert.equal(channelHasData(run, 'g1_proj', 0, 200), false, 'only NaN in the shot');
   assert.equal(channelHasData(run, 'g1_proj', 0, 400), true);

@@ -2,7 +2,6 @@
 // more; lib/script-of.js composes the live runs / fills with it (each a replace over its shot) and Bake writes the result.
 import { normalize, slice, nearest, replaceRange, cleanJoins } from '../../lib/core/script.js';
 import { liveFx, fxParams, spurtKeys } from '../../lib/fx.js';
-import { DEFAULTS } from '../../lib/gen/util.js';
 
 /**
  * script: the axis's Script; ghost: the ghost's actions (normalised here: ghosts come from other files/agents).
@@ -40,11 +39,11 @@ export function cleaned(script, ats, joins, clean) {
 }
 
 /** The live effects as join cleanup input: their ends are joins, their own spans are kept (a spurt's ringing, a small
- *  knot's steps are the effect, not glitches). A spurt's span is its ringing window (its keys at the speed cap). */
-export function joinsOfFx(fx, maxSpeed = DEFAULTS.maxSpeed) {
+ *  knot's steps are the effect, not glitches). A spurt's span is its ringing window (its keys). */
+export function joinsOfFx(fx) {
   const keep = liveFx(fx).map((e) => {
     if (e.kind !== 'spurt') return [e.t0, e.t1];
-    const K = spurtKeys(fxParams(e), maxSpeed);
+    const K = spurtKeys(fxParams(e));
     return [e.t0 + K[0][0], e.t1 + K[K.length - 1][0]];
   });
   return { joins: keep.flat(), keep };

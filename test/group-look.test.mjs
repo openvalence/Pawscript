@@ -147,3 +147,36 @@ test('ditherGeom: pitch scales with the setting, the dot is its own share of the
   assert.equal(ditherGeom(1, 100, 1).cd, 2);   // never below 2 px
   assert.equal(ditherGeom(3, 1, 1).s, 1);     // a dot is at least 1 px
 });
+test('the shimmer drives the dither softly: density kept, no one-frame blinks; the grow fills from the middle out, then fades', async () => {
+  const { causticField, growAt, shimmerOn, GROW } = await import('../src/features/tracking/group-look.js');
+  const N = 96, idx = (k) => [(k % N) - 48, Math.floor(k / N) - 48];
+  for (const c of [0.3, 0.5]) {
+    let st = 0, an = 0, n = 0, tog = 0, blink = 0, prev = null, p2 = null;
+    for (let k = 0; k < N * N; k++) st += ditherOn(...idx(k), c) ? 1 : 0;
+    for (let t = 0; t < 9000; t += 33) {
+      const f = causticField(-48, -48, N, N, t), o = new Uint8Array(N * N);
+      for (let k = 0; k < o.length; k++) { const [i, j] = idx(k); o[k] = shimmerOn(i, j, c, f[k], 0, false, prev ? prev[k] : ditherOn(i, j, c)) ? 1 : 0; an += o[k]; n++; }
+      if (prev) for (let k = 0; k < o.length; k++) { if (o[k] !== prev[k]) tog++; if (p2 && o[k] === p2[k] && o[k] !== prev[k]) blink++; }
+      p2 = prev; prev = o;
+    }
+    assert.ok(Math.abs(an / n - st / (N * N)) < 0.03, `coverage ${c}: density ${(an / n).toFixed(3)} vs static ${(st / (N * N)).toFixed(3)}`);
+    assert.ok(tog > 0 && tog / (n - N * N) < 0.005, `cells toggle, a few at a time (${tog})`);
+    assert.equal(blink, 0, 'no cell is on (or off) for one frame only');
+  }
+  const f = causticField(-48, -48, N, N, 2000), g = causticField(-48, -48, N, N, 2033);
+  assert.ok(f.every((v, k) => Math.abs(v - g[k]) < 0.04), 'broad, slow swells');
+  assert.equal(causticField(5, 7, 1, 1, 1000)[0], causticField(-30, -20, 60, 40, 1000)[(7 + 20) * 60 + 5 + 30], 'a cell is the same whatever box it is computed in (anchored)');
+  // the grow: a front moving monotonically outward, everything behind it held until the fade
+  const R = 36, front = (t) => { let d = 0; while (d <= R && growAt(d, t, R) >= 0.5) d += 0.25; return d; };
+  let last = 0;
+  for (let t = 30; t <= GROW.ms * GROW.fill; t += 30) { const fr = front(t); assert.ok(fr >= last, `the front never steps back (${t} ms)`); last = fr; }
+  assert.ok(front(GROW.ms * GROW.fill) > R, 'it reaches the edge');
+  for (let d = 0; d <= R; d += 3) {
+    let prev = 0;
+    for (let t = 0; t <= GROW.ms * GROW.fill; t += 15) { const v = growAt(d, t, R); assert.ok(v >= prev - 1e-9, `a cell behind the front stays on (d ${d}, ${t} ms)`); prev = v; }
+  }
+  assert.ok(growAt(0, GROW.ms * 0.9, R) < growAt(0, GROW.ms * 0.6, R), 'then it fades');
+  assert.equal(growAt(10, -1, R), 0); assert.equal(growAt(10, GROW.ms, R), 0);
+  let fill = 0; for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) fill += shimmerOn(i, j, 0.12, 0, growAt(0, GROW.ms * 0.5, R)) ? 1 : 0;
+  assert.ok(fill >= 50, `the part fills in (${fill} of 64 at sparse coverage, about 8 static)`);
+});

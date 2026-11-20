@@ -9,7 +9,7 @@
 //   Its runs: tracker runs over just its range, both ways from seeds[0] (tracking.svelte.js runTrack with these
 //     groups; run.mod = the modifier's id, run.tag 'mod', run.seeds = the frames prompted). They never replace the shot's
 //     run (their ghost is of kind 'modrun': no shot, plan, link or lane takes them), several may coexist.
-// The part to paint per kind: ARM (the first is armed; insertion / pull-out / knotting also want the opening it enters:
+// The part to paint per kind: ARM (the first is armed; knotting, its push / pull too, also wants the opening it enters:
 // the inside fraction needs both).
 import { isBlank, isOffscreen } from './acts.js';
 
@@ -18,11 +18,9 @@ export const ARM = {
   orgasm: [['c2', 'balls'], ['c2', 'penis']],
   throbbing: [['c2', 'penis'], ['c2', 'balls']],
   knotting: [['c2', 'penis'], ['c1', 'anus']],   // paw-njnf: the knot is a section of the penis (K), never a part to arm
-  insertion: [['c2', 'penis'], ['c1', 'anus']],
-  pullout: [['c2', 'penis'], ['c1', 'anus']],
 };
 /** Kinds whose depth is how much of the shaft is inside (a SAM mask of the shaft + the opening measures it). */
-export const INSIDE = new Set(['insertion', 'pullout', 'knotting']);
+export const INSIDE = new Set(['knotting']);
 export const SAM = 'sam2_mask';
 const WORD = { sam2_mask: 'SAM', tapnext_points: 'TAPNext', cotracker_points: 'CoTracker' };
 /** A tracker's short word ('SAM', 'TAPNext', its name up to a bracket). */
@@ -130,7 +128,7 @@ export function modMeasure(run) {
 
 // ---- stage 4: the modifier's measure into the script (owner: "the sam run + tapnext points would give accurate area +
 // motion") ----
-// Over an insertion / pull-out / knotting modifier with an ASSIGNED source that measures how much of the shaft is inside
+// Over a knotting modifier (its push / pull too) with an ASSIGNED source that measures how much of the shaft is inside
 // (its own SAM run, or a shaft of the shot's run: src {run, ch: 'sem_<name>_in'}), the shot's signal takes that depth
 // where SAM is confident, cross-faded at the modifier's ends and wherever the confidence drops, through the range
 // override splice (lib/signal-source.js splice, BLEND_MS; runs-channel channelPatch): the shot's fused stroke signal keeps
@@ -139,8 +137,8 @@ export function modMeasure(run) {
 // No assignment (or a default one), muted / baked, under MEASURE_SHARE confident: nothing changes.
 export const MEASURE_SHARE = 0.3;
 const CONF_LO = 0.3, CONF_HI = 0.6;   // the measure's weight ramps from 0 to 1 over this confidence (CONF_MIN 0.5 inside)
-/** The owner set the curve by hand (any param but the knotting mode). */
-export const ownCurve = (m) => Object.keys(m?.params || {}).some((k) => k !== 'mode');
+/** The owner set the curve by hand (any param but the knotting mode; a push / pull's `to` is how it was made). */
+export const ownCurve = (m) => Object.keys(m?.params || {}).some((k) => k !== 'mode' && !(k === 'to' && m.params.mode === 'none'));
 /** Modifier m's measured depth from run (its src.ch, else its first shaft): {t, v (depth: 1 - inside, larger = out),
  *  w (0..1 weight from the confidence)} over [m.t0, m.t1], or null (not a measure, or confident under MEASURE_SHARE). */
 export function measureOf(m, run) {

@@ -11,7 +11,7 @@ from pawtrack import points as C
 WHOLE = {"kind": "box", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
 P = {"axis": "vertical", "axis_x0": 0.5, "axis_y0": 0.3, "axis_x1": 0.5, "axis_y1": 0.7, "gap_ms": 1000,
      "primary": "auto", "box_seed": "grid", "box_points": 64, "reseed_every_ms": 1000, "retire_ms": 2000,
-     "max_points": 0, "held_input": "off", "seed_frame": "first", "sem_groups": True, "group_labels": False}
+     "max_points": 0, "held_input": "off", "seed_frame": "first", "sem_groups": True}
 RNG = np.random.default_rng(0)
 BG = cv2.GaussianBlur(RNG.integers(0, 255, (180, 320, 3), dtype=np.uint8), (3, 3), 0)
 FRAMES = [(round(k * 1000 / 30), BG) for k in range(60)]
@@ -352,7 +352,7 @@ def test_groups_only_tracks_a_late_group_both_ways_and_stops_where_lost(monkeypa
 
     tail = (0.6, 0.1, 0.9, 0.4)
     groups = cli.parse_groups([{"name": "tail", "who": "c2", "part": "tail", "poly": SQ(*tail), "t_ms": frames[40][0]}])
-    p = P | {"groups": groups, "box_points": 64, "groups_only": True, "reseed_every_ms": 0, "group_labels": False}
+    p = P | {"groups": groups, "box_points": 64, "groups_only": True, "reseed_every_ms": 0}
     NOTES.clear()
     out = list(C.wrap(seen_25_to_70, WHOLE, frames, p, lambda vp, cf: 1.0, None, work_wh=(160, 120)))
     ts = [o[0] for o in out]

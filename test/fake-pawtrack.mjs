@@ -25,12 +25,9 @@ const own = [
   P('invert', 'Invert', 'bool', false),
 ];
 const shared = [
-  P('pipe_sign', 'Direction', 'choice', 'keep', null, null, ['keep', 'auto']),
   P('pipe_invert', 'Invert direction', 'bool', false),
   P('pipe_gate', 'Activity gate', 'choice', 'motion', null, null, ['off', 'motion']),
   P('pipe_gate_motion', 'Gate motion threshold', 'float', 4.0, 0, 50),
-  P('pipe_carry_gaps', 'Carry across gaps', 'bool', true),
-  P('pipe_climax_rate', 'Orgasm pulses/s', 'float', 6.8, 1, 20),
   P('pipe_norm_window_ms', 'Norm window (ms)', 'int', 3000, 0, 20000),
   P('pipe_min_gap_ms', 'Min point gap (ms)', 'int', 120, 20, 1000),
   P('pipe_smooth_ms', 'Smoothing window (ms)', 'int', 100, 0, 2000),
@@ -254,14 +251,11 @@ async function track(req) {
     }
     out({ type: 'progress', done: total, total, stage: 'points' });
   }
-  // scenes: split at every 5 s cut; sign = auto_sign (alternating, for show) x invert
+  // scenes: split at every 5 s cut; sign = invert
   const cuts = [req.start_ms];
   for (let c = Math.ceil((req.start_ms + 1) / 5000) * 5000; c < req.end_ms; c += 5000) cuts.push(c);
   const lastEnd = samples.length ? samples[samples.length - 1][0] + Math.round(frameMs) : req.end_ms;
-  const scenes = cuts.map((c, i) => {
-    const auto = p.pipe_sign === 'auto' ? (i % 2 ? -1 : 1) : null;
-    return { start_ms: c, end_ms: i + 1 < cuts.length ? cuts[i + 1] : lastEnd, sign: (auto ?? 1) * (p.pipe_invert ? -1 : 1), auto_sign: auto };
-  });
+  const scenes = cuts.map((c, i) => ({ start_ms: c, end_ms: i + 1 < cuts.length ? cuts[i + 1] : lastEnd, sign: p.pipe_invert ? -1 : 1 }));
   // events: the first 600 ms is idle; user spans are echoed (active ones produce nothing); a long still run in scene 1
   events.push({ t_ms: req.start_ms, end_ms: Math.min(req.end_ms, req.start_ms + 600), kind: 'idle', label: 'idle 0.6 s' });
   if (req.end_ms - req.start_ms > 3000) events.push({ t_ms: req.start_ms + 1500, end_ms: req.start_ms + 2500, kind: 'still', label: 'still 1.0 s' });

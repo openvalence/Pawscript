@@ -93,17 +93,15 @@ test('hudRows: frame numbers; hovered group / point; unknown channels under othe
   const r = run(), fr = frames();
   const rows = hudRows({ run: r, t: 33 }), by = Object.fromEntries(rows.map((x) => [x.k, x.v]));
   assert.equal(by.primary, 'proj 0.400');
-  assert.equal(by['pair distance'], '0.250');
-  assert.equal(by['moving groups'], '2');
+  assert.ok(!('pair distance' in by) && !('moving groups' in by), 'paw-57dw: no motion-group rows');
   assert.equal(by['tracker confidence'], '0.80');
   assert.ok(!('other' in by) && !('lane' in by));
   assert.equal(hudRows({ run: r, t: 33, lane: 'g1_proj' }).find((x) => x.k === 'lane').v, 'g1_proj 0.500');
   const F = frameBodies(fr, 2, {});
   const g = hudRows({ run: r, t: 67, hover: { g: 1 }, body: F.G[0], aspect: 1 }), gb = Object.fromEntries(g.map((x) => [x.k, x.v]));
-  assert.match(gb.g1, /^3 pts · share 50.0 %$/);
-  assert.equal(gb['cam-free'], '0.320, 0.500');
+  assert.equal(gb.g1, '3 pts');
+  assert.ok(!('cam-free' in gb), 'a moving group has no channels of its own');
   assert.equal(gb.stroke, '0.600');   // proj, under its plain name
-  assert.equal(gb.g1_proj, '0.900');
   assert.equal(gb.g1_scale, '1.200');   // a new per-group channel shows generically
   assert.equal(gb.weird_metric, '9.000');   // unknown channel: 'other'
   assert.match(gb.speed, /h\/s$/);
@@ -215,26 +213,20 @@ test('v3.4 parts: nested in their body, hit-tested, named in the HUD; pts[4] is 
   const r = { name: 'r', params: {}, samples: series([[0, 0.5]]), scenes: [{ start_ms: 0, end_ms: 100, groups: { g1: { label: 'body' }, g1p1: { label: 'balls' } } }],
     channels: { g1_n: ch(0.6), g1p1_n: ch(0.05), g1p1_rel: ch(0.3), g1p1_scale: ch(-0.02), g1p1_proj: ch(0.7), g1_scale: ch(0.01), g1_rot: ch(0.02) } };
   const rows = hudRows({ run: r, t: 0, hover: { g: 1, p: 1 }, body: b }), by = Object.fromEntries(rows.map((x) => [x.k, x.v]));
-  assert.equal(by['g1p1 · balls'], '3 pts · share 5.0 %');
-  assert.equal(by.g1p1_rel, '0.300'); assert.equal(by.g1p1_scale, '-0.020');
-  assert.ok(!rows.some((x) => x.k === 'other'), 'part channels are not "other"');
-  assert.ok(hudRows({ run: r, t: 0, hover: { g: 1 }, body: b }).some((x) => x.k === 'g1 · body'));
-  // drawing: labels carry the names; the extra-ring path draws only the 7th element (one ring)
+  assert.equal(by.g1p1, '3 pts');
+  assert.ok(hudRows({ run: r, t: 0, hover: { g: 1 }, body: b }).some((x) => x.k === 'g1'));
+  // drawing: labels carry the numbers (no tagger names for motion groups, paw-57dw); the extra-ring path draws only the 7th element (one ring)
   const texts = [], arcs = [];
   const ctx = new Proxy({}, { get: (o, k) => (k in o ? o[k] : k === 'fillText' ? (t) => texts.push(t) : k === 'arc' ? (...a) => arcs.push(a) : () => {}), set: (o, k, v) => { o[k] = v; return true; } });
-  const opts = { ...blobOpts((k, d) => d), hulls: true, points: false, extra: true, affine: false, axis: false, camera: false, trails: false };
+  const opts = { ...blobOpts((k, d) => d), hulls: true, points: false, extra: true, axis: false, camera: false, trails: false };
   drawBlobsView(ctx, { map: (x, y) => [x * 100, y * 100] }, fr, 0, { colors: ['#1FC3FA', 'b', 'c', 'd', 'e'], ink: { text: 'w', axis: 'o', pair: 'p', grid: 'g' }, opts, run: r, aspect: 1 });
   texts.length = 0;   // labels need room (a low-priority one with no clear place hides): a 400 px picture
   drawBlobsView(ctx, { map: (x, y) => [x * 400, y * 400] }, fr, 0, { colors: ['#1FC3FA', 'b', 'c', 'd', 'e'], ink: { text: 'w', axis: 'o', pair: 'p', grid: 'g' }, opts, run: r, aspect: 1 });
-  assert.ok(texts.includes('body 1') && texts.includes('p1 · balls'), texts.join('|'));   // short by default
+  assert.ok(texts.includes('g1') && texts.includes('p1'), texts.join('|'));   // short by default
   arcs.length = 0;
   drawBlobsView(ctx, { map: (x, y) => [x * 100, y * 100] }, fr, 0, { colors: ['#1FC3FA', 'b', 'c', 'd', 'e'], ink: { text: 'w', axis: 'o', pair: 'p', grid: 'g' }, opts, run: r, aspect: 1 });
   assert.deepEqual(arcs.filter((a) => a[2] === 5).map((a) => [a[0], a[1]]), [[25, 30]], 'one extra ring (pts[6]); none for the part ids');
   assert.equal(arcs.filter((a) => (a[0] === 20 || a[0] === 30) && a[1] === 20).length, 0, 'part points without a 7th element: no ring');
-  arcs.length = 0;
-  drawBlobsView(ctx, { map: (x, y) => [x * 100, y * 100] }, fr, 0, { colors: ['#1FC3FA', 'b', 'c', 'd', 'e'], ink: { text: 'w', axis: 'o', pair: 'p', grid: 'g' }, opts: { ...opts, affine: true, extra: false }, run: r, aspect: 1 });
-  near(arcs.find((a) => Math.abs(a[0] - 25) < 1e-9)?.[2] ?? NaN, 6 * Math.exp(3 * -0.02), 1e-6);   // the part's pulsing ring on its centroid
-  assert.ok(arcs.some((a) => Math.abs(a[2] - 14 * Math.exp(3 * 0.01)) < 1e-4), 'the body ring from g1_scale (~log, near 0)');
 });
 
 test('v4.6 pinned groups: pts[5] is the seeded group (hull, label, HUD), not a ring; rings only from pts[6]', () => {
@@ -265,7 +257,7 @@ test('v4.6 pinned groups: pts[5] is the seeded group (hull, label, HUD), not a r
   // drawing: the hull dash-dot with its label; no generic ring for pts[5]; the 7th element still rings
   const texts = [], arcs = [], dashes = [];
   const ctx = new Proxy({}, { get: (o, k) => (k in o ? o[k] : k === 'fillText' ? (t) => texts.push(t) : k === 'arc' ? (...a) => arcs.push(a) : k === 'setLineDash' ? (d) => dashes.push(d.join(',')) : () => {}), set: (o, k, v) => { o[k] = v; return true; } });
-  const opts = { ...blobOpts((k, d) => d), hulls: true, points: false, extra: true, affine: false, axis: false, camera: false, trails: false };
+  const opts = { ...blobOpts((k, d) => d), hulls: true, points: false, extra: true, axis: false, camera: false, trails: false };
   assert.equal(opts.seeded, true, 'seeded groups on by default');
   const draw = (o) => drawBlobsView(ctx, { map: (x, y) => [x * 100, y * 100] }, fr, 0, { colors: ['#1FC3FA', 'b', 'c', 'd', 'e'], ink: { text: 'w', axis: 'o', pair: 'p', grid: 'g' }, opts: o, run: r, aspect: 1 });
   draw(opts);
@@ -409,14 +401,10 @@ test('pinned parts layer: outline of the members, crosshair on the anchored cent
 });
 
 test('primary / camera: the picked source on the picture, the camera arrow and kind', () => {
-  assert.deepEqual(primaryTarget('g3_proj'), { kind: 'body', g: 3 });
+  assert.deepEqual(primaryTarget('g3_proj'), { kind: 'cloud' });   // paw-57dw: no motion-group primaries
   assert.deepEqual(primaryTarget('sem_hips_proj'), { kind: 'sem', s: 3 });
   assert.deepEqual(primaryTarget('sem_balls_area'), { kind: 'sem', s: 2 });
-  assert.deepEqual([primaryTarget('pair_proj').kind, primaryTarget('dist01').kind, primaryTarget('p1_y').kind, primaryTarget('proj_cam').kind], ['pair', 'clicks', 'clicks', 'cloud']);
-  const r = { ...run(), params: { primary: 'g1_proj' } }, fr = frames(), log = [];
-  const opts = { ...blobOpts((k, d) => d), heat: false, axis: false };
-  drawBlobsView(recCtx(log), ENV, fr, 2, { colors: ['a', 'b', 'c', 'd', 'e'], ink: INK, opts, run: r, aspect: 1 });
-  assert.ok(log.some((c) => c[0] === 'fillText' && /^g1 · primary /.test(c[1])), 'its label says primary');
+  assert.deepEqual([primaryTarget('dist01').kind, primaryTarget('p1_y').kind, primaryTarget('proj_cam').kind], ['clicks', 'clicks', 'cloud']);
   const cam = { scenes: [{ start_ms: 0, end_ms: 300, camera: [{ t0: 0, t1: 300, kind: 'pan', dir: 'left', amount: 0.1 }] }],
     channels: { cam_x: channelOf([[0, 0], [100, 0.01], [200, 0.02]]), cam_y: channelOf([[0, 0], [100, 0], [200, 0]]), cam_conf: channelOf([[0, 0.8], [100, 0.8], [200, 0.8]]) } };
   const c = cameraAt(cam, 200);

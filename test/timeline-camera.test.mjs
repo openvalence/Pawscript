@@ -87,15 +87,18 @@ test('stitching carries the level across a camera split (same shot), not across 
 
 test('cameraDefault: the signal a camera tag picks; cameraNote / decisionLines: the why line', () => {
   const ch = (v) => ({ t: Float64Array.from([0, 1000, 2000, 3000]), v: Float32Array.from(v) });
-  const run = { channels: { proj: ch([0, 1, 0, 1]), proj_cam: ch([0, 1, 0, 1]), g1_proj: ch([0, 1, 0, 1]), pair_proj: ch([0, 1, 0, 1]) } };
+  const xy = (x) => ({ [x + '_x']: ch([0.4, 0.5, 0.4, 0.5]), [x + '_y']: ch([0.5, 0.5, 0.5, 0.5]) });
+  const run = { channels: { proj: ch([0, 1, 0, 1]), proj_cam: ch([0, 1, 0, 1]), who_pair_proj: ch([0, 1, 0, 1]), g1_proj: ch([0, 1, 0, 1]), pair_proj: ch([0, 1, 0, 1]) } };
   for (const k of ['pan', 'zoom', 'handheld']) assert.equal(cameraDefault(k, run, 0, 4000), 'proj_cam', k);
-  assert.equal(cameraDefault('orbit', run, 0, 4000), 'pair_proj', 'two bodies: their relative motion');
-  const one = { channels: { ...run.channels, pair_proj: ch([NaN, NaN, NaN, 1]) } };
-  assert.equal(cameraDefault('orbit', one, 0, 4000), 'g1_proj', 'one body: g1, never proj_cam');
+  assert.equal(cameraDefault('orbit', run, 0, 4000), 'who_pair_proj', 'two characters: their relative motion (paw-57dw: never pair_proj / g1_proj)');
+  const thin = { channels: { ...run.channels, who_pair_proj: ch([NaN, NaN, NaN, 1]) } };
+  assert.equal(cameraDefault('orbit', thin, 0, 4000), null, 'no pair on half the scene, no painted parts: the sidecar\'s pick, never proj_cam');
+  const painted = { channels: { ...thin.channels, ...xy('sem_c1_hips'), ...xy('sem_c2_hips') } };
+  assert.equal(cameraDefault('orbit', painted, 0, 4000), 'fused', 'painted parts: their fusion');
   assert.equal(cameraDefault('reciprocal', run, 0, 4000), 'proj', 'rides the stroke: no camera removal');
   assert.equal(cameraDefault('static', run, 0, 4000), null);
   assert.equal(cameraDefault('pan', { channels: {} }, 0, 4000), null, 'a run without the channel: the sidecar\'s pick stays');
-  assert.equal(cameraNote('orbit'), 'turntable: camera removal off, rolling axis (default signal pair, else g1)');
+  assert.equal(cameraNote('orbit'), 'turntable: camera removal off (default signal Bottom ↔ Top, else fused)');
   assert.match(cameraNote('reciprocal'), /cam x \/ y are stroke candidates/);
   assert.equal(decisionLines({ camera: { cam_conf: 0.2, std: 0.1 } }, 'orbit')[0], cameraNote('orbit'));
   assert.equal(decisionLines({}, null).length, 0);

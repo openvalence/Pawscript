@@ -4,7 +4,7 @@ PAWSCRIPT (early access)
 Pawscript is a funscript editor and semi-automatic scripter: open a video, let the trackers follow the motion, fix
 what they got wrong, and play the result on your device. Published by OpenValence. Free, and always will be.
 
-For adults (18+) only. Using Pawscript means you accept TERMS.txt (short: no warranty, devices at your own risk, the
+Made for explicit content: legal age only. Using Pawscript means you accept TERMS.txt (short: no warranty, devices at your own risk, the
 panic stop is Shift+Esc or Pause, what you make is yours, nothing leaves your PC).
 
 New here? Press F1 in the app for the quick start, from a video to a written .funscript. The whole guide is in the

@@ -84,6 +84,11 @@ another runtime than `$RuntimeArchive`. A new runtime: build it, set `$RuntimeAr
 upload, commit. An app update whose manifest pins the same runtime downloads nothing at its first start; one that pins a
 new runtime downloads only that (the models stay).
 
+The AMD runtime (`runtime-rocm.zip`: `python-rocm\` with AMD's ROCm PyTorch for RX 9000 / RX 7000, unpacked beside
+the CUDA runtime) is made by a script from pinned requirements: `dev/share/make-runtime-rocm.ps1` with
+`trackers/requirements-rocm.txt` (`-Compile` re-pins it from `requirements-rocm.in`); its record is
+`dev/share/runtime/runtime-rocm-<date>.txt`. build-models.ps1 adds it as the entry `runtime-rocm` (`-RuntimeRocm`).
+
 ## Models and the runtime on R2
 
 The base address is ONE constant, `MODELS_BASE_URL` in `src/features/models/logic.js`:
@@ -121,33 +126,38 @@ Commit `src/features/models/manifest.json` (the copy compiled into the app) with
 
 ## Updates
 
-The app checks `https://github.com/openvalence/Pawscript/releases/latest/download/latest.json` only when the user runs
-Help > Check for updates (or turned on "Check for updates at start", off by default). Updates are signed with a
-minisign key; the public key is in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`), now a placeholder: a build
-with it compiles and says "updates are not configured in this build". Never commit the private key.
+The app checks `https://github.com/openvalence/Pawscript/releases/latest/download/latest.json` only when the
+user runs Help > Check for updates (or turned on "Check for updates at start", off by default).
+`openvalence/Pawscript` is the public source repository; its releases hold the update files, so a copy on a
+friend's PC reaches it without a GitHub account. Updates are signed with a minisign
+key; the public key is in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`, key id `F50432A65B3B54A6`), and
+`requireSignedVersion` makes the app refuse a signature that is not bound to the version latest.json announces. Never
+commit the private key.
 
-Once, by the owner:
+The key is `%USERPROFILE%\.tauri\pawscript-updater-auto.key`, made without a password so a release needs no step by
+the owner (the GitHub account, with 2FA, is what guards the channel; the signature keeps a file swapped on GitHub from
+installing). Back it up offline: without it no installed copy can verify a later update. It was made with
 
 ```powershell
-npm run tauri signer generate -- -w "$env:USERPROFILE\.tauri\pawscript-updater.key"   # asks for a password
-# It prints the PUBLIC key (also in pawscript-updater.key.pub): paste it as "pubkey" in src-tauri/tauri.conf.json and
-# commit that. Keep pawscript-updater.key and its password private and backed up (a password manager plus an offline
-# copy): without them no installed copy can verify a later update.
+npm run tauri signer generate -- --ci -p "" -w "$env:USERPROFILE\.tauri\pawscript-updater-auto.key"
+# The PUBLIC key (pawscript-updater-auto.key.pub) is "pubkey" in src-tauri/tauri.conf.json.
 ```
 
-Each release (the shared, portable build):
+Each release (the shared, portable build), from a clean checkout of `master`:
 
 ```powershell
-$env:TAURI_SIGNING_PRIVATE_KEY = "$env:USERPROFILE\.tauri\pawscript-updater.key"   # the path, or the key text itself
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "<its password>"
 pwsh -File dev\share\build-nas.ps1 -Online -Release 0.2.0 -Notes notes.md -Out "$env:USERPROFILE\Documents\Pawscript-0.2.0\Pawscript"
+pwsh -File dev\share\publish-release.ps1 -Out "$env:USERPROFILE\Documents\Pawscript-0.2.0\Pawscript"   # -Check: checks only
 ```
 
 `-Release` makes the exe report 0.2.0 (the version latest.json is compared with) and writes `<Out>-release\`:
-`Pawscript-0.2.0-update.zip` (Pawscript.exe + code.zip), its `.sig` (from `tauri signer sign`), and `latest.json`
-(platform `windows-x86_64-portable`, the signature, the zip's URL on the release). Create the GitHub release with the
-tag `v0.2.0` and attach `latest.json`, the update zip, its `.sig` and the small download `<Out>.zip`;
-`releases/latest/download/latest.json` then serves the new one. The version must be higher than the last release's.
+`Pawscript-0.2.0-update.zip` (Pawscript.exe + code.zip), its `.sig` (`tauri signer sign --app-version 0.2.0` with the
+key above; set `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` to sign with another key), and
+`latest.json` (platform `windows-x86_64-portable`, the signature, the zip's URL on the release). `publish-release.ps1`
+creates the release `v0.2.0` on `openvalence/Pawscript` (marked latest, not a pre-release) with `latest.json`,
+the update zip, its `.sig` and the small download `<Out>.zip`, and prints their SHA-256. It refuses a version that is
+not higher than the current latest release's, a `latest.json` whose signature or URL does not match the files, and a
+`.sig` not bound to that version. It needs `gh`, logged in with write access to the repository.
 
 What an update replaces in the portable folder: `Pawscript.exe` (the running exe is renamed to
 `.setup\Pawscript.old.exe`, which Windows allows, and deleted at the next start) and `code.zip` (unpacked at the next
@@ -166,7 +176,8 @@ published: the portable flow above is the one in use.
 - **The toy library** of the Machine panel is third-party product data and is not part of this source:
   `src/features/machine/toys/library.json` is empty, the picker offers the generic toys and imported ones.
   The tests that measured the physics against that library are not included.
-- **`runtime.zip`** of the portable build is assembled by hand (see above), not by a script.
+- **`runtime.zip`** of the portable build is assembled by hand (see above), not by a script (`runtime-rocm.zip` is:
+  `dev/share/make-runtime-rocm.ps1`).
 - **The models server and the update key** are the owner's (above): a build from this source downloads from
   `dl.openvalence.org` (the files the compiled manifest pins), and reports updates as not configured until a key is set.
 - **The Director's VLM backends** expect a separate Python environment that is not part of this tree.

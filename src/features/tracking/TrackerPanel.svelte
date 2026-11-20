@@ -1,6 +1,7 @@
 <script>
   // The tracker panel (left dock, Track tab), paw-r73w in order of use: the running job / errors, the runs (ghosts) with Bake / Flip / export (paw-x7w7: a run plays live; Bake makes it permanent); folded below and remembered (folds.js): Track options (direction,
-  // scenes, grid points, trails) and the Tracker for Track ROI (its params, ROI, groups, parts-first, the next run's axis).
+  // scenes, grid points) and the Tracker for Track ROI (its params, parts-first). Trails live in the video's View menu, the
+  // next run's stroke axis beside the axis tool on the video (TrackingOverlay), the groups in the Groups paint tool.
   // paw-p8o2: the shot's Adjust (Fusion on top) lives only in the band under the stroke lane (its ▾), beside the curve it changes.
   // Track / Track ROI / Cancel / the range live on the shot chips, the Tracker row, the status bar and their keys (T, Ctrl+T,
   // Esc, I / O). Scenes (detect / describe / loop, their options) are the Scenes panel (ScenesPanel.svelte); span labels
@@ -11,12 +12,12 @@
   import Select from '../../ui/kit/Select.svelte';
   import ParamForm from '../../ui/kit/ParamForm.svelte';
   import Prop from '../../app/Prop.svelte';
-  import { CHANNEL_FIT, CHANNEL_FIT_SCHEMA, decisionsOf, candidateRows, decisionLines, inputLine, modelLines, primaryHow, sceneGroups, relParse, relLabel } from '../../lib/runs-channel.js';
+  import { decisionsOf, candidateRows, decisionLines, inputLine, modelLines, primaryHow, sceneGroups, relParse, relLabel } from '../../lib/runs-channel.js';
   import Section from '../../ui/kit/Section.svelte';
   import Badge from '../../ui/kit/Badge.svelte';
   import SegmentedControl from '../../ui/kit/SegmentedControl.svelte';
-  import { AXIS_MODES, axisInfo, axisParams } from './axis.js';
   import { tooltip } from '../../ui/kit/tooltip.js';
+  import { NC_LINE, NC_LICENSE } from '../../lib/protocol.js';
   import { cmd } from '../../app/cmd.js';
   import { trackerSchemaOf } from './tracker-schema.js';
   import { fmtDuration } from '../../lib/time-format.js';
@@ -25,9 +26,7 @@
   import { ctlLog } from '../../app/ctl-log.js';
   import { foldOpen, setFold } from './folds.js';
   import { trackingFor } from './tracking.svelte.js';
-  import { groupsFor } from './groups.svelte.js';
   import { trackGroups, whoName, partLabel } from './groups.js';
-  import { partList } from '../../lib/content.js';
   import { heldText, heldScenes } from '../../lib/held.js';
   import { PARTS_FIRST, PARTS_FIRST_TIP, pointTotal, vramGb } from './parts-first.js';
 
@@ -44,8 +43,6 @@
   const range = $derived(app.doc.range);
   const pct = $derived(tr.progress.total ? Math.round((tr.progress.done / tr.progress.total) * 100) : 0);
   const working = $derived(['track', 'scenes', 'describe', 'loop', 'camera'].includes(tr.busy));
-  // svelte-ignore state_referenced_locally
-  const GT = groupsFor(app);
   const pinsGroups = $derived(!!t?.params?.some((p) => p.key === 'sem_groups'));
   const nGroups = $derived(pinsGroups ? trackGroups(tr.scenes, tr.span.t0, tr.span.t1).length : 0);
   // v4.14 parts-first: the points a run seeds (grid + groups x group_points) and the tracker's VRAM cap for them
@@ -62,22 +59,8 @@
         (gb ? `\nVRAM cap ≈ ${gb.toFixed(1)} GB (+1.8 GB while the tagger runs)` : '') +
         (big ? `\n512 input for small parts: ≈ ${big.toFixed(1)} GB` : '') };
   });
-  // the Groups button is a plain toggle: the command's guard (selected points, focused timeline row) only protects its key (Tab)
-  const GROUPS_TIP = $derived(`Paint the groups the tracker pins (${partList(['penis', 'balls', 'hips', 'tail'])}, ...) on the scene’s seed frame with a soft brush, or start from Suggest; Track sends their outlines instead of the tagger’s`);   // paw-43vn: the part examples follow furry items (lib/content.js)
   // the tracker's params (tracker-schema.js: shared with the Track button's settings popover, paw-unuy)
   const trackerSchema = $derived(trackerSchemaOf(t, tr.hasAxis(t)));
-  const AXIS_SHORT = { auto: 'auto', vertical: 'vert', horizontal: 'horiz', custom: 'arrow' };
-  const AXIS_TIPS = { auto: 'Principal axis of the motion (right timing, arbitrary direction)', vertical: 'Up = out', horizontal: 'Right = out', custom: 'The drawn arrow: toward its IN end = deeper' };
-  const AXIS_OPTIONS = AXIS_MODES.map((m) => ({ value: m, label: AXIS_SHORT[m], tip: AXIS_TIPS[m] }));
-  const AXIS_TIP = 'Click 2–4 points on the moving part, then draw the stroke axis once: press at the OUT end, release at the IN end (or two clicks). Moving toward the IN end = deeper (lower pos).';
-  const axisDefault = $derived(t?.params?.find((p) => p.key === 'axis')?.default);
-  const axisText = $derived.by(() => {
-    const i = axisInfo(tr.axis, tr.aspect);
-    const sent = t ? axisParams(t.params, tr.axisMode, tr.axis, tr.params, tr.aspect) : {};
-    const what = !tr.axisMode ? `tracker default (${axisDefault})` : sent.axis === 'custom' ? 'custom arrow' + (sent.primary ? ', primary proj' : '')
-      : sent.axis ? sent.axis + (sent.pipe_invert !== undefined ? (sent.pipe_invert ? ', inverted' : ', not inverted') : '') + (tr.axisMode === 'custom' ? ' (nearest)' : '') : 'no arrow: tracker default';
-    return (i ? `${i.angle}° · ${i.length.toFixed(2)} h · ` : '') + what;
-  });
   // elapsed time of the running job (a hung describe must be visible)
   let now = $state(Date.now());
   $effect(() => { if (!tr.startedAt) return; now = Date.now(); const iv = setInterval(() => (now = Date.now()), 1000); return () => clearInterval(iv); });
@@ -106,10 +89,6 @@
   // no trackers because listing failed: one inline message (with Retry) under the Tracker heading, not a second raw copy below
   const listError = $derived(!tr.trackers.length && tr.busy !== 'list' && tr.error ? tr.error : '');
   const busyText = { track: 'Tracking', scenes: 'Detecting scenes', describe: 'Describing', loop: 'Looking for a loop', camera: 'Checking camera motion' };
-  // grid points and the run overlay are settings (tracking.gridPoints / tracking.trails): their Prop, the same widget as in the
-  // Track menu and Settings (paw-m3b6)
-  const TRAILS_TIP = 'Point runs: motion trails colored by motion group (groups; gray = static) or by direction (hue = direction), brightness = speed; tracker view = what the tracker sees: per moving group an outline + its center\'s path, a HUD of the run\'s numbers (its sliders button sets what is drawn); dots = no trails';
-  // paw-9qm: no motion-group (g1..g4) legend here any more: the Tracker row's source picker lists them last
   // runs: only those overlapping the current scene (timeline selection, else the playhead's), unless "all runs";
   // the selected one always stays
   let allRuns = $state(false);
@@ -160,7 +139,7 @@
       {@const sel = g.id === tr.selectedId}
       {@const sc = tr.scores[g.id]}
       {@const isRef = g.source?.kind === 'reference'}
-      {@const notes = (run?.notes || []).filter((n) => n.code !== 'primary' && n.code !== 'primary_used' && n.code !== 'model_size')}
+      {@const notes = (run?.notes || []).filter((n) => n.code !== 'primary' && n.code !== 'model_size')}
       {@const held = run && !run.restored ? heldScenes(run, tr.aspect).filter((s) => Object.keys(s.chars).length) : []}
       <div class="ghost" class:sel>
         <div class="ghead">
@@ -262,14 +241,6 @@
                 <Button size="sm" variant="ghost" icon="refresh" {...cmd(app, 'tracking.checkCamera', undefined, { tip: 'Compare this run with the whole-frame motion' })}>Check camera motion</Button>
               </div>
             {/if}
-            {#if run && Object.keys(run.channels).length}
-              {@const chNow = tr.channelFor(run)}
-              <Select size="sm" full label="Lane channel of {g.name}" value={chNow} onchange={(v) => tr.pickChannel(run.id, v, 'panel')}
-                options={[{ value: 'primary', label: 'lane: primary signal' }, ...Object.entries(run.channels).map(([k, c]) => ({ value: k, label: `lane: ${k}${Number.isFinite(c?.min) && Number.isFinite(c?.max) ? ` [${+c.min.toFixed(3)} … ${+c.max.toFixed(3)}]` : ''}` }))]} />
-              {#if chNow !== 'primary'}
-                <ParamForm schema={CHANNEL_FIT_SCHEMA} values={{ ...CHANNEL_FIT, ...tr.channelFit }} onchange={(v) => tr.setChannelFit(v)} />
-              {/if}
-            {/if}
               </div>
             </Section>
           </div>
@@ -289,8 +260,6 @@
         <Prop {app} key="tracking.scenes" full label="Scenes" options={SCENES_OPTIONS} value={tr.scenesMode} /></div>
       <div class="row"><span class="k-caps lbl" {@attach tooltip('Points of Track (T): the grid over the whole frame')}>Grid points</span>
         <Prop {app} key="tracking.gridPoints" full /></div>
-      <div class="row"><span class="k-caps lbl" {@attach tooltip(TRAILS_TIP)}>Trails</span>
-        <Prop {app} key="tracking.trails" full /></div>
     </div>
   </Section>
   <Section title="Tracker (Track ROI)" data-fold="tracker" open={foldOpen(app, 'tracker')} onchange={(v) => setFold(app, 'tracker', v)}>
@@ -301,29 +270,12 @@
           {#if tr.listed}<IconButton icon="refresh" size="sm" label="Reload the tracker list" {...cmd(app, 'track.listTrackers', undefined, { tip: 'Reload the tracker list' })} />{/if}
         </div>
         {#if t}
+          {#if t.id === 'cotracker_points'}<p class="k-hint notice" data-testid="nc-note"><Icon name="info" size={13} /><span>{NC_LINE}</span><Button size="sm" variant="ghost" icon="external" onclick={() => app.backend.openUrl?.(NC_LICENSE)} tip={NC_LICENSE}>License</Button></p>{/if}
           {#key t.id}<ParamForm schema={trackerSchema} groupsOpen={false} values={tr.paramsBy[t.id]} onchange={(v) => Object.assign(tr.paramsBy[t.id], v)} />{/key}
-          {#if pinsGroups}
-            <div class="roi" class:ok={nGroups}>
-              <Icon name="brush" size={13} />
-              <span class="grow" {@attach tooltip(GROUPS_TIP)}>{nGroups ? `${nGroups} drawn group${nGroups === 1 ? '' : 's'} in range` : 'Groups: the tagger’s'}</span>
-              <Button size="sm" variant={GT.on ? 'primary' : 'default'} pressed={GT.on} onclick={() => GT.toggle()} disabled={!app.doc.media} tip={GROUPS_TIP} shortcut={key('tracking.groups')}>Groups</Button>
-            </div>
-          {/if}
           {#if budget}
             <div class="row budget" data-testid="parts-budget">
               <span class="k-hint num grow" {@attach tooltip(budget.tip)}>{budget.text}</span>
               <Button size="sm" variant={isPF ? 'primary' : 'default'} pressed={isPF} onclick={() => Object.assign(tr.paramsBy[t.id], PARTS_FIRST)} disabled={!!tr.busy} tip={PARTS_FIRST_TIP}>Parts-first</Button>
-            </div>
-          {/if}
-          {#if tr.hasAxis(t)}
-            <div class="axisrow" class:ok={tr.axis}>
-              <div class="row">
-                <span class="k-caps lbl grow" {@attach tooltip(AXIS_TIP)}>Stroke axis (next run)</span>
-                <Button size="sm" variant={tr.axisOn ? 'primary' : 'default'} pressed={tr.axisOn} onclick={() => tr.toggleAxisTool()} disabled={!tr.axisEditable && !tr.axisOn} tip={AXIS_TIP} shortcut={key('tracking.axisDraw')}>Draw</Button>
-                <Button size="sm" variant="ghost" {...cmd(app, 'tracking.axisClear', undefined, { tip: 'Remove the stroke axis' })}>Clear</Button>
-              </div>
-              <span class="ell k-hint num" {@attach tooltip(axisText)}>{axisText}</span>
-              <SegmentedControl size="sm" full label="Stroke axis (next run)" options={AXIS_OPTIONS} value={tr.axisMode} onchange={(v) => tr.setAxisMode(v)} />
             </div>
           {/if}
           {#if !tr.canTrack && tr.trackBlock && tr.listed && !working}<p class="k-hint">{tr.trackBlock}</p>{/if}
@@ -341,7 +293,6 @@
   section { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5) var(--space-5) var(--space-5); border-bottom: 1px solid var(--line-1); }
   header { display: flex; align-items: center; gap: var(--space-3); min-height: 18px; }
   header h3 { flex: 1; }
-  .ell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .grow { flex: 1; min-width: 0; }
   .row { display: flex; gap: var(--space-3); align-items: center; }
   .wrap { flex-wrap: wrap; }
@@ -353,12 +304,8 @@
   details.sub[open] > summary::before { transform: rotate(90deg); }
   details.sub > summary:hover { color: var(--tx); }
 
-  .roi { display: flex; align-items: center; gap: var(--space-3); color: var(--warn-ink); padding: var(--space-2) var(--space-3); border: 1px dashed rgba(var(--warn-rgb), .45); border-radius: var(--radius); }
-  .roi.ok { color: var(--tx-val); border: 1px solid var(--line-1); }
   .chips { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 0 var(--space-3) var(--space-2); }
   .cam { flex-wrap: wrap; justify-content: space-between; }
-  .axisrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px dashed var(--line-2); border-radius: var(--radius); }
-  .axisrow.ok { border-style: solid; border-color: var(--line-1); }
   .lbl { cursor: help; }
   .cam .warn { color: var(--warn-ink); }
 

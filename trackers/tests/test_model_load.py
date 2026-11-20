@@ -17,7 +17,7 @@ from pawtrack import serve
 from pawtrack.trackers import tapnext_points as tp
 from test_cli import BOX, DUR_MS, video  # noqa: F401  (video: the session fixture)
 
-PARAMS = {"model": "256", "chunk": 4, "box_points": 16, "reseed_every_ms": 0, "group_labels": False, "sem_groups": False,
+PARAMS = {"model": "256", "chunk": 4, "box_points": 16, "reseed_every_ms": 0, "sem_groups": False,
           "held_input": "off"}
 BUILT = []
 

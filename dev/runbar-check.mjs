@@ -63,7 +63,6 @@ try {
   // ---- two runs: #1 plays 0-8 s, #2 plays 8-14 s ----
   await ev((fx) => {
     const D = window.__pawDev, tr = TR;
-    for (const k of ['g3_n', 'g4_n']) fx.auto.channels[k] = fx.auto.channels.g1_n.map(([t]) => [t, 0]);
     const mk = (n, name) => {
       const notes = [0, 1].map((k) => ({ code: 'primary', scene_index: k, message: 'proj', data: { chosen: 'proj' } }));
       const run = D.makeRun({ n, tracker: { id: 'tapnext_points', name }, params: fx.auto.params, range: { start: 0, end: 14000 }, roi: null,

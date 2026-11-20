@@ -6,6 +6,7 @@ import { shownTags } from '../../lib/content.js';
 import { cleanSel, sceneRange, selScenes, selText, contiguous, sceneNo, shotLabel, cutawayMode } from './shots.js';
 import { takeGroups, isIgnore, isSuggested, trackGroups } from '../tracking/groups.js';
 import { fmtClock } from './ticks.js';
+import { NC_BADGE } from '../../lib/protocol.js';
 
 /** {lo, hi, t0, t1, shots, shot, one, text} for the shots: lo / hi / t0 / t1 = their hull, shot = the one the bar reads
  *  (its tags, run, signal: the active one, else the first), one = they are in one scene, text = what the chips will hit
@@ -96,20 +97,13 @@ export function trackPicked(T, span) {
   return true;
 }
 
-/** Motion group k (1..4) of run runId becomes the signal, and shot i's scene is linked to that run's g{k}_proj
- *  (paw-t8z: the quick bar, the Inspector and the Tracker panel's legend pick the same way). */
-export function pickGroupFor(T, k, runId, i) {
-  T.pickGroup(k, runId);
-  if (i >= 0) T.linkScene?.(i, runId, `g${k}_proj`);
-}
-
 /** The run the bar reads (shares, signal): the scene's linked run (if it still exists), else the selected run. */
 export function runFor(T, i) {
   if (!T) return null;
   const link = T.sceneLink?.(i), linked = link && T.run?.(link.runId);
   return linked || T.selected || null;
 }
-/** The signal name for the bar: the link's channel, else the run's ('g2_proj' -> 'g2'). */
+/** The signal name for the bar: the link's channel, else the run's ('who_c1_proj' -> 'who_c1'). */
 export function signalOf(T, i, run) {
   const link = T?.sceneLink?.(i), ch = (run && T?.shotSource?.(run, i)) || (link && link.runId === run?.id && link.channel) || run?.channel || '';   // paw-9qm: the shot's own source first
   return String(ch).replace(/_proj$/, '');
@@ -118,20 +112,8 @@ export function signalOf(T, i, run) {
 const isPoint = (t) => t.roi === 'points' || /_points$/.test(t.id);
 /** Tracker options, the point trackers first (stable otherwise). */
 export const trackerOptions = (trackers = [], off = () => false) => [...trackers.filter(isPoint), ...trackers.filter((t) => !isPoint(t))]
-  .map((t) => ({ value: t.id, label: t.name || t.id, ...(off(t) && { disabled: true, hint: 'needs a GPU' }) }));   // off: paw-k97q, the GPU is off
+  .map((t) => ({ value: t.id, label: t.name || t.id, ...(t.id === 'cotracker_points' && { hint: NC_BADGE }), ...(off(t) && { disabled: true, hint: 'needs a GPU' }) }));   // off: paw-k97q, the GPU is off
 
-/** Motion-group member shares of a grid run over [t0, t1): [n1..n4] (0..1, NaN = no samples), or null without groups. */
-export function groupShares(run, t0, t1) {
-  const ch = run?.channels;
-  if (!ch?.g1_n) return null;
-  return [1, 2, 3, 4].map((k) => {
-    const c = ch[`g${k}_n`];
-    if (!c) return NaN;
-    let s = 0, n = 0;
-    for (let j = 0; j < c.t.length; j++) if (c.t[j] >= t0 && c.t[j] < t1 && Number.isFinite(c.v[j])) { s += c.v[j]; n++; }
-    return n ? s / n : NaN;
-  });
-}
 
 /** The tag menu items for scene s: a section per category (or only `cats`), a checkbox per tag ("(detected)" = its
  *  describe gives it; What starts with the aliases: rimming = anal + licking), then "Reset to describe" when the user

@@ -18,11 +18,11 @@ const A = ['anal', 'penetration'];
 const L = () => normScenes([S(0, 10000, { tags: A }), S(10000, 20000, { join: true, tags: A }), S(20000, 30000, { join: true, tags: A }), S(30000, 40000, { tags: ['oral'] }), S(40000, 50000, { join: true, tags: ['oral'] })]);
 const M = (id, kind, t0, t1, o = {}) => ({ id, kind, t0, t1, params: {}, ...o });
 
-test('kinds: the six event kinds in picker order, the rest only in Refine; one name each', () => {
-  assert.deepEqual(MODS, ['orgasm', 'knotting', 'throbbing', 'idle', 'insertion', 'pullout']);
+test('kinds: the four event kinds in picker order, the rest only in Refine; one name each (paw-ajvq: a push / pull is a knotting, Climax run-in is gone)', () => {
+  assert.deepEqual(MODS, ['orgasm', 'knotting', 'throbbing', 'idle']);
   assert.deepEqual(EVENT_KINDS, MODS);
-  assert.deepEqual(REFINE_KINDS, ['spurt', 'shape', 'climax']);
-  assert.deepEqual(MODS.map(modLabel), ['Orgasm', 'Knotting', 'Throbbing', 'Idle', 'Insertion', 'Pull-out']);
+  assert.deepEqual(REFINE_KINDS, ['spurt', 'shape']);
+  assert.deepEqual(MODS.map(modLabel), ['Orgasm', 'Knotting', 'Throbbing', 'Idle']);
   for (const k of Object.keys(FX_KINDS)) assert.ok(FX_KINDS[k].tip?.length > 10, `${k} has a tip`);
 });
 
@@ -126,8 +126,12 @@ test('a spurt outside every orgasm: the hint grows the nearest one in its scene,
 test('one list of kinds in every menu: the event kinds enabled, the Refine kinds greyed outside Refine with the reason', () => {
   const picked = [], scenes = modItems('scenes', (k) => picked.push(k)), refine = modItems('refine', () => {});
   const rows = (items) => items.filter((x) => !x.separator);
-  assert.deepEqual(rows(scenes).map((x) => x.label), ['Orgasm', 'Knotting', 'Throbbing', 'Idle', 'Insertion', 'Pull-out', 'Spurt', 'Reshape', 'Climax run-in']);
-  assert.deepEqual(rows(scenes).filter((x) => x.disabled).map((x) => x.label), ['Spurt', 'Reshape', 'Climax run-in']);
+  assert.deepEqual(rows(scenes).map((x) => x.label), ['Orgasm', 'Knotting', 'Throbbing', 'Idle', 'Spurt', 'Reshape']);
+  assert.deepEqual(rows(scenes).filter((x) => x.disabled).map((x) => x.label), ['Spurt', 'Reshape']);
+  const withPush = [];
+  assert.deepEqual(rows(modItems('scenes', (k, p) => withPush.push([k, p?.to]), { push: true })).map((x) => x.label), ['Orgasm', 'Knotting', 'Push', 'Pull', 'Throbbing', 'Idle', 'Spurt', 'Reshape']);
+  rows(modItems('scenes', (k, p) => withPush.push([k, p?.to]), { push: true }))[3].run();
+  assert.deepEqual(withPush, [['knotting', 100]], 'Pull: a knotting that pulls out');
   assert.ok(rows(scenes).filter((x) => x.disabled).every((x) => x.tip.includes(REFINE_WHY)));
   assert.ok(rows(refine).every((x) => !x.disabled));
   rows(scenes)[1].run();
@@ -163,8 +167,8 @@ test('Shift+O twice marks an orgasm in and out (one undo step); the chip toggle 
   app.undo();
   assert.deepEqual(app.doc.fx, []);
   app.doc.range = { t0: 41000, t1: 45000 };
-  app.commands.run('timeline.mod.toggle.pullout');
-  assert.deepEqual(app.doc.fx.map((e) => [e.kind, e.t0, e.t1]), [['pullout', 41000, 45000]]);
+  app.commands.run('timeline.mod.add.pull');
+  assert.deepEqual(app.doc.fx.map((e) => [e.kind, e.t0, e.t1, e.params.mode, e.params.to]), [['knotting', 41000, 45000, 'none', 100]]);
   const keys = (id) => app.commands.keysFor(id);
   assert.deepEqual([keys('timeline.mod.mark.orgasm'), keys('timeline.mod.mark.knotting'), keys('timeline.mod.toggle.orgasm'), keys('timeline.mod.toggle.knotting')], [['Shift+O'], ['Shift+K'], ['Alt+Shift+O'], ['Alt+Shift+N']]);
 });
@@ -224,4 +228,45 @@ test('one entry per act: adding an event kind where one is acts on it; Reshape o
   app.player.seek(5000); CF.throbAtPlayhead(app);
   const t = app.doc.fx[0];
   assert.deepEqual([t.kind, t.t0, t.t1 - t.t0 < 400], ['throbbing', 4960, true]);
+});
+
+test('paw-d1g7 U with an orgasm selected: a marker in it at the playhead, the orgasm stays selected; outside it the orgasm grows to the playhead (one undo step); X on the stroke lane removes the marker there', async () => {
+  const app = mkApp([M('o', 'orgasm', 20000, 25000), M('k', 'knotting', 2000, 6000)]);
+  ST.tl.fx = 'o';
+  app.player.seek(22000); CF.spurtAtPlayhead(app);
+  const sp = () => app.doc.fx.filter((e) => e.kind === 'spurt');
+  assert.deepEqual(sp().map((e) => [e.t0, e.link ?? null]), [[22000, null]]);
+  assert.equal(ST.tl.fx, 'o', 'the orgasm stays selected');
+  app.player.seek(27000); CF.spurtAtPlayhead(app);
+  const o = app.doc.fx.find((e) => e.id === 'o');
+  assert.deepEqual([o.t0, o.t1, sp().length, ST.tl.fx], [20000, 27500, 2, 'o'], 'grown to the playhead, the marker placed');
+  assert.deepEqual(innerOf(app.doc.fx, o).map((e) => e.t0), [22000, 27000]);
+  app.undo();
+  assert.deepEqual([app.doc.fx.find((e) => e.id === 'o').t1, sp().length], [25000, 1], 'one undo step');
+  // nothing selected (or another kind): unchanged, a spurt on the frame
+  ST.tl.fx = 'k'; app.player.seek(40000); CF.spurtAtPlayhead(app);
+  assert.equal(ST.tl.fx, sp().find((e) => e.t0 === 40000).id);
+  // X on the stroke lane: the marker of the orgasm under the playhead nearest it (within 300 ms)
+  app.player.seek(22100);
+  assert.equal(CF.markerNear(app)?.t0, 22000);
+  CF.removeMarker(app);
+  assert.deepEqual(sp().map((e) => e.t0), [40000]);
+  app.player.seek(30000);
+  assert.equal(CF.markerNear(app), null, 'no orgasm under the playhead: nothing to remove');
+  const { readFileSync } = await import('node:fs'), src = readFileSync(new URL('../src/features/tracking/commands.js', import.meta.url), 'utf8');
+  assert.ok(src.indexOf("id: 'tracking.markerDelete'") > 0 && src.indexOf("id: 'tracking.markerDelete'") < src.indexOf("id: 'tracking.axisDraw'"), 'X on the stroke lane: before the axis tool X');
+});
+
+test('paw-d1g7 Detect cumshots: the placed proposals are markers of an orgasm (grown to them, else marked around them), each with a velocity from its score', async () => {
+  const CU = await server.ssrLoadModule('/src/features/timeline/cum.svelte.js');
+  const app = mkApp([M('o', 'orgasm', 20000, 24000)]);
+  app.doc.scenes = app.doc.scenes.map((s, i) => (i === 0 ? { ...s, cum: [{ t: 23000, score: 0.9 }, { t: 25200, score: 0.5 }] } : i === 3 ? { ...s, cum: [{ t: 35000, score: 0.2 }] } : s));
+  assert.equal(CU.placeCum(app, 0), 2);
+  const sp = () => app.doc.fx.filter((e) => e.kind === 'spurt');
+  assert.deepEqual(sp().map((e) => [e.t0, e.params.vel, e.link ?? null]), [[23000, 1.4, null], [25200, 1, null]]);
+  assert.deepEqual(app.doc.fx.filter((e) => e.kind === 'orgasm').map((e) => [e.t0, e.t1]), [[20000, 25700]], 'the orgasm in the scene grown to the one outside it');
+  CU.placeCum(app, 3);
+  const o2 = app.doc.fx.filter((e) => e.kind === 'orgasm')[1];
+  assert.ok(o2 && o2.t0 <= 35000 && o2.t1 >= 35000 && o2.t0 >= 30000, 'none in that scene: one marked around it');
+  assert.ok(sp().every((e) => app.doc.fx.some((o) => o.kind === 'orgasm' && innerOf(app.doc.fx, o).includes(e))), 'every placed spurt is a marker');
 });

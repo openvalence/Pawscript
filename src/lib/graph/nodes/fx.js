@@ -11,7 +11,7 @@ import { num, script, spans, req } from './util.js';
 export const srcFx = defineNode({
   type: 'src.fx', title: 'Modifiers', group: 'Sources', icon: 'layers',
   aliases: ['effects', 'fx', 'modifiers', 'knot', 'orgasm', 'shape', 'layer'],
-  help: 'The Modifiers row as spans: kind = modifier kind (knotting, orgasm, throbbing, idle, insertion, pull-out, climax, shape; spurt as a point), data = {id, params}. Muted modifiers are left out.',
+  help: 'The Modifiers row as spans: kind = modifier kind (knotting, orgasm, throbbing, idle, shape; spurt as a point), data = {id, params}. Muted modifiers are left out.',
   ins: [], outs: [spans()], params: [],
   reads: () => [['fx']], halo: () => 0, local: true,
   eval: (_in, _p, ctx) => ({ spans: normSpans(liveFx(ctx.read('fx')).map((e) => ({ t0: e.t0, t1: e.t1, kind: e.kind,
@@ -22,7 +22,7 @@ export const srcFx = defineNode({
 export const fxApply = defineNode({
   type: 'fx.apply', title: 'Apply modifiers', group: 'Generate', icon: 'wand',
   aliases: ['effects', 'fx', 'modifiers', 'layer', 'knot', 'orgasm', 'shape'],
-  help: 'The modifiers over a script (usually the tracker): inside each "Only inside" span (from Modifiers) the script is re-shaped from its own turning points by the span\'s kind — knotting, orgasm, throbbing, idle, insertion, pull-out, climax, shape. Outside the spans the script passes through unchanged.',
+  help: 'The modifiers over a script (usually the tracker): inside each "Only inside" span (from Modifiers) the script is re-shaped from its own turning points by the span\'s kind — knotting, orgasm, throbbing, idle, shape. Outside the spans the script passes through unchanged.',
   ins: [script('script', req)], outs: [script()],
   params: [num('maxSpeed', 'Speed cap', DEFAULTS.maxSpeed, 0, 2000, 5, { unit: 'pos/s', inline: true })],
   perSpan: true,

@@ -1,7 +1,7 @@
 // Scene quick bar logic (features/timeline/quickbar.js).
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { barSpan, currentSpan, runFor, signalOf, trackerOptions, groupShares, tagItems, trackPicked, pickGroupFor, gridBlock, groupsButton, regionTrack } from '../src/features/timeline/quickbar.js';
+import { barSpan, currentSpan, runFor, signalOf, trackerOptions, tagItems, trackPicked, gridBlock, groupsButton, regionTrack } from '../src/features/timeline/quickbar.js';
 
 const L = [{ start_ms: 0, end_ms: 1000 }, { start_ms: 1000, end_ms: 3000 }, { start_ms: 3000, end_ms: 4000 }];
 
@@ -51,16 +51,7 @@ test('runFor: the linked run, else the selected run', () => {
 test('tracker options: point trackers first', () => {
   const o = trackerOptions([{ id: 'lk_box', name: 'LK', roi: 'box' }, { id: 'cotracker_points', name: 'Co', roi: 'box' }, { id: 'pips', name: 'P', roi: 'points' }, { id: 'sam2_mask', name: 'SAM', roi: 'box' }]);
   assert.deepEqual(o.map((x) => x.value), ['cotracker_points', 'pips', 'lk_box', 'sam2_mask']);
-  assert.deepEqual(o[0], { value: 'cotracker_points', label: 'Co' });
-});
-
-test('group shares: mean member share over the span', () => {
-  const ch = (v) => ({ t: [0, 500, 1000, 1500, 2000], v });
-  const run = { channels: { g1_n: ch([1, 0.5, 0.25, NaN, 0]), g2_n: ch([0, 0.5, 0.75, 0.5, 1]), g3_n: ch([0, 0, 0, 0, 0]) } };
-  const s = groupShares(run, 500, 2000);
-  assert.equal(s[0], 0.375); assert.ok(Math.abs(s[1] - 1.75 / 3) < 1e-12); assert.equal(s[2], 0); assert.ok(Number.isNaN(s[3]));
-  assert.equal(groupShares({ channels: {} }, 0, 1), null, 'not a grid run');
-  assert.equal(groupShares(null, 0, 1), null);
+  assert.deepEqual(o[0], { value: 'cotracker_points', label: 'Co', hint: 'Non-commercial only' });
 });
 
 test('tag items: a section per category, aliases first under What, (detected) from the describe, ids routed, Reset only after a change', () => {
@@ -107,13 +98,6 @@ test('trackPicked: one Track (paw-t8z): only a set of shots that is not one unbr
   assert.equal(trackPicked(T, barSpan(L, SEL(1, [1]), { t0: 1000, t1: 3000 })), false);
   assert.equal(trackPicked(T, null), false);
   assert.equal(got.length, 1);
-});
-
-test('pickGroupFor: the group becomes the signal and the shot\'s scene is linked to it (paw-t8z: quick bar and panel legend alike)', () => {
-  const calls = [], T = { pickGroup: (k, id) => calls.push(['pick', k, id]), linkScene: (i, id, ch) => calls.push(['link', i, id, ch]) };
-  pickGroupFor(T, 2, 'r1', 4);
-  pickGroupFor(T, 1, 'r1', -1);   // no scene: the pick only
-  assert.deepEqual(calls, [['pick', 2, 'r1'], ['link', 4, 'r1', 'g2_proj'], ['pick', 1, 'r1']]);
 });
 
 test('paw-rw84: Track (grid) says why it cannot run; the Groups button: enabled, pressed, the take\'s painted groups', () => {

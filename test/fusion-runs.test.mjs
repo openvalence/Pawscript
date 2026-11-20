@@ -24,7 +24,6 @@ after(() => server?.close());
 
 const sc = CASES.find((c) => c.id === 'handjob').make();
 const CH = Object.fromEntries(Object.entries(sc.run.channels).map(([k, c]) => [k, Array.from(c.t, (t, i) => [t, c.v[i] === c.v[i] ? c.v[i] : null])]));
-CH.pair_proj = CH.who_pair_proj;   // a camera-handling channel (timeline/shots.js CAMERA_CHANNELS)
 const TS = CH.who_pair_proj.map(([t]) => t);
 // one take of three shots (camera splits: joined, soft), one run scene for the sidecar
 const SHOTS = [{ start_ms: 0, end_ms: 4000, tags: ['handjob'] }, { start_ms: 4000, end_ms: 9000, join: true, split: 'camera', tags: ['handjob'] }, { start_ms: 9000, end_ms: 20000, join: true, split: 'camera', tags: ['handjob'] }];
@@ -68,10 +67,10 @@ test('a channel picked on one shot of the run scene is the one its run scene is 
   const a = open(), id = await track(a);
   assert.equal(a.tr.shotDerive(1, id)?.smart, true, 'paw-lji3: the new run arrives with Smart stroke on (it plays fused over any link)');
   a.tr.setDerive(0, { smart: false }, { run: id });   // off: the link decides again
-  a.tr.setChannel(id, 'pair_proj', 0);   // a camera-handling channel (each shot of a scene keeps its own: not inherited)
-  assert.ok(a.tr.links.filter((l) => l.run === id).every((l) => l.channel === 'pair_proj'), 'every shot of the run scene takes it');
-  assert.deepEqual(a.tr.run(id).sceneChannels, ['pair_proj']);
-  for (const i of [0, 1, 2]) assert.equal(a.tr.channelFor(a.tr.run(id), i), 'pair_proj');
+  a.tr.setChannel(id, 'who_pair_proj', 0);   // a camera-handling channel (each shot of a scene keeps its own: not inherited)
+  assert.ok(a.tr.links.filter((l) => l.run === id).every((l) => l.channel === 'who_pair_proj'), 'every shot of the run scene takes it');
+  assert.deepEqual(a.tr.run(id).sceneChannels, ['who_pair_proj']);
+  for (const i of [0, 1, 2]) assert.equal(a.tr.channelFor(a.tr.run(id), i), 'who_pair_proj');
 });
 
 test('discard + Track again: the new run (a new number, paw-1fd3) is composed, fused, its old links gone', async () => {

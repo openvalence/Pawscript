@@ -4,9 +4,13 @@ Every direct dependency, vendored asset, external tool and model Pawscript uses,
 are the resolved ones in `package-lock.json` / `src-tauri/Cargo.lock` at the time of writing; the manifests
 pin ranges. `test/docs-thirdparty.test.mjs` fails if a dependency named in `package.json` or
 `src-tauri/Cargo.toml` is missing from this file. Pawscript itself is GPL-3.0-or-later (`LICENSE`, `NOTICE`,
-`README.md` "Licensing"). Everything below may ship with it except CoTracker3 (CC-BY-NC 4.0, non-commercial: not part of Pawscript, and the code that would call it is in no build and not
-in the public source, `docs/guide/cotracker.md`), with one note: `evalexpr` (AGPL-3.0-only, pulled by `buttplug_server`) is compiled into the exe. The Machine panel's toy library is not part of
-this source or of the public build: its `library.json` is empty there and the panel offers generic toys.
+`README.md` "Licensing"). Everything below may ship with it, except as noted here:
+
+- **CoTracker3** (CC-BY-NC 4.0, non-commercial) is not part of Pawscript. The code that would call it is in no build
+  and not in the public source (`docs/guide/cotracker.md`).
+- **`evalexpr`** (AGPL-3.0-only, pulled by `buttplug_server`) is compiled into the exe.
+- **The Machine panel's toy library** is third-party product data. The public source and the public build ship an
+  empty `library.json`, and the panel offers generic toys.
 
 ## npm: runtime (`package.json` `dependencies`)
 

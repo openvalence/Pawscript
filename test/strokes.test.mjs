@@ -48,6 +48,26 @@ test('min stroke duration and min stroke size drop small strokes; direction sign
   up.forEach((p, i) => assert.ok(Math.abs(p.pos + dn[i].pos - 100) <= 1));
 });
 
+test("paw-dnrv: a held level stays where it is (no undrift) and a hold's jitter makes no turns (minAmp)", () => {
+  const held = T.map((ms) => (ms < 10000 ? Math.sin((2 * Math.PI * ms) / 1000) : -0.6 + 0.02 * Math.sin((2 * Math.PI * ms) / 300)));
+  const tail = (P) => P.points.filter((p) => p.at > 11000 && p.at < 19500);
+  const on = tail(strokes(T, held)), off = tail(strokes(T, held, { minAmp: 0 }));
+  assert.ok(off.filter((p) => p.why === 'turn').length >= 20, `without the floor the jitter is strokes: ${off.length}`);
+  assert.equal(on.filter((p) => p.why === 'turn').length, 0, 'with it the hold has no turns');
+  const lv = (P) => P.points.filter((p) => p.at > 11000).reduce((s, p, _, a) => s + p.pos / a.length, 0);
+  assert.ok(lv(strokes(T, held)) < 30 && lv(strokes(T, held, { undrift: true })) > 40, 'the hold stays low; undrift pulls it to the middle');
+});
+
+test('paw-d323: small strokes among full ones stay (minAmp only where the signal holds beside them); the hold after them stays still', () => {
+  // full 1 Hz strokes; at the top 4.25-5.45 s three small strokes (0.08 of a full one); a jittering hold from 10 s
+  const v = T.map((ms) => { const s = ms / 1000; return s >= 10 ? -0.6 + 0.02 * Math.sin((2 * Math.PI * ms) / 300) : s >= 4.25 && s < 5.45 ? 0.92 + 0.08 * Math.cos((2 * Math.PI * (s - 4.25)) / 0.4) : Math.sin(2 * Math.PI * (s >= 5.45 ? s - 1.2 : s)); });
+  const turnsIn = (P, a, b) => P.points.filter((p) => p.why === 'turn' && p.at > a && p.at < b).length;
+  const fix = strokes(T, v), piece = strokes(T, v, { stillRange: Infinity });   // Infinity = minAmp against the piece median alone
+  assert.equal(turnsIn(piece, 4300, 5400), 0, 'the piece median alone takes the small strokes');
+  assert.ok(turnsIn(fix, 4300, 5400) >= 4, `the small strokes stay: ${turnsIn(fix, 4300, 5400)}`);
+  assert.equal(turnsIn(fix, 11000, 19500), 0, 'the hold has no turns');
+});
+
 test('speed clamp shortens depth, keeps time; detail adds points between turns by tolerance; deterministic', () => {
   const fast = T.map((ms) => Math.sin(2 * Math.PI * 4 * ms / 1000));   // 4 Hz full strokes: 800 pos/s
   const c = strokes(T, fast, { maxSpeed: 400, shape: 'turns' }).points, free = strokes(T, fast, { maxSpeed: 0, shape: 'turns' }).points;   // (a midpoint over the cap is not made at all: stroke-shape.test)

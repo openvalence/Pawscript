@@ -10,7 +10,7 @@
 // The user's own band for a scene is scene.range {lo, hi, lo1?, hi1?} (lo1 / hi1 = at the scene's end): it wins.
 // scene.range {off: true} = flattened (Flatten wrote the final into its points): the pass leaves it alone.
 import { lowerBound } from './core/script.js';
-import { baseTurns, fxParams, knotMode } from './fx.js';
+import { baseTurns, fxParams, knotMode, KNOT_PUSH } from './fx.js';
 import { resolveSegment } from './gen/recipes.js';
 import { clamp, median, hashSeed } from './gen/util.js';
 import { sceneTags, tagSpan, tagSpansIn, actKind, sceneStructure, sceneView } from '../features/timeline/acts.js';
@@ -45,7 +45,7 @@ export const LADDERS = {
   oral: [[0, 70, 100, 'tip'], [0.5, 55, 98, 'halfway'], [1, 40, 95, 'deep throat']],
   foreplay: [[0, 55, 95, 'hand']],
 };
-const ORGASM = [0, 45], REST = 100, EXPOSED = [85, 100], INSERT_TO = fxParams({ kind: 'insertion' }).to;
+const ORGASM = [0, 45], REST = 100, EXPOSED = [85, 100], INSERT_TO = KNOT_PUSH.to;
 // gap fill: act family -> plan kind (gen/recipes.js KINDS -> its recipe)
 const GAP_KIND = { penetration: 'penetration', oral: 'oral', foreplay: 'foreplay', knotting: 'knotting', orgasm: 'orgasm' };
 const r0 = Math.round;
@@ -128,9 +128,9 @@ export const RULES = [
     reason: (c) => `${c.st}: eases to rest (100) and holds` },
   { id: 'rest', test: (c) => c.st === 'intro' || c.st === 'idle', band: () => ({ lo: REST, hi: REST }), reason: (c) => `${c.st}: rest (100)` },
   { id: 'insertion', test: (c) => c.tags.includes('insertion'), apply: false, band: (c) => ({ lo: c.prev?.lo1 ?? REST, hi: c.prev?.hi1 ?? REST, lo1: INSERT_TO, hi1: INSERT_TO, final: true }),
-    reason: () => 'insertion: one push, no strokes to range (its depth is the Insertion modifier)' },
+    reason: () => 'insertion: one push, no strokes to range (the push sets its depth)' },
   { id: 'pullout', test: (c) => c.tags.includes('pullout'), apply: false, band: (c) => ({ lo: c.prev?.lo1 ?? REST, hi: c.prev?.hi1 ?? REST, lo1: REST, hi1: REST, final: true }),
-    reason: () => 'pull-out: one pull, no strokes to range (its depth is the Pull-out modifier)' },
+    reason: () => 'pull-out: one pull, no strokes to range (the pull sets its depth)' },
   { id: 'orgasm', test: (c) => c.tags.includes('orgasm'), band: (c) => ({ lo: c.P.orgasmLo ?? ORGASM[0], hi: c.P.orgasmHi ?? ORGASM[1] }), reason: () => 'orgasm: the deepest band of the run (spurts ride on it untouched)' },
   { id: 'exposed', test: (c) => c.fam === 'exposed', band: () => ({ lo: EXPOSED[0], hi: EXPOSED[1] }),
     reason: () => `exposed: rest band ${EXPOSED[0]}–${EXPOSED[1]} (no strokes; the Throb sits on top)` },

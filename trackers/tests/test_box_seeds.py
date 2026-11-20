@@ -112,7 +112,7 @@ def test_wrap_pinned_groups(monkeypatch):
     monkeypatch.setattr(partlabel, "sem_regions", lambda bgr, box, **kw: (
         {"balls": m}, {"balls": {"label": "balls", "source": "cam", "score": 0.9, "peak": [0.3, 0.4], "cells": 6}}))
     NOTES.clear()
-    p = P | {"box_seed": "grid", "sem_groups": True, "group_labels": False}
+    p = P | {"box_seed": "grid", "sem_groups": True}
     out = list(C.wrap(static_run, WHOLE, FRAMES, p, lambda vp, cf: 1.0, None, work_wh=(160, 120)))
     pts = out[0][2]["pts"]
     pinned = [q for q in pts if len(q) == 6]
@@ -138,7 +138,7 @@ def test_sem_shape_and_sem_track_params(monkeypatch):
     monkeypatch.setattr(partlabel, "track_masks", lambda *a, **k: calls.append("track") or 1 / 0)
     names = {q["key"] for q in C.common_params()}
     assert {"sem_shape", "sem_track"} <= names
-    base = P | {"box_seed": "grid", "sem_groups": True, "group_labels": False, "sem_track": False}
+    base = P | {"box_seed": "grid", "sem_groups": True, "sem_track": False}
     for shape, want in (("cam", []), ("grabcut", ["grabcut"])):
         calls.clear()
         NOTES.clear()
@@ -373,7 +373,7 @@ def test_wrap_tracked_outlines_membership_and_area(monkeypatch):
     monkeypatch.setattr(partlabel, "track_masks", lambda frames, masks0: [
         {"balls": m0 if i < 45 else half} for i in range(len(frames))])
     NOTES.clear()
-    p = P | {"box_seed": "grid", "sem_groups": True, "group_labels": False, "reseed_every_ms": 0}
+    p = P | {"box_seed": "grid", "sem_groups": True, "reseed_every_ms": 0}
     out = list(C.wrap(static_run, WHOLE, FRAMES, p, lambda vp, cf: 1.0, None, work_wh=(160, 120)))
     ch = [o[1]["channels"] for o in out]
     assert ch[0]["sem_balls_area"] == pytest.approx(m0.mean()) and ch[80]["sem_balls_area"] == pytest.approx(half.mean())

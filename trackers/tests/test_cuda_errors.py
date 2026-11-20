@@ -28,6 +28,18 @@ CASES = [
     ("CUDA error: CUBLAS_STATUS_ARCH_MISMATCH when calling `cublasGemmEx(...)`", FATAL),
     ("CUDA error: an illegal memory access was encountered", FATAL),
     ("CUDA out of memory. Tried to allocate 2.00 GiB", OOM),
+    # paw-vdb3.1: ROCm torch (hipBLAS statuses under torch's "CUDA error:", HIP runtime errors, MIOpen statuses bare)
+    ("HIP out of memory. Tried to allocate 2.00 GiB", OOM),
+    ("CUDA error: HIPBLAS_STATUS_ALLOC_FAILED when calling `hipblasCreate(handle)`", OOM),
+    ("CUDA error: HIPBLAS_STATUS_NOT_SUPPORTED when calling `hipblasGemmEx(...)`", JOB),
+    ("CUDA error: HIPBLAS_STATUS_EXECUTION_FAILED when calling `hipblasSgemm(...)`", FATAL),
+    ("HIP error: an illegal memory access was encountered", FATAL),
+    ("HIP error: invalid device function", FATAL),
+    ("MIOpen Error: Failed to compile the kernel", FATAL),
+    ("rocBLAS error: Could not initialize Tensile host", FATAL),
+    ("hipBLASLt error: matmul heuristic failed", FATAL),
+    ("miopenStatusUnknownError", FATAL),
+    ("miopenStatusAllocFailed", OOM),
 ]
 
 

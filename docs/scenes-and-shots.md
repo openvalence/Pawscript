@@ -35,7 +35,7 @@ edit, as after a merge, the first shot wins and the others' differing fields bec
 | `kind` (`blank` / `still`), `transition` | shot | Detect scenes |
 | `loop` | shot | an animation loop is a camera-span fact |
 | `cum` | shot | proposed spurt times, keyed by time |
-| `sign`, `auto_sign` | shot | detection fields; the stroke direction the owner sets lives on the run / its scene link |
+| `sign` | shot | detection field; the stroke direction the owner sets lives on the run / its scene link |
 | `continues` | gone | `true` became the join on load; `false` (the owner's "no") stays on the shot so proposals keep respecting it. Proposals still write `continues: 'auto'` on the live list (never stored) |
 | scene links (`links` block), runs | per shot span | unchanged: keyed by time span |
 

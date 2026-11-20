@@ -95,7 +95,9 @@ test('the right-click entries: Add / Remove, Assign / Change shortcut; Move up /
   assert.deepEqual(commandEntries(app, el('nope.cmd')), [], 'an unknown command: nothing');
   assert.deepEqual(labels(commandEntries(app, el('lanes.toggleSolo'))), ['Add to Quick menu', 'Assign shortcut…']);
   assert.deepEqual(labels(commandEntries(app, el('edit.undo'))), ['Remove from Quick menu', 'Change shortcut (currently Ctrl+Z)…']);
-  assert.deepEqual(labels(commandEntries(app, el('track.run', true))), ['Remove from Quick menu', 'Move up (off)', 'Move down', 'Change shortcut (currently Ctrl+T)…']);
+  assert.deepEqual(labels(commandEntries(app, el('track.run', true))), ['Remove from Quick menu', 'Move up (off)', 'Move down', 'Change shortcut (currently Ctrl+T)…', 'undefined', 'Custom box track…', 'Custom point track…'], 'Track ROI: the standard entries, then the custom tracks (paw-bunr)');
+  commandEntries(app, el('track.run')).at(-1).run();
+  assert.deepEqual(app.ran.pop(), ['track.customPoints', undefined]);
   assert.deepEqual(labels(commandEntries(app, el('edit.undo', true))), ['Remove from Quick menu', 'Move up', 'Move down (off)', 'Change shortcut (currently Ctrl+Z)…']);
 
   commandEntries(app, el('lanes.toggleSolo'))[0].run();

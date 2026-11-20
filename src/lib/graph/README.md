@@ -651,7 +651,7 @@ Snapshot = {
   axes: { [axisId]: Script }, ghosts: Ghost[], plan: PlanSegment[], chapters, loops, bookmarks,
   range: { t0, t1 } | null, selection: { axis, ats: Set } | null, media: object | null,
   runs: RunRecord[],           // src/lib/runs.js makeRun shape (tracking feature), [] if none
-  scenes: [{ start_ms, end_ms, sign?, auto_sign? }],   // tracking feature's scene list, [] if none
+  scenes: [{ start_ms, end_ms, sign? }],   // tracking feature's scene list, [] if none
   trackSpans: [{ start_ms, end_ms, state }],           // tracking feature's span labels, [] if none
   audio: { i0: 0, dt: number, v: Float32Array } | null, // peak envelope 0..1, null until loaded
   tags: [{ t0, t1, tag, score? }] | null,               // null: no provider yet

@@ -3,9 +3,9 @@
 //
 // What a points run stores (cotracker_points / tapnext_points, kept in the .pawruns): per frame the seed-anchored image
 // centroid (centroid_x / _y), the camera path (cam_x / _y: cumulative background motion since the run scene's start,
-// cam_conf), every group's / part's / pinned group's / character's centre in the BACKGROUND frame ({X}_x / _y, camera
+// cam_conf), every pinned group's / character's centre in the BACKGROUND frame ({X}_x / _y, camera
 // removed: + cam = image position), and the point tracks (frames.ov[i].pts [x, y, visible, motion group]). The projected
-// channels (proj, proj_cam, {X}_proj, pair_proj, who_*_proj) are stroke_proj over those, per run scene: this module redoes
+// channels (proj, proj_cam, {X}_proj, who_*_proj) are stroke_proj over those, per run scene: this module redoes
 // that with other post-tracking choices, per run scene:
 //   derive = {cam?: {mode, strength, source, smoothMs}, axis?: {mode, x0, y0, x1, y1}} (a shot's `derive`; absent = as tracked)
 //   cam.mode  auto = the sidecar's camera path (translation), as tracked | off = no camera removal (image positions) |
@@ -49,11 +49,11 @@ export function effectiveCam(tagDef, derive, span) {
 export const DERIVE_AXES = ['auto', 'vertical', 'horizontal', 'custom'];
 const PTS_MODES = new Set(['move', 'zoom', 'full']);
 // paw-9qm (lib/signal-source.js): a shot's signal source and what it is measured against
-export const AGAINST_KEY = /^(sem_[a-z0-9_]+|g[1-4](p[12])?)$/;
+export const AGAINST_KEY = /^sem_[a-z0-9_]+$/;
 const SOURCE_ID = /^[A-Za-z0-9_:~.-]{1,160}$/;
 /** The derive with its `against` applied to the camera: 'none' = no camera removal (image positions). */
 export const withAgainst = (d) => (d?.against === 'none' ? { ...d, cam: { ...CAM_DEFAULT, mode: 'off' } } : d);
-const BASE = /^(g[1-4](p[12])?|sem_[a-z0-9_]+|who_(?:c[12]|x))$/;
+const BASE = /^(sem_[a-z0-9_]+|who_(?:c[12]|x))$/;
 const fin = Number.isFinite;
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -132,6 +132,7 @@ export function deriveClean(d) {
     const S = { minStroke: [0, 0.5], minMs: [0, 1000], detail: [0, 50], maxSpeed: [0, 2000], smoothMs: [0, 1000], amount: [0, 0.9], centreMs: [1000, 120000] }, o = {};   // paw-woz5: + the compressor's two handles
     for (const [k, [a, b]] of Object.entries(S)) if (fin(+d.strokes[k])) o[k] = clamp(+d.strokes[k], a, b);
     if (['scene', 'follow', 'local', 'shaft', 'compress'].includes(d.strokes.range)) o.range = d.strokes.range;
+    if (typeof d.strokes.undrift === 'boolean') o.undrift = d.strokes.undrift;   // paw-d323: set, it wins over the channel's default
     out.strokes = o;
   }
   // paw-azd: the owner's shaft marks on this shot: the frame (ms) where it is fully out / hilted (lib/shaft.js)
@@ -363,7 +364,7 @@ export function strokeProj(t, X, Y, u, gapMs = 1000) {
   return out;
 }
 
-/** groups.axis_dist / pair_dist + group_channels' 0..1: (A - B) on u (null: their difference's principal axis), sign so the
+/** groups.axis_dist + who_channels' 0..1: (A - B) on u (null: their difference's principal axis), sign so the
  *  mean is >= 0 (smaller = closer), min..max -> 0..1 (flat: 0.5). Arrays aspect-scaled, NaN = absent. */
 function pairProj(AX, AY, BX, BY, u) {
   const n = AX.length, rx = new Float64Array(n), ry = new Float64Array(n), ok = new Uint8Array(n), out = new Float32Array(n).fill(NaN);
@@ -402,7 +403,7 @@ function chan(t, v) {
 /**
  * The run's channels with every run scene that has a derive (derives[k], k = run scene index; key -1 = a run without
  * scenes) recomputed: proj / proj_cam, every {X}_proj with a stored centre, and with an axis that is not auto or a zoom /
- * rotation camera also pair_proj and the characters' distances (who_pair / p1h2 / p2h1). Scenes without a derive keep
+ * rotation camera also the characters' distances (who_pair / p1h2 / p2h1). Scenes without a derive keep
  * the stored values. force: recompute those scenes too, as tracked (the parity check). -> {channels, changed: [names]}.
  * Channels that are not pure functions of the stored centres (a part's _rel, _scale, _rot, cam_*) are never touched.
  */
@@ -446,8 +447,6 @@ export function deriveChannels(run, derives = [], { aspect = 16 / 9, force = fal
     for (const b of bases) { tr[b] = track(b); put(b + '_proj', idx, strokeProj(ts, tr[b][0], tr[b][1], u, gapMs)); }
     if ((d?.axis && d.axis.mode !== 'auto') || ['zoom', 'full'].includes(d?.cam?.mode) || (force && axis.mode === 'custom')) {
       const pu = axis.mode === 'custom' ? [-u[0], -u[1]] : u;   // the sidecar passes the custom arrow itself (sign is fixed by the mean anyway)
-      const two = largestTwo(ch, idx);
-      if (two && ch.pair_proj) put('pair_proj', idx, pairProj(tr[two[0]][0], tr[two[0]][1], tr[two[1]][0], tr[two[1]][1], pu));
       const pairs = [['who_pair_proj', 'who_c1', 'who_c2'], ['who_p1h2_proj', 'sem_c1_penis', 'sem_c2_hips'], ['who_p2h1_proj', 'sem_c2_penis', 'sem_c1_hips']];
       for (const [name, a, b] of pairs) if (ch[name] && tr[a] && tr[b]) put(name, idx, pairProj(tr[a][0], tr[a][1], tr[b][0], tr[b][1], pu));
     }
@@ -455,13 +454,6 @@ export function deriveChannels(run, derives = [], { aspect = 16 / 9, force = fal
   const channels = { ...ch };
   for (const [name, v] of Object.entries(out)) channels[name] = chan(ch[name].t, v);
   return { channels, changed: Object.keys(out) };
-}
-
-/** The scene's two largest bodies (g{k}_n summed over idx), sorted: ['g1', 'g2'] | null. */
-function largestTwo(ch, idx) {
-  const tot = [1, 2, 3, 4].map((k) => { let s = 0; const c = ch[`g${k}_n`]; for (const j of idx) { const y = c?.v[j]; if (y > 0) s += y; } return [`g${k}`, s]; });
-  const two = tot.filter(([g, s]) => s > 0 && ch[g + '_x']).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([g]) => g).sort();
-  return two.length === 2 ? two : null;
 }
 
 /**

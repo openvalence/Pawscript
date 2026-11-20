@@ -95,12 +95,12 @@ test('per-scene links: only the linked scene takes its carrier out; carriers() d
   assert.notEqual(channelPatch(prim, 'g2_proj', {}, links).points0, prim.points0);
 });
 
-test('pickerChannels: primary, then the motion-group set in order; else every channel', () => {
+test('pickerChannels: primary, then the camera / group set in order; else every channel', () => {
   const ch = (names) => ({ channels: Object.fromEntries(names.map((n) => [n, {}])) });
-  assert.deepEqual(pickerChannels(ch(['cam_y', 'g2_proj', 'g1_n', 'pair_proj', 'g1_proj', 'cam_x', 'pair_dist'])), ['primary', 'g1_proj', 'g2_proj', 'pair_proj', 'cam_x', 'cam_y']);
+  assert.deepEqual(pickerChannels(ch(['cam_y', 'g2_proj', 'g1_n', 'pair_proj', 'g1_proj', 'cam_x', 'pair_dist'])), ['primary', 'cam_x', 'cam_y']);   // paw-57dw: g* / pair_* are no picks
   assert.deepEqual(pickerChannels(ch(['area', 'raw_px'])), ['primary', 'area', 'raw_px']);
   assert.deepEqual(pickerChannels(null), ['primary']);
-  assert.deepEqual(pickerChannels(ch(['g1_proj', 'raw_px_cam', 'proj_cam', 'cam_conf'])), ['primary', 'proj_cam', 'g1_proj']);
+  assert.deepEqual(pickerChannels(ch(['sem_hips_proj', 'raw_px_cam', 'proj_cam', 'cam_conf'])), ['primary', 'proj_cam', 'sem_hips_proj']);
 });
 
 test('camWeak: mean cam_conf under 0.3 greys the camera-removed chips (proj_cam, g*, pair)', () => {
@@ -109,6 +109,6 @@ test('camWeak: mean cam_conf under 0.3 greys the camera-removed chips (proj_cam,
   assert.equal(camWeak(run([0.5, 0.2, 0.3])), false);
   assert.equal(camWeak(run(null)), false, 'no cam_conf: not weak');
   assert.equal(camWeak(null), false);
-  assert.ok(camChannel('proj_cam') && camChannel('g3_proj') && camChannel('pair_proj'));
+  assert.ok(camChannel('proj_cam') && camChannel('sem_hips_proj') && !camChannel('g3_proj') && !camChannel('pair_proj'));
   assert.ok(!camChannel('primary') && !camChannel('cam_x') && !camChannel('proj'));
 });

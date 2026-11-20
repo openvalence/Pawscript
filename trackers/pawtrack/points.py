@@ -17,7 +17,6 @@ import cv2
 import numpy as np
 
 from pawtrack import MODELS_DIR
-from pawtrack.motion_model import MAX_PARTS
 from pawtrack import partlabel
 from pawtrack.partlabel import fit_mask, texture
 from pawtrack.progress import beat, pulling, stage, steps, sub
@@ -27,14 +26,11 @@ CACHE = MODELS_DIR / ".cache"  # trackers/.cache (gitignored), or the app's mode
 MAX_P = 4  # p0..p3 channels
 BASE_CH = ["proj", "proj_cam", "vis_frac", "vis_extent", "vis_len", "dist01", "centroid_x", "centroid_y"] + \
           [f"p{k}_{a}" for k in range(MAX_P) for a in "xy"] + ["raw_px_cam", "raw_px", "primary_used"]
-GROUP_CH = [f"g{g}_{a}" for g in range(1, 5) for a in "xyn"] + ["n_groups", "pair_dist", "cam_x", "cam_y", "cam_conf"]  # pawtrack.groups
-GROUP_PROJ = [f"g{g}_proj" for g in range(1, 5)] + ["pair_proj"]
-PART_CH = [f"g{g}_{a}" for g in range(1, 5) for a in ("scale", "rot")] + \
-          [f"g{g}p{j}_{a}" for g in range(1, 5) for j in range(1, MAX_PARTS + 1) for a in ("x", "y", "n", "proj", "rel", "scale")]
+GROUP_CH = ["cam_x", "cam_y", "cam_conf"]  # pawtrack.groups' camera estimate
 SEM = ("penis", "balls", "hips")  # pinned semantic groups 1..3 (box_seeds; pts 6th element, sem_<name>_* channels)
 SEM_CH = [f"sem_{s}_{a}" for s in SEM for a in ("x", "y", "n", "proj", "rel", "scale", "area")]
-CHANNELS = BASE_CH + GROUP_CH + GROUP_PROJ + PART_CH + SEM_CH
-PRIMARIES = ["auto", "centroid_auto", *BASE_CH[:-3], *GROUP_PROJ, *(f"sem_{s}_{a}" for a in ("proj", "area") for s in SEM)]
+CHANNELS = BASE_CH + GROUP_CH + SEM_CH
+PRIMARIES = ["auto", "centroid_auto", *BASE_CH[:-3], *(f"sem_{s}_{a}" for a in ("proj", "area") for s in SEM)]
 USED = {"proj": 0, "dist01": 1}  # primary_used channel: 0 = proj, 1 = dist01, 2 = anything else
 HIPS_MIN = 0.5  # auto: sem_hips_proj when the pinned hips are present (n > 0) and _proj finite on >= this share of frames
 DIST_RATIO = 0.5  # auto: dist01 when std(distance of clicks 0-1) >= this x std(centroid travel on the axis)
@@ -505,7 +501,6 @@ def common_params():
         param("retire_ms", "Retire points hidden longer than (ms)", "int", 2000, 100, 60000),
         param("max_points", "Max active points (0 = the initial count)", "int", 0, 0, 4096,
               hint="CoTracker3 online: 1.5 x the initial count"),
-        param("group_labels", "Name motion groups (tagger: penis, balls, tail, ...)", "bool", True),
         param("seed_frame", "Seed frame", "choice", "first", choices=["first", "auto"],
               hint="A drawn ROI seeds its own scene where it was drawn"),
         param("sem_groups", "Pin penis / balls / hips groups", "bool", True,
@@ -1165,8 +1160,7 @@ def wrap(run, roi, frames, p, conf_of, local_support, work_wh=None, grow=1.0):  
     Soft cuts (PROTOCOL v4.9, p["soft_cuts"] ms, set by cli): the run goes on through them; each pass's Reseed runs its
     soft-cut check there (needs reseed_every_ms > 0), the pinned groups re-detected by the tagger on that frame."""
     from pawtrack import partlabel
-    tap = partlabel.Tap() if p.get("group_labels") else None  # keeps a few frames for the group names
-    it = iter(frames if tap is None else tap(frames))
+    it = iter(frames)
     f0 = next(it, None)
     if f0 is None:
         return
@@ -1411,10 +1405,8 @@ def wrap(run, roi, frames, p, conf_of, local_support, work_wh=None, grow=1.0):  
     g = group_channels(rows, chs, ts, aspect, p, new, sem_all, {i: k for k, i in sid.items()}, {x["id"]: x for x in mine if x["id"]})
     if knots:
         knot_channels(rows, chs, ts, aspect, p, g["cam"], knots, sem_all, anc)
-    if tap is not None or sem_rec:
-        with sub("labels"):  # v4.43: the tagger names the groups (its first load inside: stage "tagger")
-            partlabel.scene_labels(tap, np.array(ts), np.array([r[1] for r in rows]), np.array([r[2] for r in rows]), g, aspect,
-                                   {f"sem_{k}": r for k, r in sem_rec.items()})
+    if sem_rec:
+        partlabel.scene_labels({f"sem_{k}": r for k, r in sem_rec.items()})
     # proj_cam: proj's pipeline on the centroid in the background frame (groups' cam: cent + cam = image position)
     proj_cam, _, _, raw_cam = stroke_proj(ts, tr - g["cam"], aspect, p)
     prim = p["primary"]
@@ -1580,7 +1572,7 @@ def knot_channels(rows, chs, ts, aspect, p, cam, knots, sem=None, anc=None):
 
 
 def group_channels(rows, chs, ts, aspect, p, new=None, sem=None, names=None, meta=None):
-    """Motion groups of the scene's points (pawtrack.groups) into the g*/n_groups/pair_dist/cam channels of chs.
+    """The group pass over the scene's points (pawtrack.groups) into the cam_* channels of chs (its camera estimate).
     new: held_input mask (group pass on the drawings). sem (N,): pinned group per point (sem_* channels); names {id:
     name} of the pinned groups (default SEM's; v4.11 user groups: any name), kept in the result as sem_names.
     meta {id: parsed user group} (v4.12): who / part of each pinned group -> the characters' who_* channels
@@ -1599,36 +1591,9 @@ def group_channels(rows, chs, ts, aspect, p, new=None, sem=None, names=None, met
                          pinned=sem if sem is not None and np.any(sem) else None, conf=conf, group_fit=bool(p.get("group_fit")),
                          tick=tick)
     num = lambda x: float(x) if np.isfinite(x) else None
-    # g*_proj: each centroid through proj's own path (axis, sign, gap bridging, 0..1 per scene); pair_proj: pair_dist
-    # (already the signed projection, sign fixed so > 0 on average) scaled 0..1 per scene, larger = farther apart
-    gp = [stroke_proj(ts, g["cent"][:, k], aspect, p)[0] for k in range(4)]
-    pd = g["pair_dist"]
-    lo, hi = (np.nanmin(pd), np.nanmax(pd)) if np.isfinite(pd).any() else (0.0, 0.0)
-    pp = (pd - lo) / (hi - lo) if hi - lo > 1e-12 else np.where(np.isfinite(pd), 0.5, np.nan)
     for i, ch in enumerate(chs):
-        for k in range(4):
-            ch[f"g{k + 1}_proj"] = num(gp[k][i])
-        ch["pair_proj"] = num(pp[i])
-        for k in range(4):
-            on = g["share"][i, k] > 0
-            ch[f"g{k + 1}_x"], ch[f"g{k + 1}_y"] = (num(c) if on else None for c in g["cent"][i, k])
-            ch[f"g{k + 1}_n"] = float(g["share"][i, k])
-        ch["n_groups"], ch["pair_dist"] = int(g["n_groups"][i]), num(g["pair_dist"][i])
         ch["cam_x"], ch["cam_y"] = (float(c) for c in g["cam"][i])
         ch["cam_conf"] = float(g["cam_conf"][i])
-    # bodies -> parts (pawtrack.motion_model): g*_scale / g*_rot raw; a part's centroid / share, its centroid and its
-    # motion in its body's frame (rel) through proj's path, its own scale term (raw); None for a part that never
-    # exists in the scene
-    pp = {(k, j): [stroke_proj(ts, g[c][:, k, j], aspect, p)[0] for c in ("part_cent", "part_rel")]
-          for k in range(4) for j in range(MAX_PARTS) if g["part_share"][:, k, j].any()}
-    for i, ch in enumerate(chs):
-        for k in range(4):
-            ch[f"g{k + 1}_scale"], ch[f"g{k + 1}_rot"] = num(g["scale"][i, k]), num(g["rot"][i, k])
-        for (k, j), (pj, rl) in pp.items():
-            n, on = f"g{k + 1}p{j + 1}", g["part_share"][i, k, j] > 0
-            ch[n + "_x"], ch[n + "_y"] = (num(c) if on else None for c in g["part_cent"][i, k, j])
-            ch[n + "_n"], ch[n + "_proj"], ch[n + "_rel"] = float(g["part_share"][i, k, j]), num(pj[i]), num(rl[i])
-            ch[n + "_scale"] = num(g["part_scale"][i, k, j])
     # pinned semantic groups (box_seeds): like a part, but with a fixed membership; rel to the body around them
     g["sem_names"] = names = names or {k + 1: s for k, s in enumerate(SEM)}
     if "sem_cent" in g:
@@ -1701,18 +1666,13 @@ def hips_presence(g, chs):
 def primary_record(prim, rule, ts, tr, raw, raw_cam, chs, g, aspect, p):
     """data of the `primary` note (PROTOCOL notes): the pick, its rule, and for every primary this run offers a few
     numbers: std and travel (p95 - p5) of the signal in frame heights, valid = share of frames with a value
-    (+ cam_conf for proj_cam, share for g*). axis.deg = screen direction of rising value (0 right, 90 up).
+    (+ cam_conf for proj_cam, share / present for a pinned group). axis.deg = screen direction of rising value (0 right, 90 up).
     Reporting only: changes nothing."""
     from pawtrack.pipeline import pca_axis, sig3
     col = lambda k: np.array([np.nan if c[k] is None else c[k] for c in chs], float)
     sig = {"proj": raw, "proj_cam": raw_cam}
     if any(c["dist01"] is not None for c in chs):
         sig["dist01"] = col("dist01")
-    for k in range(4):
-        if g["share"][:, k].any():
-            sig[f"g{k + 1}_proj"] = stroke_proj(ts, g["cent"][:, k], aspect, p)[3]
-    if np.isfinite(g["pair_dist"]).any():
-        sig["pair_proj"] = g["pair_dist"]
     for i, s in g["sem_names"].items():
         k = i - 1
         if "sem_share" in g and k < g["sem_share"].shape[1] and g["sem_share"][:, k].any():
@@ -1735,9 +1695,6 @@ def primary_record(prim, rule, ts, tr, raw, raw_cam, chs, g, aspect, p):
                    "valid": sig3(len(x) / max(len(chs), 1))}
     cam_conf = float(np.mean(g["cam_conf"])) if len(chs) else None
     cand["proj_cam"]["cam_conf"] = sig3(cam_conf)
-    for k in range(4):
-        if f"g{k + 1}_proj" in cand:
-            cand[f"g{k + 1}_proj"]["share"] = sig3(g["share"][:, k].mean())
     for i, s in g["sem_names"].items():
         k = i - 1
         if f"sem_{s}_proj" in cand:  # + present = share of frames with a visible member (auto's hips rule)

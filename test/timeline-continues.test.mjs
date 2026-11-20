@@ -127,7 +127,7 @@ test('internal views track with SAM area, sign flipped (more pixels = deeper); t
   const O = { internal: isInternal };
   assert.equal(defaultTrackerFor({ start_ms: 0, end_ms: 10 }, O), null);
   const d = defaultTrackerFor({ tags: ['internal'] }, O);
-  assert.deepEqual({ ...d, box: undefined }, { tracker: 'sam2_mask', params: { primary: 'area', pipe_sign: 'keep', pipe_invert: true }, label: 'SAM · area', box: undefined });
+  assert.deepEqual({ ...d, box: undefined }, { tracker: 'sam2_mask', params: { primary: 'area', pipe_invert: true }, label: 'SAM · area', box: undefined });
   assert.equal(d.box, null);
   const describe = { tags: [{ tag: 'x-ray_view', score: 0.9, box: [0.1, 0.1, 0.8, 0.8] }, { tag: 'canine_penis', score: 0.6, box: [0.4, 0.5, 0.2, 0.1] }, { tag: 'penis', score: 0.4, box: [0, 0, 1, 1] }] };
   assert.equal(isInternal({ describe }), true);                            // describe.py's tag name
@@ -197,7 +197,7 @@ test('tracking store: the bridge over a continuation (base points around it), it
     await tr.track();
     const req = sent.find((r) => r.cmd === 'track');
     assert.equal(req.tracker, 'sam2_mask');
-    assert.equal(req.params.primary, 'area'); assert.equal(req.params.pipe_invert, true); assert.equal(req.params.pipe_sign, 'keep');
+    assert.equal(req.params.primary, 'area'); assert.equal(req.params.pipe_invert, true); assert.ok(!('pipe_sign' in req.params));
     assert.equal(tr.runs.at(-1).name, 'SAM · area');
     assert.equal(tr.ghost(tr.runs.at(-1).id).name, tr.titleOf(tr.runs.at(-1)));   // the ghost is named by the run's title
     tr.pickedFor = new Set([10100]);

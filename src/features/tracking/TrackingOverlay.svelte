@@ -1,5 +1,5 @@
 <script>
-  // The picks on the video (a run's motion group, a blobs label, the shaft gauge; paw-x8we: no ROI is drawn here any more, Track
+  // The picks on the video (a blobs label, the shaft gauge; paw-x8we: no ROI is drawn here any more, Track
   // ROI takes a painted part, outlined while its pick menu points at it), describe tag boxes the user turned
   // on, and what the tracker saw -- the live frame while tracking, else the stored frame AT the playhead of the run there
   // (selected shots only, unless tracking.blobs.follow = playhead: overlay-pick.js). With features/video this registers a drawer + a pointer tool on app.player.overlays (env.map keeps
@@ -15,7 +15,10 @@
   import { pathPoly } from '../video/overlays.svelte.js';
   import { trackingFor } from './tracking.svelte.js';
   import { LIVE_COLOR, TAG_COLOR, AXIS_COLOR, GROUP_COLORS, STATIC_COLOR, PAIR_COLOR, INK_COLOR, GRID_COLOR, semColor, semPaint, groupPaint, paint as tok } from './colors.js';
-  import { drawAxis } from './axis.js';
+  import { drawAxis, AXIS_MODES, axisInfo, axisParams } from './axis.js';
+  import SegmentedControl from '../../ui/kit/SegmentedControl.svelte';
+  import Button from '../../ui/kit/Button.svelte';
+  import { cmd } from '../../app/cmd.js';
   import { BLOB_SCHEMA, blobOpts, drawBlobsView, frameBodies, bodyAt, partAt, semAt, semOf, semNames, hudRows, pointInfo, sparkSeries, MAX_SEM } from './blobs.js';
   import { hiddenSlots, axisUnit } from './dock.js';
   import { partWeights, weightById, drawFusion, frameParts, partNear, drawPairPick } from './fusion-view.js';
@@ -36,27 +39,6 @@
 
   // the pick tool owns the pointer in the Track tab (its id stays 'tracking.roi': PosBar / Sr6View treat it as the idle tool)
   const editable = $derived(app.mode === 'track' && !!app.doc.media && tr.busy !== 'track');
-  // a plain click (no drag) within 8 px of a coloured point of the selected run picks its motion group as the lane
-  // signal (tr.pickGroup)
-  function groupAt(p) {
-    const sel = tr.selected, map = tr.axisMap, c = tr.live ? null : tr.overlayFrame(app.player.timeMs);
-    const mode = app.settings.get('tracking.trails');
-    if (!c || c.run !== sel || !map || (mode !== 'groups' && mode !== 'blobs')) return 0;   // picks act on the selected run
-    const pts = c.fr.ov[c.i]?.pts || [];
-    if (mode === 'blobs' && shown) {   // inside a part's hull: its own stroke (_rel); else inside a body's
-      const pa = partAt(shown.F, p.rx, p.ry), ch = pa && `g${pa.g}p${pa.p}_rel`;
-      if (ch && sel.channels[ch]) return ch;
-      const k = bodyAt(shown.F, p.rx, p.ry); if (k) return k;
-    }
-    let g = 0, best = 64;
-    for (const q of pts) {
-      if (!q[2] || !(q[3] > 0)) continue;
-      const [X, Y] = map(q[0], q[1]), d = (X - p.x) ** 2 + (Y - p.y) ** 2;
-      if (d <= best) { best = d; g = q[3]; }
-    }
-    return g;
-  }
-  let pick = null;   // {g, x, y}: the press landed on a group's point (g = 1..4, or a part's channel)
   let soloHit = null;   // the press landed on a blobs label: its release solos that thing (again: releases it)
   let gauge = null, gaugeHit = false;   // paw-azd: the shaft gauge's rect (last paint); a press on it opens the marks menu
   const SHAFT_MARKS = [
@@ -71,17 +53,28 @@
       if (gauge && p.x >= gauge.x && p.x <= gauge.x + gauge.w && p.y >= gauge.y && p.y <= gauge.y + gauge.h) { gaugeHit = true; showContextMenu(e, SHAFT_MARKS); return true; }
       const lb = labelAt(p.x, p.y);
       if (lb) { soloHit = lb; return true; }
-      const g = groupAt(p); pick = g ? { g, x: p.x, y: p.y } : null; return !!g;
+      return false;
     },
-    move(p) { if (soloHit || gaugeHit) return; if (pick && Math.hypot(p.x - pick.x, p.y - pick.y) > 4) pick = null; },
+    move() {},
     up() {
       if (gaugeHit) { gaugeHit = false; return; }
-      if (soloHit) { solo = sameThing(solo, soloHit) ? null : soloHit; soloHit = null; layer?.invalidate(); return; }
-      if (pick) { if (typeof pick.g === 'string') tr.pickChannel(tr.selectedId, pick.g, 'video'); else tr.pickGroup(pick.g); } pick = null;
+      if (soloHit) { solo = sameThing(solo, soloHit) ? null : soloHit; soloHit = null; layer?.invalidate(); }
     },
     context() {},
   };
   const axisOn = $derived(tr.axisOn && tr.axisEditable);
+  // paw-57dw: the next run's stroke axis (sent with Track ROI), beside the axis tool while it is on (was the Tracker panel's row)
+  const AXIS_SHORT = { auto: 'auto', vertical: 'vert', horizontal: 'horiz', custom: 'arrow' };
+  const AXIS_TIPS = { auto: 'Principal axis of the motion (right timing, arbitrary direction)', vertical: 'Up = out', horizontal: 'Right = out', custom: 'The drawn arrow: toward its IN end = deeper' };
+  const AXIS_OPTIONS = AXIS_MODES.map((m) => ({ value: m, label: AXIS_SHORT[m], tip: AXIS_TIPS[m] }));
+  const axisBar = $derived(axisOn && tr.hasAxis());
+  const axisText = $derived.by(() => {
+    if (!axisBar) return '';
+    const t = tr.tracker, i = axisInfo(tr.axis, tr.aspect), sent = axisParams(t.params, tr.axisMode, tr.axis, tr.params, tr.aspect);
+    const what = !tr.axisMode ? `tracker default (${t.params.find((p) => p.key === 'axis')?.default})` : sent.axis === 'custom' ? 'custom arrow' + (sent.primary ? ', primary proj' : '')
+      : sent.axis ? sent.axis + (sent.pipe_invert !== undefined ? (sent.pipe_invert ? ', inverted' : ', not inverted') : '') + (tr.axisMode === 'custom' ? ' (nearest)' : '') : 'no arrow: tracker default';
+    return (i ? `${i.angle}° · ${i.length.toFixed(2)} h · ` : '') + what;
+  });
   // ---- pick a pair on the video (paw-ufv; the pair model is the store's, paw-9qm: tr.pairPick {first, span} | null,
   // tr.pickPairPart(key) per click -- the second click makes the pair the shot's signal). While picking, the pinned parts
   // of the frame on show are the targets: hover rings the one under the pointer, Esc / right-click cancels. ----
@@ -280,7 +273,7 @@
   });
   // sparkline: the primary (bright), the lane's channel when it is another, the candidate signals dim in their own
   // colours; t - 2 s .. t + 1 s, a dashed line at t. 0..1 channels on a fixed scale, others fitted to the window.
-  const SPARK = [['proj', AXIS_COLOR], ['proj_cam', 'var(--series-blue)'], ['dist01', 'var(--series-yellow)'], ...GROUP_COLORS.map((c, k) => [`g${k + 1}_proj`, c]), ['pair_proj', PAIR_COLOR]];
+  const SPARK = [['proj', AXIS_COLOR], ['proj_cam', 'var(--series-blue)'], ['dist01', 'var(--series-yellow)'], ['who_pair_proj', PAIR_COLOR]];
   const SW = 232, SH = 48, SN = 116;
   let spark = $state();
   $effect(() => {
@@ -384,6 +377,15 @@
   </div></div>
 {/snippet}
 
+{#snippet axisModeBar()}
+  <div class="axbar" use:portal data-testid="axis-mode">
+    <span class="k-hint num">Next run: {axisText}</span>
+    <SegmentedControl size="sm" label="Stroke axis (next run)" options={AXIS_OPTIONS} value={tr.axisMode} onchange={(v) => tr.setAxisMode(v)} />
+    <Button size="sm" variant="ghost" {...cmd(app, 'tracking.axisClear', undefined, { tip: 'Remove the stroke axis' })}>Clear</Button>
+  </div>
+{/snippet}
+
+{#if axisBar}{@render axisModeBar()}{/if}
 {#if !layer}
   <div class="ov" bind:clientWidth={cw} bind:clientHeight={ch}>
     <canvas bind:this={canvas} class:edit={editable || axisOn || picking} onpointerdown={down} onpointermove={move} onpointerup={up} oncontextmenu={editable || axisOn || picking ? context : undefined}></canvas>
@@ -397,6 +399,10 @@
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   canvas.edit { pointer-events: auto; cursor: crosshair; touch-action: none; }
   .bhud-at { display: contents; }
+  /* above the tool hint (VideoPane .tip) at the stage's foot */
+  .axbar { position: absolute; left: var(--space-5); bottom: calc(var(--space-5) + 30px); z-index: 2; pointer-events: auto; display: flex; align-items: center; gap: var(--space-3);
+    max-width: calc(100% - 2 * var(--space-5)); padding: var(--space-1) var(--space-3); background: var(--glass); backdrop-filter: var(--glass-blur); border: var(--bw) solid var(--line-2); border-radius: var(--radius); }
+  .axbar .k-hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   /* the dock on the stage's left edge, clear of the corner chips (top) and the tool hint (bottom); the Info card beside it */
   .tdock-at { position: absolute; left: 0; top: calc(var(--space-4) + 32px); bottom: calc(var(--space-4) + 28px); z-index: 1; pointer-events: none;
     display: flex; align-items: flex-start; gap: var(--space-2); }

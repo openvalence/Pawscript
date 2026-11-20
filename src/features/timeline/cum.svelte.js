@@ -1,9 +1,10 @@
 // cum.svelte.js -- "detect cumshots" (lib/cum.js; sidecar `cum`): the job, the proposals kept on the scene
-// (scene.cum [{t, score}], saved with the project, outside undo like describe's tags), placing them as spurts (one undo
-// step through commands-fx commitFx) and the ghost diamonds the Modifiers row draws (FxLane: drawCum / cumTip / CumBar).
+// (scene.cum [{t, score}], saved with the project, outside undo like describe's tags), placing them as an orgasm's
+// markers (one undo step through commands-fx commitFx; paw-d1g7) and the ghost diamonds the Modifiers row draws (FxLane:
+// drawCum / cumTip / CumBar).
 import { scenesOf, newId, durOf } from './state.svelte.js';
 import { sceneIndexAt, sceneAtPlayhead } from './scenes.js';
-import { modAt, modOver, spansOf } from './mods.js';
+import { modAt, modOver, spansOf, spurtHint, makeMod } from './mods.js';
 import { addFx } from './fx-edit.js';
 import { commitFx, ballsSpurts } from './commands-fx.js';
 import { ballsRun } from './balls.js';
@@ -122,23 +123,23 @@ export function cumPending(app, i) {
   return cumShown(s.cum, cumThreshold(cumUi.hideWeak)).filter((p) => todo.has(Math.round(snap(p.t))));
 }
 
-/** Place the scene's shown proposals as spurts: one undo step; frames that have a spurt are skipped; a linked spurt
- *  group in the scene is joined (its link and params). -> placed count. */
+/** Place the scene's shown proposals as markers of an orgasm (paw-d1g7): one undo step; frames that have a spurt are
+ *  skipped; each marker's velocity from its score (lib/cum velOfScore); one outside every orgasm grows the nearest one in
+ *  its scene to it, else an orgasm is marked around it (mods.js spurtHint). -> placed count. */
 export function placeCum(app, i) {
   const s = scenesOf(app)[i];
   if (!s?.cum?.length) return 0;
-  const span = { t0: s.start_ms, t1: s.end_ms }, snap = (t) => (app.player.snap ? app.player.snap(t) : t);
-  const add = cumPlacement(app.doc.fx || [], s.cum, { threshold: cumThreshold(cumUi.hideWeak), frameMs: frameOf(app), span, snap });
+  const snap = (t) => (app.player.snap ? app.player.snap(t) : t);
+  const add = cumPlacement(app.doc.fx || [], s.cum, { threshold: cumThreshold(cumUi.hideWeak), frameMs: frameOf(app), snap });
   if (!add.length) { app.toast('Spurts are already on those frames', 'quiet'); return 0; }
   let list = app.doc.fx || [];
-  const extra = new Map();
   for (const e of add) {
+    const h = spurtHint(list, scenesOf(app), e.t0);
+    if (h) list = (h.grow ? list.map((x) => (x.id === h.grow.id ? { ...x, t0: h.t0, t1: h.t1 } : x)) : [...list, makeMod(newId('fx'), 'orgasm', h.t0, h.t1)]).sort((a, b) => a.t0 - b.t0);
     const id = newId('fx');
-    list = addFx(list, { id, kind: 'spurt', t0: e.t0, t1: e.t0, dur: durOf(app) });
-    if (e.link) extra.set(id, { link: e.link, params: e.params });
+    list = addFx(list, { id, kind: 'spurt', t0: e.t0, t1: e.t0, dur: durOf(app) }).map((x) => (x.id === id ? { ...x, params: { vel: e.vel } } : x));
   }
-  if (extra.size) list = list.map((e) => (extra.has(e.id) ? { ...e, ...extra.get(e.id) } : e));
-  commitFx(app, `Add ${add.length} spurt${add.length === 1 ? '' : 's'} (proposed cumshots${extra.size ? ', linked' : ''})`, list);
+  commitFx(app, `Add ${add.length} spurt${add.length === 1 ? '' : 's'} (proposed cumshots)`, list);
   app.usage?.note?.('timeline:cum.place', add.length);
   return add.length;
 }

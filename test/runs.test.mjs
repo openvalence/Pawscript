@@ -63,7 +63,7 @@ assert.deepEqual(cycleMarks([{ start_ms: 0, end_ms: 1 }], [{ loop: { period_ms: 
 
 // ---- direction: flipping mirrors one scene's points, never the others, and is its own inverse (paw-vtec: the patch is the
 //      flips; the points come from composing with them, runs-channel.js channelPatch) ----
-const scn = [{ start_ms: 0, end_ms: 1000, sign: 1, auto_sign: 1 }, { start_ms: 1000, end_ms: 2000, sign: -1, auto_sign: -1 }, { start_ms: 2000, end_ms: 3000, sign: 1, auto_sign: null }];
+const scn = [{ start_ms: 0, end_ms: 1000, sign: 1 }, { start_ms: 1000, end_ms: 2000, sign: -1 }, { start_ms: 2000, end_ms: 3000, sign: 1 }];
 assert.equal(sceneAt(scn, 0), 0); assert.equal(sceneAt(scn, 999), 0); assert.equal(sceneAt(scn, 1000), 1); assert.equal(sceneAt(scn, 99999), 2); assert.equal(sceneAt(scn, -5), 0); assert.equal(sceneAt([], 5), -1);
 const frun = makeRun({ n: 9, tracker: tr, params: {}, range: { start: 0, end: 3000 }, roi: null, runs: [], frames: newFrames(),
   result: { samples: [], points: [{ at: 100, pos: 0 }, { at: 600, pos: 100 }, { at: 1100, pos: 20 }, { at: 1600, pos: 80 }, { at: 2500, pos: 50 }], scenes: scn } });

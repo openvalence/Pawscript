@@ -1,15 +1,15 @@
 // blobs.js -- the blobs view of point runs with motion groups (settings 'tracking.trails' = 'blobs'): what the
 // tracker sees, layered over the video by TrackingOverlay (heatmap, points, pinned parts, bodies, camera, primary,
 // axis + pair; each its own option). Display only: nothing here changes a run. Every drawn centre, path and velocity
-// is the seed-anchored one (the run's g{k}_x / sem_<name>_x ... channel + cam, else the same anchoring over the pts:
+// is the seed-anchored one (the run's sem_<name>_x / who_<c>_x channel + cam, else the same anchoring over the pts:
 // anchoredPath), never a hull centroid, so a point dropping out (a thumb behind a shaft) does not move its group.
 // Pure parts (node-tested, test/tracking-overlay-blobs.test.mjs): blobOpts, lattice, velocity, polyArea, clipLine,
 // pcaAxis, sampleAt, sparkSeries, primaryName, primaryTarget, cameraAt, hudRows, pointInfo, ptsCentres, anchoredPath,
 // frameBodies, heatSplats, partAt, groupCentroid, similarity, robustSimilarity, carriedPoly, carriedOutline (a pinned group
 // drawn as its painting carried by its live points, paw-9qim; paw-rrtw: never off them, faint when unsure).
 // drawBlobsView paints one frame. Inputs are PROTOCOL data only: overlay pts [[x, y, v, g, part?, sem?, ...extra]] (v3.1;
-// part = 1 | 2 of body g, v3.4; sem = the pinned group seeded from the tagger, 1 penis, 2 balls, 3 hips, v4.6), boxes, the run's channels (g1_x..g4_y, g*_n, g*_proj, g*_scale / _rot, g{k}p{j}_*,
-// sem_<name>_*, n_groups, pair_dist, cam_*, proj*, dist01, ...) and its scenes' group names (v3.3, runs-channel sceneGroups).
+// g = the group pass' moving group, part = 1 | 2 of body g, v3.4; sem = the pinned group, v4.6), boxes, the run's channels
+// (sem_<name>_*, who_*, cam_*, proj*, dist01, ...) and its scenes' group records (runs-channel sceneGroups).
 
 import { hull, inHull } from '../video/roi.js';
 import { pathPoly, pathRect } from '../video/overlays.svelte.js';
@@ -45,9 +45,9 @@ export const BLOB_SCHEMA = [
   OPT('seeded', 'Parts', 'Layers'), PCT('seededOpacity', 'Parts opacity', 'Layers'),
   OPT('bodies', 'Bodies', 'Layers'), PCT('bodiesOpacity', 'Bodies opacity', 'Layers'),
   OPT('camera', 'Camera', 'Layers'), PCT('cameraOpacity', 'Camera opacity', 'Layers'),
-  OPT('primary', 'Primary', 'Layers'), OPT('axis', 'Axis + pair', 'Layers'),
+  OPT('primary', 'Primary', 'Layers'), OPT('axis', 'Axis', 'Layers'),
   OPT('labels', 'Labels', 'Layers', { choices: ['off', 'short', 'full'], control: 'segmented' }), OPT('fusion', 'Fusion view', 'Layers'),
-  OPT('trails', 'Centre paths', 'Bodies'), OPT('hulls', 'Hulls', 'Bodies'), PCT('hullsOpacity', 'Hulls opacity', 'Bodies'), OPT('affine', '3D trackers', 'Bodies'),
+  OPT('trails', 'Centre paths', 'Bodies'), OPT('hulls', 'Hulls', 'Bodies'), PCT('hullsOpacity', 'Hulls opacity', 'Bodies'),
   OPT('occluded', 'Occluded points', 'Points'), OPT('extra', 'Extra point flags', 'Points'), OPT('decimate', 'Points shown', 'Points', { choices: Object.keys(DECIM), control: 'segmented' }),
   OPT('smooth', 'Smoothing', 'Bodies', { choices: Object.keys(SMOOTH_MS), control: 'segmented' }),
   OPT('hud', 'Info card', 'Info'), OPT('spark', 'Sparkline', 'Info'),
@@ -159,13 +159,13 @@ export function primaryName(run, t) {
   return fin(u) ? USED[u] || 'other' : p || 'primary';
 }
 export const KNOWN = new Set(['proj', 'proj_cam', 'vis_frac', 'vis_extent', 'vis_len', 'dist01', 'centroid_x', 'centroid_y', 'raw_px_cam', 'raw_px', 'primary_used',
-  'n_groups', 'pair_dist', 'pair_proj', 'cam_x', 'cam_y', 'cam_conf', ...[0, 1, 2, 3].flatMap((k) => [`p${k}_x`, `p${k}_y`])]);
-const GROUP_CH = /^g([1-4])_(.+)$/, PART_CH = /^g([1-4])p([12])_(.+)$/, SEM_CH = /^sem_/;
+  'cam_x', 'cam_y', 'cam_conf', ...[0, 1, 2, 3].flatMap((k) => [`p${k}_x`, `p${k}_y`])]);
+const SEM_CH = /^sem_/;
 export const fmt = (v, d = 3) => (fin(v) ? (Math.abs(v) >= 1000 ? v.toFixed(0) : v.toFixed(d)) : '–');
 const pct = (v) => (fin(v) ? (v * 100).toFixed(1) + ' %' : '–');
 
-export const HUD_NAMES = { proj: 'stroke', proj_cam: 'stroke, camera out', pair_dist: 'pair distance', dist01: 'click distance',
-  n_groups: 'moving groups', cam_conf: 'camera confidence', vis_frac: 'points visible', confidence: 'tracker confidence' };
+export const HUD_NAMES = { proj: 'stroke', proj_cam: 'stroke, camera out', dist01: 'click distance',
+  cam_conf: 'camera confidence', vis_frac: 'points visible', confidence: 'tracker confidence' };
 /**
  * The HUD's rows at time t: [{k, v, c?, sec?}] (sec starts a section). run = the selected run (null while live);
  * lane = the channel the lane uses ('primary' or a channel); body = the hovered group's frameBodies entry +
@@ -181,29 +181,24 @@ export function hudRows({ run, t, lane = 'primary', hover = null, body = null, s
   if (sg && typeof sg === 'object') rows.push({ k: 'direction', v: [sg.applied > 0 ? '+1' : sg.applied < 0 ? '−1' : '–', sg.mode, fin(sg.score) ? 'score ' + fmt(sg.score, 2) : sg.why].filter(Boolean).join(' · ') });
   if (lane !== 'primary') rows.push({ k: 'lane', v: `${lane} ${fmt(at(lane))}`, c: 'hi' });
   // the run's numbers under short plain names (HUD_NAMES; the channel keys are in the lane picker and the Why panel)
-  for (const k of ['proj', 'proj_cam', 'pair_dist', 'dist01']) if (ch[k]) rows.push({ k: HUD_NAMES[k], v: fmt(at(k)) });
-  if (ch.n_groups) rows.push({ k: HUD_NAMES.n_groups, v: fmt(at('n_groups'), 0) });
+  for (const k of ['proj', 'proj_cam', 'dist01']) if (ch[k]) rows.push({ k: HUD_NAMES[k], v: fmt(at(k)) });
   if (ch.cam_conf) rows.push({ k: HUD_NAMES.cam_conf, v: fmt(at('cam_conf'), 2) });
   if (ch.vis_frac) rows.push({ k: HUD_NAMES.vis_frac, v: fmt(at('vis_frac'), 2) });
   if (run.confidence) rows.push({ k: HUD_NAMES.confidence, v: fmt(sampleAt(run.confidence, t), 2) });
-  const names = sceneGroups(run, sceneAt(run.scenes || [], t)), named = (key) => (names[key]?.label ? ' · ' + names[key].label : '');
+  const names = sceneGroups(run, sceneAt(run.scenes || [], t));
   const part = hover?.g && hover.p ? body?.parts?.[hover.p - 1] : null, sn = semNames(run);
   if (hover?.s && sem) {   // a pinned group (v4.6): its points, its stroke, its contraction, its share
     const key = 'sem_' + sem.name;
     rows.push({ k: `${partLabel(names[key]?.label || sem.name)} (${names[key]?.source === 'user' ? 'drawn' : 'seeded'})`, v: `${sem.n} pts`, c: 'sem-' + sem.name, sec: true });
     for (const s of ['proj', 'scale', 'n']) if (ch[`${key}_${s}`]) rows.push({ k: `${key}_${s}`, v: s === 'n' ? pct(at(`${key}_n`)) : fmt(at(`${key}_${s}`)) });
-  } else if (part) {   // a part (v3.4): its name, share, own stroke and contraction
-    const key = `g${hover.g}p${hover.p}`, own = (s) => at(`${key}_${s}`);
-    rows.push({ k: key + named(key), v: `${part.n} pts · share ${pct(ch[key + '_n'] ? own('n') : NaN)}`, c: 'g' + hover.g, sec: true });
-    for (const s of ['rel', 'scale', 'proj']) if (ch[`${key}_${s}`]) rows.push({ k: `${key}_${s}`, v: fmt(own(s)) });
-  } else if (hover?.g && body) {
-    const g = hover.g, own = (s) => at(`g${g}_${s}`);
-    rows.push({ k: `g${g}${named('g' + g)}`, v: `${body.n} pts · share ${pct(ch[`g${g}_n`] ? own('n') : NaN)}`, c: 'g' + g, sec: true });
+  } else if (part) {   // a part of a moving group (the overlay pts' 5th element)
+    rows.push({ k: `g${hover.g}p${hover.p}`, v: `${part.n} pts`, c: 'g' + hover.g, sec: true });
+  } else if (hover?.g && body) {   // a moving group of the group pass (pts' 4th element): no channels of its own
+    const g = hover.g;
+    rows.push({ k: `g${g}`, v: `${body.n} pts`, c: 'g' + g, sec: true });
     if (body.c) rows.push({ k: 'centroid', v: `${fmt(body.c[0])}, ${fmt(body.c[1])}` });
-    if (ch[`g${g}_x`]) rows.push({ k: 'cam-free', v: `${fmt(own('x'))}, ${fmt(own('y'))}` });
     if (body.vel) rows.push({ k: 'speed', v: `${fmt(Math.hypot(body.vel[0] * aspect, body.vel[1]), 2)} h/s` });
     if (body.area) rows.push({ k: 'hull area', v: pct(body.area) });
-    for (const k of Object.keys(ch)) { const m = GROUP_CH.exec(k); if (m && +m[1] === g && !'xyn'.includes(m[2])) rows.push({ k, v: fmt(at(k)) }); }
   }
   if (hover?.j != null && point) {
     rows.push({ k: `point ${point.j}`, v: point.sem ? `${partLabel(sn[point.sem - 1] || '#' + point.sem)} (${names['sem_' + sn[point.sem - 1]]?.source === 'user' ? 'drawn' : 'seeded'})` : point.g > 0 ? `g${point.g}${point.part ? ' · p' + point.part : ''}` : point.g === 0 ? 'static' : 'unassigned',
@@ -214,7 +209,7 @@ export function hudRows({ run, t, lane = 'primary', hover = null, body = null, s
     point.extra.forEach((e, n) => rows.push({ k: `pts[${n + 6}]`, v: fmt(e) }));
   }
   if (hover) {
-    const other = Object.keys(ch).filter((k) => !KNOWN.has(k) && !GROUP_CH.test(k) && !PART_CH.test(k) && !SEM_CH.test(k));
+    const other = Object.keys(ch).filter((k) => !KNOWN.has(k) && !SEM_CH.test(k));
     if (other.length) { rows.push({ k: 'other', v: '', sec: true }); for (const k of other) rows.push({ k, v: fmt(at(k)) }); }
   }
   return rows;
@@ -646,10 +641,9 @@ export function semAt(F, x, y) {
   const k = F?.S?.findIndex((b) => b && (b.outline ? inPoly(b.outline, x, y) : b.hull.length >= 3 && inHull(b.hull, x, y))) ?? -1;
   return k + 1;
 }
-/** A chip group's centroid on frame F (frameBodies; image space): 'g2' -> its body's, 'g1p2' -> that part's, 'sem_hips' -> the pinned group's; else null. */
+/** A chip group's centroid on frame F (frameBodies; image space): 'sem_hips' -> the pinned group's; else null. */
 export function groupCentroid(F, key) {
-  const m = /^g([1-4])(?:p([12]))?$/.exec(key || ''), s = /^sem_(\w+)$/.exec(key || '');
-  if (m) { const b = F?.G?.[m[1] - 1]; return (m[2] ? b?.parts?.[m[2] - 1]?.c : b?.c) || null; }
+  const s = /^sem_(\w+)$/.exec(key || '');
   return (s && (F?.S?.find((b) => b?.name === s[1]) || F?.S?.[SEM_NAMES.indexOf(s[1])])?.c) || null;
 }
 /** The group (1..4) whose drawn hull holds (x, y), else 0. */
@@ -686,13 +680,11 @@ export function runAxis(run, tMin, tMax, aspect = 1) {
 }
 
 // ---- what the sidecar picked, what the camera did ----
-/** The primary signal's source on the picture: {kind: 'body', g} (g{k}_proj) | {kind: 'sem', s} (sem_<name>_*) | {kind:
- *  'pair'} (pair_proj) | {kind: 'clicks'} (dist01, p{k}_*) | {kind: 'cloud'} (proj, proj_cam, centroid_*: every point). */
+/** The primary signal's source on the picture: {kind: 'sem', s} (sem_<name>_*) | {kind: 'clicks'} (dist01, p{k}_*) |
+ *  {kind: 'cloud'} (proj, proj_cam, centroid_*: every point). */
 export function primaryTarget(name, run = null) {
   let m;
-  if ((m = /^g([1-4])_proj$/.exec(name || ''))) return { kind: 'body', g: +m[1] };
   if ((m = /^sem_([a-z0-9_]+?)_(x|y|n|proj|rel|scale|area)$/.exec(name || '')) && semNames(run).includes(m[1])) return { kind: 'sem', s: semNames(run).indexOf(m[1]) + 1 };
-  if (name === 'pair_proj') return { kind: 'pair' };
   if (name === 'dist01' || /^p[0-3]_[xy]$/.test(name || '')) return { kind: 'clicks' };
   return { kind: 'cloud' };
 }
@@ -777,7 +769,6 @@ function gauge(ctx, x, y, v, col) {
 }
 // the 3D trackers ring: g*_scale / g{k}p{j}_scale are ~log size changes near 0 (+ = bigger), g*_rot radians (+ =
 // clockwise); both are small, so the ring shows them exaggerated (radius x e^(3 s), tick turned 4 x the rotation)
-const SCALE_GAIN = 3, ROT_GAIN = 4, clampS = (s) => Math.max(-0.5, Math.min(0.5, s));
 /** A generic colour for an unknown per-point value: 0..1 -> blue..red; other numbers -> a hue by value. */
 export const valueColor = (v) => `hsl(${Math.round(v >= 0 && v <= 1 ? 210 - 210 * v : (((v * 67) % 360) + 360) % 360)} 90% 60%)`;
 const LOST_FRAMES = 6;   // a point that just went occluded draws hollow this many frames
@@ -793,7 +784,7 @@ const same = (a, b) => !!a && !!b && a.g === b.g && a.p === b.p && a.s === b.s &
 
 /**
  * One frame of the blobs view, bottom to top: camera grid, heatmap, hulls (opt-in), points, centre paths, bodies
- * (+ their v3.4 parts), pinned parts, primary, axis + pair, the lane's relative pair, extra flags, occluded points,
+ * (+ their v3.4 parts), pinned parts, primary, axis, the lane's relative pair, extra flags, occluded points,
  * the hovered point, then the labels. o = {colors: [g1..g4, static], ink: {text, axis, pair, grid}, opts (blobOpts;
  * opts.detail or opts.labels 'full': every label in full), run (selected run | null), lane ('primary' | channel: its
  * source is the selected thing), hi (group 1..4 highlighted), hiPart ({g, p} hovered part | null), hiSem (pinned group
@@ -811,19 +802,19 @@ export function drawBlobsView(ctx, env, fr, i, o) {
   if (!head) return null;
   const { colors, ink, opts, run, hi = 0, tMin = -Infinity, tMax = Infinity, nextMs = 2000, aspect = 1, hide = null, weight = null, paint = null } = o;
   const t = fr.t[i], ch = run?.channels || {}, at = (k) => sampleAt(ch[k], t);
-  const names = run ? sceneGroups(run, sceneAt(run.scenes || [], t)) : {}, named = (key) => names[key]?.label || '';
+  const names = run ? sceneGroups(run, sceneAt(run.scenes || [], t)) : {};
   const F = frameBodies(fr, i, { smoothMs: opts.smoothMs, decim: opts.decim, tMin, tMax, run, paint, aspect });
   const sn = semNames(run);
   const prim = run && opts.primary ? primaryName(run, t) : '', pt = prim ? primaryTarget(prim, run) : null;
   const primVal = run ? fmt(sampleAt(run.samples, t), 2) : '';
   const lane = o.lane || 'primary', detail = !!opts.detail || opts.labels === 'full';
   // the selected thing: the lane's source (a group chip / lane channel picked in the panel)
-  const lm = /^g([1-4])_proj$/.exec(lane), lp = /^g([1-4])p([12])_(proj|rel)$/.exec(lane), ls = /^sem_([a-z0-9_]+?)_(proj|rel|area)$/.exec(lane);
-  const sel = lm ? { g: +lm[1] } : lp ? { g: +lp[1], p: +lp[2] } : ls && sn.includes(ls[1]) ? { s: sn.indexOf(ls[1]) + 1 } : null;
+  const ls = /^sem_([a-z0-9_]+?)_(proj|rel|area)$/.exec(lane);
+  const sel = ls && sn.includes(ls[1]) ? { s: sn.indexOf(ls[1]) + 1 } : null;
   const focus = o.solo || (o.hiPart ? { g: o.hiPart.g, p: o.hiPart.p } : o.hiSem ? { s: o.hiSem } : hi ? { g: hi } : null);
   const covers = (f, k) => same(f, k) || (!!f.g && f.p == null && k.g === f.g);   // a body covers its parts
   const dimOf = (k) => (o.solo ? (covers(o.solo, k) ? 1 : DIM_SOLO) : focus && !covers(focus, k) ? DIM_FOCUS : 1);
-  const isPrim = (k) => (pt?.kind === 'body' && !k.p && k.g === pt.g) || (pt?.kind === 'sem' && k.s === pt.s);
+  const isPrim = (k) => pt?.kind === 'sem' && k.s === pt.s;
   // characters (v4.12 who_c1 / who_c2 / who_x centres) and the bodies holding them: those bodies wear the character's colour
   const whoC = {}, bodyWho = {}, bodyCol = [...colors.slice(0, 4)];
   for (const w of WHOS) {
@@ -954,14 +945,11 @@ export function drawBlobsView(ctx, env, fr, i, o) {
     if (!opts.bodies) continue;
     for (const pa of b.parts) {
       if (!pa?.c) continue;
-      const [px, py] = env.map(pa.c[0], pa.c[1]), pk = `g${g + 1}p${pa.j}`, pd = dimOf({ g: g + 1, p: pa.j });
+      const [px, py] = env.map(pa.c[0], pa.c[1]), pd = dimOf({ g: g + 1, p: pa.j });
       ctx.strokeStyle = ctx.fillStyle = lighter(col); A(pd); ctx.lineWidth = 1.5;
       cross(ctx, px, py, 4);
       mark(px, py, 5);
-      const ps = opts.affine ? at(`${pk}_scale`) : NaN;
-      if (fin(ps)) { A(0.9 * pd); ctx.beginPath(); ctx.arc(px, py, 6 * Math.exp(SCALE_GAIN * clampS(ps)), 0, 2 * Math.PI); ctx.stroke(); }
-      A(pd);
-      const nm = `p${pa.j}${named(pk) ? ' · ' + named(pk) : ''}`;
+      const nm = `p${pa.j}`;
       label(nm, `${nm} · ${pa.n}`, px, py, lighter(col), P_BODY, { g: g + 1, p: pa.j });
     }
     if (!b.c) continue;
@@ -972,17 +960,9 @@ export function drawBlobsView(ctx, env, fr, i, o) {
     mark(cx, cy, on ? 9 : 7);
     if (b.vel) { const [ex, ey] = env.map(b.c[0] + b.vel[0] * 0.25, b.c[1] + b.vel[1] * 0.25); ctx.lineWidth = 2; arrow(ctx, cx, cy, ex, ey); }
     ctx.lineWidth = 1.5;
-    if (opts.affine) {   // the body's similarity fit (v3.4 g*_scale / g*_rot): ring radius = size, tick from 12 o'clock = rotation
-      const s = at(`g${g + 1}_scale`), r = at(`g${g + 1}_rot`);
-      if (fin(s) || fin(r)) {
-        const R = 14 * (fin(s) ? Math.exp(SCALE_GAIN * clampS(s)) : 1), a = -Math.PI / 2 + (fin(r) ? ROT_GAIN * r : 0);   // canvas y down: + = clockwise
-        A(0.9 * dim); ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.stroke(); ctx.setLineDash([]);
-        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + R * Math.cos(a), cy + R * Math.sin(a)); ctx.stroke();
-      }
-    }
-    const share = ch[`g${g + 1}_n`] ? at(`g${g + 1}_n`) : NaN, speed = b.vel ? Math.hypot(b.vel[0] * aspect, b.vel[1]) : NaN, who = (bodyWho[g + 1] || []).map((w) => w.toUpperCase()).join(' ');
-    const short = `${who ? who + ' ' : ''}${named('g' + (g + 1)) ? named('g' + (g + 1)) + ' ' + (g + 1) : 'g' + (g + 1)}${prim1 ? ` · primary ${primVal}` : ''}`;
-    const full = [`g${g + 1}${named('g' + (g + 1)) ? ' · ' + named('g' + (g + 1)) : ''}${who ? ' · ' + who : ''}`, `${b.n} pts`, fin(share) ? (share * 100).toFixed(0) + ' %' : '', fin(speed) ? `${speed.toFixed(2)} h/s` : '', prim1 ? `primary · ${prim} ${primVal}` : ''].filter(Boolean).join(' · ');
+    const speed = b.vel ? Math.hypot(b.vel[0] * aspect, b.vel[1]) : NaN, who = (bodyWho[g + 1] || []).map((w) => w.toUpperCase()).join(' ');
+    const short = `${who ? who + ' ' : ''}g${g + 1}${prim1 ? ` · primary ${primVal}` : ''}`;
+    const full = [`g${g + 1}${who ? ' · ' + who : ''}`, `${b.n} pts`, fin(speed) ? `${speed.toFixed(2)} h/s` : '', prim1 ? `primary · ${prim} ${primVal}` : ''].filter(Boolean).join(' · ');
     A(dim);
     label(short, full, cx, cy, col, prim1 ? P_SEL : P_BODY, key);
   }
@@ -1006,7 +986,7 @@ export function drawBlobsView(ctx, env, fr, i, o) {
       A(dim); ctx.lineWidth = 2;
       if (sb.c) { cross(ctx, lx, ly, 7); mark(lx, ly, 8); }
       const fq = ch[`sem_${sb.name}_fit`] ? at(`sem_${sb.name}_fit`) : NaN;   // v4.14 group_fit: the rigid fit's inlier share
-      const nm = partLabel(named('sem_' + sb.name) || sb.name), fit = fin(fq) ? `fit ${Math.round(fq * 100)}%` : '';
+      const nm = partLabel(names['sem_' + sb.name]?.label || sb.name), fit = fin(fq) ? `fit ${Math.round(fq * 100)}%` : '';
       const short = [nm, fin(fq) && fq < FIT_LOW ? fit : '', prim1 ? `primary ${primVal}` : ''].filter(Boolean).join(' · ');
       const full = [nm, `${sb.n} pts`, fit, sb.unsure ? `outline unsure: ${sb.unsure}` : '', prim1 ? `primary · ${prim} ${primVal}` : ''].filter(Boolean).join(' · ');
       label(short, full, lx, ly, col, prim1 ? P_SEL : P_GROUP, key);
@@ -1014,8 +994,7 @@ export function drawBlobsView(ctx, env, fr, i, o) {
     }
   }
 
-  // primary of another kind (the pair below, the clicks, the whole cloud): outlined in the accent and tagged; a body /
-  // pinned group primary is emphasised in its own drawing above and its label says "primary"
+  // primary of another kind (the clicks, the whole cloud): outlined in the accent and tagged; a pinned group primary is emphasised in its own drawing above and its label says "primary"
   lay('other');
   const accent = ink.axis;
   if (pt && (pt.kind === 'clicks' || pt.kind === 'cloud')) {
@@ -1031,7 +1010,7 @@ export function drawBlobsView(ctx, env, fr, i, o) {
     }
   }
 
-  // the stroke axis through the frame, the lane's source projected on it, the two largest groups joined (pair_dist)
+  // the stroke axis through the frame, the lane's source projected on it
   if (opts.axis && run) {
     const ax = runAxis(run, tMin, tMax, aspect), seg = ax && clipLine(ax.x, ax.y, ax.dx, ax.dy);
     if (seg) {
@@ -1042,9 +1021,9 @@ export function drawBlobsView(ctx, env, fr, i, o) {
       const [lx, ly] = x1 > x0 ? [x1 - ux * 24, y1 - uy * 24] : [x0 + ux * 24, y0 + uy * 24];
       label(`axis ${ax.kind.replace(/^\w+ /, '')}`, `axis (${ax.kind})`, lx, ly, ink.axis, P_CAM);
       // the lane's / primary's source point, projected on the axis (its value is in that thing's own label)
-      const gm = /^g([1-4])_proj$/.exec(lane), pm = /^g([1-4])p([12])_(proj|rel)$/.exec(lane), sm = /^sem_([a-z0-9_]+?)_(proj|rel)$/.exec(lane), wm = /^who_(c[12]|x)_proj$/.exec(lane);
+      const sm = /^sem_([a-z0-9_]+?)_(proj|rel)$/.exec(lane), wm = /^who_(c[12]|x)_proj$/.exec(lane);
       const cen = anchoredPath(fr, run, 'centroid');
-      const src = gm ? F.G[gm[1] - 1]?.c : pm ? F.G[pm[1] - 1]?.parts[pm[2] - 1]?.c : sm ? F.S.find((b) => b?.name === sm[1])?.c : wm ? whoC[wm[1]] : cen && fin(cen.x[i]) ? [cen.x[i], cen.y[i]] : null;
+      const src = sm ? F.S.find((b) => b?.name === sm[1])?.c : wm ? whoC[wm[1]] : cen && fin(cen.x[i]) ? [cen.x[i], cen.y[i]] : null;
       if (src && !relParse(lane)) {
         const [sx, sy] = env.map(src[0], src[1]), d = (sx - x0) * ux + (sy - y0) * uy, px = x0 + ux * d, py = y0 + uy * d;
         ctx.beginPath(); ctx.moveTo(px - uy * 9, py + ux * 9); ctx.lineTo(px + uy * 9, py - ux * 9); duo(ctx, 3);
@@ -1053,18 +1032,9 @@ export function drawBlobsView(ctx, env, fr, i, o) {
         if (lane !== 'primary' && lane !== prim && !sel) label(`${lane} ${fmt(at(lane), 2)}`, `${lane} ${fmt(at(lane), 2)}`, px, py, ink.axis, P_SEL);
       }
     }
-    const share = (g) => (ch[`g${g + 1}_n`] ? at(`g${g + 1}_n`) : F.G[g]?.n || 0);
-    const two = [0, 1, 2, 3].filter((g) => F.G[g]?.c).sort((a, b) => share(b) - share(a)).slice(0, 2);
-    if (two.length === 2) {
-      const [a, b] = two.map((g) => env.map(F.G[g].c[0], F.G[g].c[1])), pp = pt?.kind === 'pair';
-      ctx.strokeStyle = pp ? accent : ink.pair; A(pp ? 1 : focus ? 0.35 : 0.8);
-      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); duo(ctx, pp ? 3 : 1.5);
-      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
-      label(pp ? `pair · primary ${primVal}` : `pair ${fmt(at('pair_dist'), 2)}`, `pair ${fmt(at('pair_dist'))}${pp ? ` · primary · ${prim} ${primVal}` : ''}`, mx, my, pp ? accent : ink.text, pp ? P_SEL : P_CAM);
-    }
   }
   // a relative lane channel (rel:a:b, runs-channel.js relChannel): its two centres joined, its value on the line (always:
-  // the lane's own signal, not an Axis + pair extra)
+  // the lane's own signal, not an Axis extra)
   const rl = run && relParse(lane), ca = rl && groupCentroid(F, rl.a), cb = rl && groupCentroid(F, rl.b);
   if (ca && cb) {
     const [a, b] = [ca, cb].map((c) => env.map(c[0], c[1]));

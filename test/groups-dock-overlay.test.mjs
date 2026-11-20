@@ -15,7 +15,7 @@ test('the Groups bar is absolutely placed (takes no room beside the stage), slim
   const r = rule('\\.gdock');
   assert.match(r, /position:\s*absolute/);
   assert.match(r, /left:\s*0/);
-  assert.ok(+r.match(/width:\s*(\d+)px/)?.[1] <= 44, 'at most 44 px wide');
+  assert.ok(+r.match(/min-width:\s*calc\(var\(--tb-w,\s*(\d+)px\)\s*\+\s*(\d+)px\)/)?.slice(1).reduce((a, b) => +a + +b) <= 44, 'at most 44 px wide (paw-gj8y: from the button width)');
   assert.match(r, /background:\s*color-mix\([^;]*transparent\)/, 'a translucent background');
 });
 

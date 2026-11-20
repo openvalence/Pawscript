@@ -11,6 +11,8 @@ PIPE_PARAMS = [
     param("pipe_smooth_ms", "Smoothing window (ms)", "int", 150, 0, 2000),
     param("pipe_min_prominence", "Min stroke size (0-1)", "float", 0.04, 0.0, 1.0),
     param("pipe_norm_window_ms", "Local range window (ms, 0 = whole scene)", "int", 3000, 0, 60000),
+    param("pipe_norm_floor", "Local range floor (x median stroke)", "float", 0.75, 0.0, 2.0,   # measured: PROTOCOL v4.62
+          hint="Near-still windows are not stretched (0 = off)"),
     param("pipe_pos_min", "Output min pos", "int", 0, 0, 100),
     param("pipe_pos_max", "Output max pos", "int", 100, 0, 100),
     param("pipe_rdp_epsilon", "Simplify tolerance (pos, 100 = extremes only)", "float", 100.0, 0.0, 100.0),
@@ -18,9 +20,8 @@ PIPE_PARAMS = [
     param("pipe_min_interval_ms", "Min point spacing (ms)", "int", 60, 0, 2000),
     param("pipe_max_speed", "Max speed (pos/s, 0 = off)", "float", 500.0, 0.0, 5000.0),
     param("pipe_snap_frames", "Turning points on frame timestamps", "bool", False),
-    param("pipe_sign", "Direction per scene", "choice", "keep", choices=["keep", "auto"]),
     param("pipe_invert", "Invert (flip deep / out; pos 0 = deepest)", "bool", False),
-    param("pipe_cadence_fill", "Fill strokes the tracker missed from the picture's rhythm", "bool", True),   # on: +0.02-0.05 fast-cell exact, never worse (experiments/fastmotion)
+    param("pipe_cadence_fill", "Fill strokes the tracker missed from the picture's rhythm", "bool", False),
     param("pipe_cam_detrend", "Remove the camera trend (pan / zoom / orbit / handheld)", "bool", True),   # v4.9 (experiments/softcuts)
 ]
 
@@ -36,14 +37,14 @@ def normalize(v):
     return np.full_like(v, 0.5) if hi - lo < 1e-9 else (v - lo) / (hi - lo)
 
 
-def local_normalize(v, win, starts=(), blend=1):
+def local_normalize(v, win, starts=(), blend=1, floor=0.0):
     """Rolling robust range (p5..p95 over `win` samples, smoothed) -> 0..1, so a stroke counts by
     its size relative to the strokes around it, not to the scene's whole range (drift, camera
     residue or one big move would otherwise squash every other stroke under the prominence).
     starts (sample indices, v4.9 soft cuts): each segment gets its own range (no window reaches across a start; win 0 =
     the segment's p5..p95), the ranges cross-faded over `blend` samples at each start so the output does not step.
-    ponytail: near-still spans get blown up to full strokes too; the activity gate (pipe_gate)
-    is what holds those."""
+    floor (v4.62, units of v): a range under it counts as `floor` wide, so a near-still window is not stretched to
+    full strokes."""
     starts = sorted(i for i in set(starts) if 0 < i < len(v))
     if not starts:
         lo, hi = _range(v, win)
@@ -55,7 +56,29 @@ def local_normalize(v, win, starts=(), blend=1):
             for i in starts:
                 near[max(0, i - blend // 2):i + blend // 2 + 1] = True
             lo, hi = (np.where(near, uniform_filter1d(x, blend, mode="nearest"), x) for x in (lo, hi))
-    return np.clip(0.5 + (v - (hi + lo) / 2) / np.maximum(hi - lo, 1e-9), 0.0, 1.0)
+    return np.clip(0.5 + (v - (hi + lo) / 2) / np.maximum(hi - lo, max(floor, 1e-9)), 0.0, 1.0)
+
+
+def _alternate(v, peaks, valleys):
+    """Turning points [(index, +1 peak / -1 valley)], forced to alternate (the more extreme of a same-kind run)."""
+    turns = []
+    for i, k in sorted([(i, 1) for i in peaks] + [(i, -1) for i in valleys]):
+        if turns and turns[-1][1] == k:
+            if k * v[i] > k * v[turns[-1][0]]:
+                turns[-1] = (i, k)
+        else:
+            turns.append((i, k))
+    return turns
+
+
+def stroke_amp(v, prom):
+    """Median stroke size of v (units of v): turns at prom x the whole signal's p5..p95, so the jitter of a hold is
+    no stroke. 0 with under two strokes."""
+    lo, hi = np.percentile(v, [5, 95])
+    q = prom * max(hi - lo, 1e-9)
+    turns = _alternate(v, find_peaks(v, prominence=q)[0], find_peaks(-v, prominence=q)[0])
+    d = np.abs(np.diff([v[i] for i, _ in turns]))
+    return float(np.median(d)) if len(d) >= 2 else 0.0
 
 
 def _range(v, win):
@@ -196,20 +219,12 @@ def to_points(t, v, p, bounds=()):
         if 0 < i < n and t[i] - t[starts[-1] if starts else 0] >= SEG_MIN_MS and t[-1] - t[i] >= SEG_MIN_MS:
             starts.append(int(i))
     if (p.get("pipe_norm_window_ms", 0) > 0 or starts) and n > 3:
-        w = p.get("pipe_norm_window_ms", 0)
-        v = local_normalize(v, max(3, int(w / dt)) if w > 0 else 0, starts, max(1, int(BLEND_MS / dt)))
+        w, fl = p.get("pipe_norm_window_ms", 0), p.get("pipe_norm_floor", 0)
+        floor = fl * stroke_amp(v, p["pipe_min_prominence"]) if fl > 0 else 0.0
+        v = local_normalize(v, max(3, int(w / dt)) if w > 0 else 0, starts, max(1, int(BLEND_MS / dt)), floor)
 
-    # turning points, forced to alternate peak/valley (keep the more extreme of a same-kind run)
-    peaks, _ = find_peaks(v, prominence=p["pipe_min_prominence"])
-    valleys, _ = find_peaks(-v, prominence=p["pipe_min_prominence"])
-    marks = sorted([(i, 1) for i in peaks] + [(i, -1) for i in valleys])
-    turns = []
-    for i, k in marks:
-        if turns and turns[-1][1] == k:
-            if k * v[i] > k * v[turns[-1][0]]:
-                turns[-1] = (i, k)
-        else:
-            turns.append((i, k))
+    turns = _alternate(v, find_peaks(v, prominence=p["pipe_min_prominence"])[0],
+                       find_peaks(-v, prominence=p["pipe_min_prominence"])[0])
     pos = p["pipe_pos_min"] + v * (p["pipe_pos_max"] - p["pipe_pos_min"])
     # holds: a turn whose signal stays within HOLD_TOL of it for >= pipe_hold_ms becomes two points
     # (arrival and departure, same pos), like a scripter's hold at the top / bottom
@@ -252,14 +267,6 @@ GATE_PARAMS = [
     param("pipe_gate", "Activity gate", "choice", "motion", choices=["off", "motion"]),
     param("pipe_gate_motion", "Min motion (grey levels)", "float", 4.0, 0.0, 100.0),
     param("pipe_gate_min_ms", "Min still span (ms)", "int", 2000, 0, 600000),
-    param("pipe_gate_inside", "Still span between active ones", "choice", "keep",
-          choices=["keep", "carry", "idle"]),
-    param("pipe_carry_gaps", "Carry the rhythm through stroke gaps", "bool", True),
-    # only used inside an "orgasm" span label (names kept from v3, when the label was "climax"); defaults = the
-    # reference scripts' convention (fast shallow pulses near the deep end, measured on 8 bursts in 5 clips)
-    param("pipe_climax_rate", "Orgasm: turns per second", "float", 6.8, 0.5, 20.0),
-    param("pipe_climax_lo", "Orgasm: deep pos", "int", 1, 0, 100),
-    param("pipe_climax_hi", "Orgasm: shallow pos", "int", 34, 0, 100),
 ]
 STATES = ("active", "idle", "carry", "climax", "orgasm")
 
@@ -357,15 +364,12 @@ def motion_energy(ts, thumbs):
     return e
 
 
-def gate_states(t, e, p, labels=(), activity=None):
-    """Per frame "active" | "still" | "idle" | "carry" over the whole track range (cuts don't matter: the
-    action often carries on through a cut-away). Motion: the 2 s median of `e` below
-    pipe_gate_motion is still; still runs >= pipe_gate_min_ms become "idle" if they touch the start
-    or end of the range (intros, outros), else pipe_gate_inside ("keep" -> "still": points kept,
-    only flagged). `activity` [[t_ms, bool], ...] (e.g. act tags per sampled frame; each sample holds
-    until the next): a still run is split by it -- where active it stays "active", where not it
-    becomes "idle" anywhere. `labels` [{"start_ms","end_ms","state"}] (the UI or a story timeline)
-    override everything they cover.
+def gate_states(t, e, p, labels=()):
+    """Per frame "active" | "still" | "idle" over the whole track range (cuts don't matter: the action often
+    carries on through a cut-away). Motion: the 2 s median of `e` below pipe_gate_motion is still; still runs >=
+    pipe_gate_min_ms are "idle" where they touch the start or end of the range (intros, outros), else "still". Flags
+    only: apply_gate never moves points for them. `labels` [{"start_ms","end_ms","state"}] (the UI or a story
+    timeline) override everything they cover.
     ponytail: absolute grey-level threshold on 64 px thumbs; per-clip calibration if it misfires."""
     t = np.asarray(t, float)
     st = np.array(["active"] * len(t), dtype=object)
@@ -376,17 +380,10 @@ def gate_states(t, e, p, labels=(), activity=None):
         x = np.interp(t, t[ok], x[ok])  # cut frames take their neighbours' value
         win = max(1, int(2000 / dt)) | 1
         still = median_filter(x, win, mode="nearest") < p["pipe_gate_motion"]
-        tagged = None
-        if activity:
-            at = np.array([a[0] for a in activity], float)
-            tagged = np.array([bool(a[1]) for a in activity])[np.clip(np.searchsorted(at, t, "right") - 1, 0, len(at) - 1)]
-            still &= ~tagged
         edges = np.flatnonzero(np.diff(np.r_[0, still.astype(int), 0]))
         for a, b in zip(edges[::2], edges[1::2]):  # still run [a, b)
             if t[b - 1] - t[a] + dt >= p["pipe_gate_min_ms"]:
-                at_edge = a == 0 or b == len(t)
-                inside = p["pipe_gate_inside"]
-                st[a:b] = "idle" if at_edge or tagged is not None else ("still" if inside == "keep" else inside)
+                st[a:b] = "idle" if a == 0 or b == len(t) else "still"
     for lab in labels or ():
         if lab["state"] not in STATES:
             raise ValueError(f"span state {lab['state']!r} not in {STATES}")
@@ -405,20 +402,20 @@ def _turns(pts):
     return a[i], x[i], -d[i]
 
 
-def apply_gate(points, t, st, events, p=None, context_ms=10000):
-    """Replace points inside non-active spans: "idle" -> hold at the position where the span
-    starts; "carry" -> continue the rhythm of the nearest active stretch (median period and
-    median top / bottom of its strokes within context_ms, earlier side preferred), starting
-    from the position at the span start; "still" and "climax" (the fast run-in, label only) -> unchanged.
-    Appends one event per span: {"t_ms", "end_ms", "kind": "idle"|"carry"|"still"|"climax"|"orgasm", "label"}.
-    "orgasm" (label only) -> pulses alternating pipe_climax_hi / pipe_climax_lo at pipe_climax_rate turns/s.
+def apply_gate(points, t, st, events, held=None, context_ms=10000):
+    """Appends one event per non-active span: {"t_ms", "end_ms", "kind": "idle"|"carry"|"still"|"climax"|"orgasm",
+    "label"}. Points change only where a span label set the state (held, per frame): "idle" -> hold at the position
+    where the span starts; "carry" -> continue the rhythm of the nearest active stretch (median period and median top
+    / bottom of its strokes within context_ms, earlier side preferred), starting from the position at the span start.
+    Every other span, and every automatic one, only flags.
     ponytail: carry keeps the rate, not the phase; the reference scripts carry the rate through
     cut-aways but their phase is unrelated (measured), so nothing better is known."""
     t = np.asarray(t, float)
     if not len(points):
         return points
+    held = np.zeros(len(t), bool) if held is None else held
     pos_at = lambda x: float(np.interp(x, [q["at"] for q in points], [q["pos"] for q in points]))
-    edges = np.flatnonzero(np.r_[True, st[1:] != st[:-1], True])
+    edges = np.flatnonzero(np.r_[True, (st[1:] != st[:-1]) | (held[1:] != held[:-1]), True])
     out = list(points)
     for a, b in zip(edges[:-1], edges[1:]):
         kind = st[a]
@@ -426,14 +423,9 @@ def apply_gate(points, t, st, events, p=None, context_ms=10000):
             continue
         t0, t1 = int(t[a]), int(t[b]) if b < len(t) else int(t[-1]) + 1
         events.append({"t_ms": t0, "end_ms": t1, "kind": kind, "label": f"{kind} {(t1 - t0) / 1000:.1f} s"})
-        if kind in ("still", "climax"):  # climax = the fast run-in: the tracked strokes are the motion
+        if kind not in ("idle", "carry") or not held[a]:
             continue
         new = [{"at": t0, "pos": round(pos_at(t0))}]
-        if kind == "orgasm":  # pos 0 = deepest: pulses between climax_lo (deep) and climax_hi
-            half, up, at = 1000 / p["pipe_climax_rate"], new[0]["pos"] < p["pipe_climax_hi"], t0
-            while (at := at + half) < t1 - half / 2:
-                new.append({"at": int(at), "pos": p["pipe_climax_hi"] if up else p["pipe_climax_lo"]})
-                up = not up
         if kind == "carry":
             near = [q for q in points if t0 - context_ms <= q["at"] < t0 and st[min(np.searchsorted(t, q["at"]), len(t) - 1)] == "active"]
             near = near if len(near) >= 5 else [q for q in points if t1 <= q["at"] < t1 + context_ms]
@@ -446,7 +438,7 @@ def apply_gate(points, t, st, events, p=None, context_ms=10000):
                 while at < t1 - half / 2:
                     new.append({"at": int(at), "pos": round(top if up else bot)})
                     up, at = not up, at + half
-        new.append({"at": t1 - 1, "pos": new[-1]["pos"] if kind in ("idle", "orgasm") else round(pos_at(t1 - 1))})
+        new.append({"at": t1 - 1, "pos": new[-1]["pos"] if kind == "idle" else round(pos_at(t1 - 1))})
         out = [q for q in out if not t0 <= q["at"] < t1] + [q for q in new if q["at"] >= t0]
     out.sort(key=lambda q: q["at"])
     return [q for i, q in enumerate(out) if i == 0 or q["at"] > out[i - 1]["at"]]
@@ -455,57 +447,17 @@ def apply_gate(points, t, st, events, p=None, context_ms=10000):
 PIPE_PARAMS += GATE_PARAMS  # listed and coerced with the other pipe_* params
 
 
-def energy_sign(ts, v, thumbs, p, info=None):
-    """+1 / -1 per scene: orient the signal so that the end of the stroke where the picture moves
-    least (median motion_energy at the turning points) is the high end (pos 100 = out; pos 0 =
-    deepest). -> None if too few strokes. info (dict, optional) gets the numbers: energy_top / energy_bottom
-    (the two medians), score = (bottom - top) / (bottom + top) (> 0 = +1; near 0 = a coin toss), or why.
-    ponytail: a statistical habit of these clips (see README), not semantics; pipe_invert flips it."""
-    info = {} if info is None else info
-    ts, v = np.asarray(ts, float), np.asarray(v, float)
-    ok = np.isfinite(v)
-    e = motion_energy(ts, thumbs)
-    if ok.sum() < 8 or np.isfinite(e).sum() < 8:
-        info["why"] = "too few frames"
-        return None
-    tt, _, kk = _turns(to_points(ts[ok], v[ok], p))
-    if (kk > 0).sum() < 2 or (kk < 0).sum() < 2:
-        info["why"] = "too few strokes"
-        return None
-    fe = np.isfinite(e)
-    ei = np.interp(tt, ts[fe], e[fe])
-    top, bot = np.median(ei[kk > 0]), np.median(ei[kk < 0])
-    info.update(energy_top=sig3(top), energy_bottom=sig3(bot), score=sig3((bot - top) / max(bot + top, 1e-12)))
-    return 1 if top <= bot else -1
-
-
-def finish_range(segs, points, p, labels, events, activity=None):
-    """Whole track range, after every scene went through process_scene: the activity gate.
-    segs: [(t_ms list, thumbs list)] per scene. Returns the gated points (samples are untouched)."""
-    if p["pipe_gate"] == "off" and not labels and not p["pipe_carry_gaps"]:  # activity needs the gate
+def finish_range(segs, points, p, labels, events):
+    """Whole track range, after every scene went through process_scene: the activity gate's flags and the span labels.
+    segs: [(t_ms list, thumbs list)] per scene. Returns the points (moved only under an "idle" / "carry" label)."""
+    if p["pipe_gate"] == "off" and not labels:
         return points
     t = np.concatenate([np.asarray(ts, float) for ts, _ in segs])
     e = np.concatenate([motion_energy(ts, th) if th else np.full(len(ts), np.nan) for ts, th in segs])
-    st = gate_states(t, e, p, activity=activity)
-    if p["pipe_carry_gaps"]:
-        _mark_gaps(points, t, st)
-    for lab in labels or ():  # labels win over everything
-        if lab["state"] not in STATES:
-            raise ValueError(f"span state {lab['state']!r} not in {STATES}")
-        st[(t >= lab["start_ms"]) & (t < lab["end_ms"])] = lab["state"]
-    return apply_gate(points, t, st, events, p)
-
-
-def _mark_gaps(points, t, st, context_ms=10000):
-    """Inside the active main body (not before the first / after the last stroke), a gap between
-    consecutive turning points longer than max(3x the local turn interval, 1.5 s) -> "carry"."""
-    tt, _, _ = _turns(points)
-    for a, b in zip(tt, tt[1:]):
-        near = tt[(tt >= a - context_ms) & (tt <= b + context_ms)]
-        local = float(np.median(np.diff(near))) if len(near) > 2 else np.inf
-        if b - a > max(3 * local, 1500):
-            m = (t > a) & (t < b) & (st == "active")
-            st[m] = "carry"
+    held = np.zeros(len(t), bool)
+    for lab in labels or ():
+        held[(t >= lab["start_ms"]) & (t < lab["end_ms"])] = True
+    return apply_gate(points, t, gate_states(t, e, p, labels), events, held)
 
 
 # ---------------------------------------------------------------- camera trend (v4.9, experiments/softcuts)

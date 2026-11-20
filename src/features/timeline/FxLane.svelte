@@ -1,8 +1,8 @@
 <script>
   // The Modifiers row (paw-ef73.20, owner: "two places you can mark knotting, two places you can mark orgasm, they need to
   // be one"): every modifier (doc.fx, lib/fx.js) as a block in its kind's colour, in every tab. The event kinds (orgasm,
-  // knotting, throbbing, idle, insertion, pull-out) are marked and edited in any tab; the kinds that only modify existing
-  // strokes (Reshape, Climax run-in, Spurt) are drawn everywhere but dimmed and not editable outside Refine. Modifiers are
+  // knotting with its push / pull, throbbing, idle) are marked and edited in any tab; the kinds that only modify existing
+  // strokes (Reshape, Spurt) are drawn everywhere but dimmed and not editable outside Refine. Modifiers are
   // layers: they may overlap (applied in t0 order, later on top) and overlaps stack in sub-rows (fx-edit fxRows).
   // Gestures: drag on empty row = mark a modifier (the last used kind; a kind picker at release changes it), Alt / Shift /
   // Ctrl+drag on empty row = box select (Shift adds, Ctrl subtracts); drag a body to move (an orgasm takes its spurts), an
@@ -11,18 +11,17 @@
   // row); edges and spurts take the pointer within FX_EDGE_PX; the strength envelope is drawn on the block; click selects (Shift adds;
   // in Refine it also opens the curve popover: FxEditor, direct manipulation); right-click: the kinds at the click, or
   // the modifier's own menu. Keys: commands-fx.js (G / S / X / Shift+D / A ...) and commands-mods.js (Shift+O / Shift+K
-  // mark in / out). A pending mark-in is a dashed line. Spurts are diamonds on their frame (an orgasm's inner events).
+  // mark in / out). A pending mark-in is a dashed line. Spurts are diamonds on their frame; an orgasm's (its markers, paw-d1g7) sit on its block.
   // The tagger's detected orgasm / knotting (a scene never has one as a tag, paw-8b4h) is a dashed box over its scene
   // until one of the kind is there: a click on it makes the modifier over the scene (mods.js modHints, paw-ef73.24).
   // Tracked or generated (mods-tracked.js): each event modifier's label says which it is ("tracked: balls" when a run
   // over it has its reacting part's signal, else "generated"); in the Track tab the modifier at the playhead (or the
   // selected one) that is not tracked offers ONE prompt, "seed <part> for accurate depth": the Groups tool on a frame of
   // the shot inside it, that part armed (paint, then Track that shot). Nothing is switched by hand: track it and it is.
-  // A suggestion, never automatic: when the scene at the playhead has a balls contraction channel (the pinned balls group
-  // seeded from the tagger, sem_balls_scale, else a tracked part named balls with a _scale channel; the label says which),
+  // A suggestion, never automatic: when the scene at the playhead has a balls contraction channel (the pinned balls group's
+  // _scale; the label says which),
   // a quiet button offers its contraction peaks as spurts (first click / hover = hollow ghost diamonds, then place = one
-  // undo step; commands-fx ballsSpurts / placeSpurts). Off (no run, no balls group, balls seen too rarely, a run from
-  // before PROTOCOL v4.6) the button still shows, greyed, with the reason (tip, inline hint, status line on click), on an
+  // undo step; commands-fx ballsSpurts / placeSpurts). Off (no run, no balls group, balls seen too rarely) the button still shows, greyed, with the reason (tip, inline hint, status line on click), on an
   // orgasm / throbbing and on any scene while the row is focused or hovered (balls.js ballsReason).
   import { untrack } from 'svelte';
   import { xToMs } from '../../lib/lane.js';
@@ -39,10 +38,10 @@
   import { theme, font, X, ellipsize, drawRange } from './draw.js';
   import { fitText, thin, freeSlot } from './lod.js';
   import { KIND, rgba } from './kinds.js';
-  import { FX_KINDS, isPointFx, fxParams, envFlat, strength, knotMode, baseTurns } from '../../lib/fx.js';
+  import { FX_KINDS, isPointFx, fxParams, envFlat, strength, knotMode, baseTurns, isPushFx, tagIdOf } from '../../lib/fx.js';
   import { modItems, kindHere } from './fxmenu.js';
   import { detectedMods } from './acts.js';
-  import { dropSpan, fxRows, dragFx, linkMembers, FX_EDGE_PX, turnSnaps, defaultSpan } from './fx-edit.js';
+  import { dropSpan, fxRows, dragFx, linkMembers, FX_EDGE_PX, turnSnaps, defaultSpan, markerOwners } from './fx-edit.js';
   import { makeMod, modAt, modLabel, modHints, modOver } from './mods.js';
   import { REACTS, sourceText, sourcesOf } from './mods-tracked.js';
   import { trackChoices, trackerWord, ownRuns, hasSeed, seedsOf, ARM } from './mod-runs.js';
@@ -58,9 +57,10 @@
   const fxColor = (k) => KIND[k]?.color ?? FX_KINDS[k]?.color ?? theme().txMut;
   const list = $derived(listOf(app, 'fx'));
   const lay = $derived(fxRows(list));
+  const owners = $derived(markerOwners(list));   // paw-d1g7: an orgasm's markers, drawn on its block
   const tab = $derived(app.mode);
-  /** Editable here: an event kind anywhere, the rest in Refine. */
-  const editable = (e) => kindHere(e.kind, app.mode);
+  /** Editable here: an event kind anywhere (an orgasm's markers with it), the rest in Refine. */
+  const editable = (e) => kindHere(e.kind, app.mode) || owners.has(e.id);
   /** The kind a drag on empty row marks: the last used one when it can be made in this tab, else orgasm. */
   const drawKind = () => (kindHere(tl.modKind, app.mode) && !FX_KINDS[tl.modKind]?.point ? tl.modKind : 'orgasm');
   const minLen = () => Math.round(app.player.frameMs) || 100;
@@ -79,7 +79,7 @@
     const p = fxParams(e), base = app.doc.axes?.stroke || [], mode = knotMode(p, base, e.t0, e.t1), strokes = Math.floor(baseTurns(base, e.t0, e.t1).length / 2);
     return { mode, auto: !p.mode, strokes, many: mode !== 'cycles' && strokes >= 3 };
   };
-  const knotText = (e) => { const k = knotOf(e); return k ? ` · ${k.mode === 'single' ? 'one knot' : k.mode}${k.auto ? ' (auto)' : ''}${k.many ? ` over ${k.strokes} strokes!` : ''}` : ''; };
+  const knotText = (e) => { const k = knotOf(e); return k ? ` · ${k.mode === 'single' ? 'one knot' : k.mode === 'none' ? (tagIdOf(e) === 'pullout' ? 'pull' : 'push') : k.mode}${k.auto ? ' (auto)' : ''}${k.many ? ` over ${k.strokes} strokes!` : ''}` : ''; };
   /** paw-ef73.24: the tagger's detected orgasm / knotting with none of the kind over its scene: dashed, a click adds it. */
   const hints = $derived(modHints(scenesOf(app), list));
   const hintAt = (t) => hints.find((g) => t >= g.t0 && t < g.t1) ?? null;
@@ -204,7 +204,8 @@
     const el = root?.querySelector('canvas');
     if (!el) return null;
     const r = el.getBoundingClientRect(), row = Math.floor(((e.clientY - r.top) / Math.max(1, r.height)) * lay.rows), t = xToMs(app.view, r.width, e.clientX - r.left);
-    return list.find((it) => lay.row.get(it.id) === row && (isPointFx(it) ? shownPts.has(it.id) && Math.abs(X(app.view, r.width, it.t0) - (e.clientX - r.left)) < FX_EDGE_PX : t >= it.t0 && t < it.t1)) ?? null;
+    const near = (it) => shownPts.has(it.id) && Math.abs(X(app.view, r.width, it.t0) - (e.clientX - r.left)) < FX_EDGE_PX;   // a marker before the block it sits on
+    return list.find((it) => lay.row.get(it.id) === row && isPointFx(it) && near(it)) ?? list.find((it) => lay.row.get(it.id) === row && !isPointFx(it) && t >= it.t0 && t < it.t1) ?? null;
   }
   const hoverText = (_t, _x, ev) => {
     const e = ev ? anyAt(ev) : null, g = !e ? hintAt(_t) : null;
@@ -212,8 +213,8 @@
     if (!e) return cumTip(app, _x, lw) || `Modifiers: drag to mark one (${modLabel(drawKind()).toLowerCase()}; a picker at release changes it; its edges land on stroke turns, Shift: free) · double-click: one over the shot · ${keyText} at the playhead: in, again: out · right-click: the kinds`;
     const kv = e.kind === 'knotting' && machineKnots ? machineKnots.text(machineKnots.verdict(app, e.t0, e.t1)) : '';
     const tip = !editable(e) ? 'modifies existing strokes: edit it in Refine' : tab === 'refine' ? 'click: its curve · right-click: more' : 'drag the ends or the middle · right-click: kind, delete · its curve: Refine';
-    const k = knotOf(e), many = k?.many ? `\n${k.strokes} tracked strokes under it all become ONE ${k.mode === 'single' ? 'push' : 'pull'}: Knot mode › Cycles (Refine) keeps a knot on each` : '';
-    return `${FX_KINDS[e.kind]?.label ?? e.kind}${e.muted ? ' (muted)' : how(e)}\n${isPointFx(e) ? fmtMs(e.t0) : `${fmtMs(e.t0)}–${fmtMs(e.t1)}`} · ${tip} · double-click: fit it to the ${e.kind === 'insertion' || e.kind === 'pullout' ? 'stroke' : 'shot'} · Alt+drag: a copy${kv ? `\nMachine: ${kv}` : ''}${many}`;
+    const k = knotOf(e), many = k?.many ? `\n${k.strokes} tracked strokes under it all become ONE ${k.mode === 'single' ? 'push' : k.mode === 'none' ? 'move' : 'pull'}: Knot mode › Cycles (Refine) keeps a knot on each` : '';
+    return `${FX_KINDS[e.kind]?.label ?? e.kind}${e.muted ? ' (muted)' : how(e)}\n${isPointFx(e) ? fmtMs(e.t0) : `${fmtMs(e.t0)}–${fmtMs(e.t1)}`} · ${tip} · double-click: fit it to the ${isPushFx(e) ? 'stroke' : 'shot'} · Alt+drag: a copy${kv ? `\nMachine: ${kv}` : ''}${many}`;
   };
 
   // one drag at a time: tl.draft.fx while moving, ONE app.transact on release; other modifiers never move (layers)
@@ -261,8 +262,8 @@
         d.id ??= newId('fx');
         const t0 = Math.max(0, Math.min(a, s.t)), t1 = Math.min(o.dur, Math.max(a, s.t));
         d.result = t1 - t0 >= 1 ? [...d.base, makeMod(d.id, d.draw, t0, t1, null, app.doc.axes?.stroke)].sort((p, q) => p.t0 - q.t0) : null;
-      } else if (d.part === 'body') { s = snapDelta([d.it.t0, d.it.t1], t - d.t0, sc.targets, sc.tol, sc.frameMs); d.result = dragFx(d.base, d.it.id, 'body', { ...o, dt: s.dt, inner: !d.dup }); }
-      else { s = snapTime(t, sc.targets, sc.tol, sc.frameMs); d.result = dragFx(d.base, d.it.id, d.part, { ...o, t: s.t }); }
+      } else if (d.part === 'body') { s = snapDelta([d.it.t0, d.it.t1], t - d.t0, sc.targets, sc.tol, sc.frameMs); d.result = dragFx(d.base, d.it.id, 'body', { ...o, dt: s.dt, inner: !d.dup, stroke: app.doc.axes?.stroke }); }
+      else { s = snapTime(t, sc.targets, sc.tol, sc.frameMs); d.result = dragFx(d.base, d.it.id, d.part, { ...o, t: s.t, stroke: app.doc.axes?.stroke }); }
       tl.snap = s.target ? { t: s.target.t, label: s.target.label } : null;
       setDraft('fx', d.result ?? d.base);
       // the video shows the frame under the dragged edge (a body: its start; marking: the pointer's end), as an action region's
@@ -308,11 +309,11 @@
   function dbl(e) {
     if (e.button !== 0 || !root) return;
     const r = root.getBoundingClientRect(), t = xToMs(app.view, r.width, e.clientX - r.left), hit = hitAt(e)?.item ?? null, kind = hit?.kind ?? drawKind();
-    const g = defaultSpan(kind, t, { cuts: cutsOf(app), dur: durOf(app), script: app.doc.axes?.stroke || [], minLen: minLen() });
+    const g = defaultSpan(kind, t, { cuts: cutsOf(app), dur: durOf(app), script: app.doc.axes?.stroke || [], minLen: minLen(), push: isPushFx(hit) });
     if (!g) return;
     if (!hit) { addModifier(app, kind, g); return; }
     if (g.t0 === hit.t0 && g.t1 === hit.t1) return;
-    commitFx(app, `Fit ${modLabel(kind)} to the ${kind === 'insertion' || kind === 'pullout' ? 'stroke' : 'shot'}`, (app.doc.fx || []).map((x) => (x.id === hit.id ? (({ baked: _, ...q }) => ({ ...q, t0: g.t0, t1: g.t1 }))(x) : x)).sort((a, b) => a.t0 - b.t0));
+    commitFx(app, `Fit ${modLabel(kind)} to the ${isPushFx(hit) ? 'stroke' : 'shot'}`, (app.doc.fx || []).map((x) => (x.id === hit.id ? (({ baked: _, ...q }) => ({ ...q, t0: g.t0, t1: g.t1 }))(x) : x)).sort((a, b) => a.t0 - b.t0));
   }
   function cancel() { drag = null; press = null; box = null; clearDraft('fx'); tl.snap = null; }
   /** The kind picker's pick: modifier id becomes kind k (its params back to k's defaults). */
@@ -326,8 +327,8 @@
     const r = root.getBoundingClientRect(), t = xToMs(app.view, r.width, e.clientX - r.left), at = Math.round(app.player.snap ? app.player.snap(t) : t);
     const fx = hitAt(e)?.item ?? null;
     const run = (id, args) => () => app.commands.run(id, args);
-    if (!fx) {   // the kinds at the click: an event kind 4 s from here (drag its ends), Reshape / Climax over the scene, a spurt on this frame
-      showContextMenu(e, [{ section: 'Modifier here' }, ...modItems(tab, (k) => menuAdd(at, k))], { source: root });
+    if (!fx) {   // the kinds at the click: an event kind 4 s from here (drag its ends), a push / pull on the stroke's half-stroke, Reshape over the scene, a spurt on this frame
+      showContextMenu(e, [{ section: 'Modifier here' }, ...modItems(tab, (k, params) => menuAdd(at, k, params), { push: true })], { source: root });
       return;
     }
     if (!tl.fxSel.includes(fx.id)) tl.fxSel = [];
@@ -380,8 +381,9 @@
   }
   /** The menu's add at t: an event kind from t (4 s, clipped to the scene; drag its ends), a spurt on that frame, Reshape /
    *  Climax over the scene around t. */
-  function menuAdd(t, kind) {
-    if (FX_KINDS[kind]?.event) toggleModCmd(app, kind, { t, here: true });
+  function menuAdd(t, kind, params = null) {
+    if (params) addModifier(app, kind, { ...(defaultSpan(kind, t, { cuts: cutsOf(app), dur: durOf(app), script: app.doc.axes?.stroke || [], minLen: minLen(), push: true }) ?? {}), params });
+    else if (FX_KINDS[kind]?.event) toggleModCmd(app, kind, { t, here: true });
     else if (FX_KINDS[kind]?.point) spurtAtPlayhead(app, t);
     else { const g = dropSpan(t, { cuts: cutsOf(app), dur: durOf(app), minLen: minLen() }); if (g) addModifier(app, kind, g); }
     focusFxLane();
@@ -392,7 +394,7 @@
   const sugKey = $derived.by(() => { const i = sceneAtPlayhead(scenesOf(app), app.player); return i >= 0 ? 's' + i : 't' + Math.floor(app.player.timeMs / 1000); });
   const sug = $derived.by(() => { sugKey; sugSign; trackingOf(app)?.runs; app.doc.ghosts; return untrack(() => ballsSpurts(app, app.player.timeMs, sugSign)); });
   $effect(() => { sug?.ch; sug?.t0; untrack(() => { sugArmed = false; sugGhost = false; }); });   // another scene / part: back to the quiet button
-  const SUG_TIP = (s) => `${s?.seeded ? `The run has a balls group in this scene (${s?.ch}: seeded from the tagger, or drawn with Groups)` : `The tracker found a part named balls in this scene (${s?.ch}, PROTOCOL v3.4)`}: its own size change peaks where it contracts. Click to preview spurt markers at those peaks (hollow diamonds), then place them: one undo step, nothing automatic`;
+  const SUG_TIP = (s) => `The run has a balls group in this scene (${s?.ch}: seeded from the tagger, or drawn with Groups): its own size change peaks where it contracts. Click to preview spurt markers at those peaks (hollow diamonds), then place them: one undo step, nothing automatic`;
   // off: why, shown on an orgasm / throbbing, or anywhere while the row is focused / hovered
   let inside = $state(false);
   const sceneNow = $derived.by(() => { sugKey; const l = scenesOf(app); return untrack(() => l[sceneAtPlayhead(l, app.player)]) ?? null; });

@@ -16,6 +16,7 @@
   import { TIME_FMTS, nextFmt, fmtNum, fmtRate, fmtFps, loopInfo, resolveTime, setTimeFieldHook } from './transport.js';
   import { lookKey, lookOf } from './posbar.js';
   import { peekTracking } from '../tracking/tracking.svelte.js';
+  import { metaOf } from '../../app/settings.svelte.js';
 
   let { app } = $props();
   const p = $derived(app.player);
@@ -110,6 +111,8 @@
   const setView = (patch) => (p.view = { ...p.view, ...patch });
   const lb = $derived(p.ui.letterbox || LETTERBOX_BLACK);
   const radio = (label, checked, runFn, shortcut) => ({ label, type: 'radio', checked, run: runFn, shortcut });
+  const TRAILS = metaOf('tracking.trails').options;   // a run's overlay on the video (paw-57dw: was the Tracker panel's Trails row)
+  const trails = $derived(app.settings?.get?.('tracking.trails') ?? 'groups');
   const viewItems = $derived([
     { section: 'Zoom' },
     radio('Fit', v.mode === 'fit', () => run('video.fit', () => setView({ mode: 'fit', panX: 0, panY: 0 })), keyOf('video.fit')),
@@ -133,6 +136,7 @@
     ] },
     { separator: true },
     { label: 'On-video readouts', icon: 'eye', type: 'checkbox', checked: p.ui.hud !== false, shortcut: keyOf('video.hud'), run: () => run('video.hud', () => p.setUi({ hud: p.ui.hud === false })) },
+    ...(app.settings?.set ? [{ label: 'Trails', icon: 'heatmap', tip: 'What a tracker run draws over the video', items: TRAILS.map((o) => radio(o.label, trails === o.value, () => app.settings.set('tracking.trails', o.value))) }] : []),
   ]);
   // ---- proxy (paw-nydn): play the original or a proxy of it; make one at a size (the status bar shows the progress) ----
   let proxyOpen = $state(false), proxyBtn = $state();
@@ -221,7 +225,7 @@
     </span>
 
     <span bind:this={viewBtn} class="menu-anchor">
-      <Button size="sm" variant="ghost" icon="zoom-fit" class="view {viewOn ? 'on' : ''}" tip="View: zoom, orientation, guides, letterbox"
+      <Button size="sm" variant="ghost" icon="zoom-fit" class="view {viewOn ? 'on' : ''}" tip="View: zoom, orientation, guides, letterbox, trails"
         aria-haspopup="menu" aria-expanded={viewOpen} onclick={() => (viewOpen = !viewOpen)}><span class="k-num zl">{zoomLabel}</span></Button>
     </span>
     <Menu bind:open={viewOpen} anchor={viewBtn?.firstElementChild} placement="top-end" label="View" items={viewItems} />

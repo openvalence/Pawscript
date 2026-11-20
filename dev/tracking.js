@@ -28,9 +28,8 @@ const FAKE = { fail: false, delay: 12, cancelled: false, pan: false, requests: [
 const P = (key, label, type, def, min = null, max = null, choices = null) => ({ key, label, type, default: def, min, max, choices });
 const own = [P('freq', 'Frequency (Hz)', 'float', 1.5, 0.2, 6), P('noise', 'Noise', 'float', 0.05, 0, 0.5), P('shape', 'Shape', 'choice', 'sine', null, null, ['sine', 'saw', 'square']), P('invert', 'Invert', 'bool', false)];
 const shared = [
-  P('pipe_sign', 'Direction', 'choice', 'keep', null, null, ['keep', 'auto']), P('pipe_invert', 'Invert direction', 'bool', false),
+  P('pipe_invert', 'Invert direction', 'bool', false),
   P('pipe_gate', 'Activity gate', 'choice', 'motion', null, null, ['off', 'motion']), P('pipe_gate_motion', 'Gate motion threshold', 'float', 4.0, 0, 50),
-  P('pipe_carry_gaps', 'Carry across gaps', 'bool', true), P('pipe_climax_rate', 'Climax pulses/s', 'float', 6.8, 1, 20),
   P('pipe_norm_window_ms', 'Norm window (ms)', 'int', 3000, 0, 20000), P('pipe_min_gap_ms', 'Min point gap (ms)', 'int', 120, 20, 1000),
   P('pipe_smooth_ms', 'Smoothing window (ms)', 'int', 100, 0, 2000), P('cut_enabled', 'Detect cuts', 'bool', true),
   P('held_retime', 'Held-frame retime', 'choice', 'auto', null, null, ['off', 'auto', 'on']), P('loop_fold', 'Loop fold', 'choice', 'off', null, null, ['off', 'auto', 'on']),
@@ -121,7 +120,7 @@ async function fakeTrack(req, onEvent, onFrames) {
   const cuts = [req.start_ms];
   for (let c = Math.ceil((req.start_ms + 1) / 5000) * 5000; c < req.end_ms; c += 5000) cuts.push(c);
   const lastEnd = samples[samples.length - 1][0] + Math.round(frameMs);
-  const scenes = cuts.map((c, i) => { const auto = p.pipe_sign === 'auto' ? (i % 2 ? -1 : 1) : null; return { start_ms: c, end_ms: i + 1 < cuts.length ? cuts[i + 1] : lastEnd, sign: (auto ?? 1) * (p.pipe_invert ? -1 : 1), auto_sign: auto,
+  const scenes = cuts.map((c, i) => { return { start_ms: c, end_ms: i + 1 < cuts.length ? cuts[i + 1] : lastEnd, sign: p.pipe_invert ? -1 : 1,
     ...(shafts.length ? { shaft: Object.fromEntries(shafts.map(([n]) => [n, { source: 'sam', full: 'seen', conf_share: 0.9 }])) } : {}) }; });
   events.push({ t_ms: req.start_ms, end_ms: Math.min(req.end_ms, req.start_ms + 600), kind: 'idle', label: 'idle 0.6 s' });
   if (req.end_ms - req.start_ms > 3000) events.push({ t_ms: req.start_ms + 1500, end_ms: req.start_ms + 2500, kind: 'still', label: 'still 1.0 s' });

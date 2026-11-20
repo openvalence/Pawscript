@@ -15,7 +15,7 @@ import { graphsToProject, graphsFromProject, withoutGraphGhosts } from '../featu
 import { fromSaved, toSaved } from '../features/timeline/shots.js';
 import { actsFromScenes } from '../features/timeline/regions.js';
 import { migrateDetail } from '../lib/detail.js';
-import { singleThrob, EVENT_KINDS } from '../lib/fx.js';
+import { singleThrob, EVENT_KINDS, KNOT_PUSH, KNOT_PULL } from '../lib/fx.js';
 import { stripMods } from '../features/timeline/shots.js';
 import { TAG } from '../features/timeline/acts.js';
 import { parseFunscript, serializeFunscript, axisName, axisPath, parseAxisFile, discoverAxes, buildExports,
@@ -251,14 +251,15 @@ export function appDocFrom(pd, { path = null, base = null } = {}) {
   const { scenes = [], acts: savedActs, modifiers = [], fx: oldFx = [], finish: fin, repeats = null, runRanges = null, bakedEmpty = null, ...extra } = ex;
   const old = Number.isInteger(pd.meta?.migratedFrom) && pd.meta.migratedFrom < 3, flat = cleanScenes(scenes);
   // paw-8b4h: a modifier is never a scene tag; one left in a scene's tags (any version) goes to the modifiers on load
-  const conv = old || flat.some((s) => s.tags?.some(isModTag)) ? modsFromV2(old ? oldFx : [], flat, old ? null : Array.isArray(modifiers) ? modifiers : []) : null, mods = conv ? conv.fx : modifiers;
+  const conv = old || flat.some((s) => s.tags?.some(isModTag)) ? modsFromV2(old ? oldFx : [], flat, old ? null : Array.isArray(modifiers) ? modifiers : []) : null;
+  const fold = foldKinds(conv ? conv.fx : modifiers), mods = fold.fx, said = [conv?.note, fold.note].filter(Boolean).join('; ');
   // paw-2lp7.2: a project saved before action regions: its scenes make them (timeline/regions.js; the toast says how many)
   const shots = conv ? conv.scenes : flat, acts = Array.isArray(savedActs) ? savedActs : actsFromScenes(shots);
   return {
     media: pd.media, axes: pd.axes, activeAxis: pd.activeAxis, chapters: pd.chapters, bookmarks: pd.bookmarks, loops: pd.loops, plan: pd.plan,
     ghosts: withoutGraphGhosts(pd.ghosts), graphs, scenes: shots, acts, fx: Array.isArray(mods) ? mods.filter((e) => e && typeof e.id === 'string' && Number.isFinite(e.t0) && Number.isFinite(e.t1) && (e.t1 > e.t0 || (e.kind === 'spurt' && e.t1 === e.t0))).sort((a, b) => a.t0 - b.t0) : [],
     finish: fin && typeof fin === 'object' && !Array.isArray(fin) ? fin : undefined, runRanges: normRanges(runRanges), bakedEmpty: normEmpty(bakedEmpty), repeats: repeats && typeof repeats === 'object' && !Array.isArray(repeats) ? repeats : null,
-    project: { path, base, extra, meta: pd.meta || null, settings: pd.settings || {}, profileId: pd.profileId ?? null, ...(conv?.note && { converted: conv.note }), ...(!Array.isArray(savedActs) && acts.length && { regionsMade: acts.length }) },
+    project: { path, base, extra, meta: pd.meta || null, settings: pd.settings || {}, profileId: pd.profileId ?? null, ...(said && { converted: said }), ...(!Array.isArray(savedActs) && acts.length && { regionsMade: acts.length }) },
   };
 }
 
@@ -267,13 +268,13 @@ export function appDocFrom(pd, { path = null, base = null } = {}) {
  * become modifiers. An effect stays what it was ('throb' is 'throbbing'; a throb one-shot a one-beat throbbing range); a
  * span with an effect of its family at exactly its times (the old tie) IS that modifier; any other span becomes a muted
  * modifier (it was a mark without a shape: muted, it still feeds Autorange and the sidecar as before); the scene-level
- * insertion tag becomes an Insertion modifier over its span unless an insertion effect is there. The spans and the
+ * insertion tag becomes a push (a knotting in mode 'none') over its span unless one is there. The spans and the
  * insertion tag leave the scenes. paw-8b4h: also for any project whose scenes still carry a modifier as a tag (a bare
  * 'orgasm' = the whole scene; a '-orgasm' removal only silenced the tagger's detection, which is a suggestion now: dropped);
  * `mods` = its modifiers block (kept, and one of the kind there is the tie). -> {fx, scenes, note: words for the toast | ''}.
  */
 export function modsFromV2(oldFx = [], scenes = [], mods = null) {
-  const FAM = { orgasm: ['orgasm', 'climax'], knotting: ['knotting'], throbbing: ['throb', 'throbbing'], insertion: ['insertion'] };
+  const FAM = { orgasm: ['orgasm'], knotting: ['knotting'], throbbing: ['throb', 'throbbing'], insertion: ['knotting'] };
   const own = Array.isArray(mods) ? mods.length : 0;
   const fx = [...(mods || []), ...(Array.isArray(oldFx) ? oldFx : []).filter((e) => e && typeof e.id === 'string' && Number.isFinite(e.t0) && Number.isFinite(e.t1)).map((e) => {
     if (e.kind !== 'throb') return e;
@@ -289,7 +290,7 @@ export function modsFromV2(oldFx = [], scenes = [], mods = null) {
       const id = typeof t === 'string' ? t : t?.id, t0 = Math.max(a, t?.t0 ?? a), t1 = Math.min(b, t?.t1 ?? b);
       if (!FAM[id] || !(t1 > t0)) continue;   // a span (or a bare id: the whole scene)
       const tied = fx.some((e, j) => FAM[id].includes(e.kind) && (id === 'insertion' || j < own ? e.t0 < t1 && e.t1 > t0 : e.t0 === t0 && e.t1 === t1));
-      if (!tied) { fx.push({ id: `fx${id}${t0}`, kind: id, t0, t1, params: {}, ...(id === 'insertion' ? {} : { muted: true }) }); n++; }
+      if (!tied) { fx.push(id === 'insertion' ? { id: `fx${id}${t0}`, kind: 'knotting', t0, t1, params: { ...KNOT_PUSH } } : { id: `fx${id}${t0}`, kind: id, t0, t1, params: {}, muted: true }); n++; }
     }
   });
   const out = stripMods(scenes).map((s) => {
@@ -303,7 +304,27 @@ export function modsFromV2(oldFx = [], scenes = [], mods = null) {
 }
 /** A scene tags entry that is a modifier (paw-8b4h: never a scene tag): 'orgasm', '-knotting', a {id: kind, t0, t1} span.
  *  'idle' as a plain id is the structure tag. */
-export const isModTag = (t) => (typeof t === 'string' ? TAG[t.replace(/^-/, '')]?.cat === 'modifier' : EVENT_KINDS.includes(t?.id));
+export const isModTag = (t) => (typeof t === 'string' ? TAG[t.replace(/^-/, '')]?.cat === 'modifier' : EVENT_KINDS.includes(t?.id) || TAG[t?.id]?.cat === 'modifier');
+
+/**
+ * paw-ajvq, any project (no back-compat beyond this): the modifier kinds that are gone. An Insertion / Pull-out is a
+ * knotting push / pull (mode 'none'; its from / to / push kept, arrive = popAt, the rest the push's defaults); a Climax
+ * run-in is dropped (Reshape's depth band does it). -> {fx, note: words for the toast | ''}.
+ */
+export function foldKinds(list) {
+  if (!Array.isArray(list)) return { fx: list, note: '' };
+  let moved = 0, dropped = 0;
+  const fx = list.flatMap((e) => {
+    if (e?.kind === 'climax') { dropped++; return []; }
+    if (e?.kind !== 'insertion' && e?.kind !== 'pullout') return [e];
+    moved++;
+    const { arrive, easeIn: _i, easeOut: _o, ...p } = e.params || {};
+    return [{ ...e, kind: 'knotting', params: { ...(e.kind === 'pullout' ? KNOT_PULL : KNOT_PUSH), ...p, ...(arrive != null ? { popAt: arrive } : {}), mode: 'none' } }];
+  });
+  const note = [moved && `${moved} insertion / pull-out modifier${moved === 1 ? ' is a knotting push' : 's are knotting pushes'} now`,
+    dropped && `${dropped} Climax run-in modifier${dropped === 1 ? '' : 's'} dropped (Reshape's depth band does it)`].filter(Boolean).join('; ');
+  return moved || dropped ? { fx, note: `made by an older version: ${note}` } : { fx: list, note: '' };
+}
 
 /** Autosave content: the .pawproj text with ghost scripts (tracker runs survive a crash) and the doc's base. */
 export function autosaveContent(d, { projectPath = null, base = '', view, playheadMs, now = Date.now(), blocks = null, blockKeys = null } = {}) {

@@ -17,6 +17,7 @@ import { withMods } from '../features/timeline/mods.js';
 import { groupsAside } from '../features/timeline/shots.js';
 import { frameLen } from './lane.js';
 import { scriptOf } from './script-of.js';
+import { effectiveMaxSpeed } from './analyze/profiles.js';
 
 /** doc.finish defaults: the pass off, the project's policy (null = env / defaults; its strength / keep drive the pass),
  *  the owner's hand pieces and keys on the band envelope (lib/autorange-env.js). */
@@ -27,8 +28,10 @@ const scenesFor = (doc) => withStructure(withMods(doc?.scenes || [], doc?.fx));
 
 const memo = new WeakMap();
 const envKey = (e) => { const p = e.profile; return `${p?.device ?? ''}|${p?.range?.[0] ?? ''}|${p?.maxSpeed ?? ''}|${p?.minIntervalMs ?? ''}|${e.maxSpeed ?? ''}|${frameLen(e.grid)}|${e.policy ? JSON.stringify(e.policy) : ''}|${e.shaftsId ?? 0}|${e.fades?.length ? JSON.stringify(e.fades) : ''}`; };
-/** paw-r9nh: the modifiers under the machine's speed limit and minimum interval, their events on the player's frames. */
-export const fxCtxOf = (env = {}) => ({ maxSpeed: env.maxSpeed, minGapMs: env.profile?.minIntervalMs || undefined, grid: env.grid || undefined });
+/** paw-r9nh: the modifiers under the machine's speed limit and minimum interval, their events on the player's frames.
+ *  paw-xu4v: the device profile's own limits (effectiveMaxSpeed: a kinematic profile's from its vMax), never the lanes'
+ *  speed color top (env.maxSpeed is only the fallback with no profile). */
+export const fxCtxOf = (env = {}) => ({ maxSpeed: env.profile ? effectiveMaxSpeed(env.profile) : env.maxSpeed, minGapMs: env.profile?.minIntervalMs || undefined, grid: env.grid || undefined });
 
 /** The pass's overrides (lib/autorange-env.js): the shots (scenes, modifiers) and the owner's hand pieces / keys. */
 export const overridesOf = (doc, f = finishOf(doc)) => ({ scenes: scenesFor(doc), bands: f.bands || [], keys: f.keys || [] });

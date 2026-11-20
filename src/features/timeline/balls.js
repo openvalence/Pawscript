@@ -22,16 +22,9 @@ export function ballsRun(app, t, runOf, scenes = app?.doc?.scenes || []) {
   return { run, k, t0: s ? Math.max(span.t0, rs.start_ms) : rs.start_ms, t1: s ? Math.min(span.t1, rs.end_ms ?? Infinity) : rs.end_ms ?? Infinity };
 }
 
-/** Did the sidecar that made the run know the pinned groups (PROTOCOL v4.6)? Any sem_* channel or scene group, or a
- *  `primary` note whose seed record has v4.6's `layout`. */
-const seededRun = (run) => Object.keys(run.channels || {}).some((c) => c.startsWith('sem_'))
-  || (run.scenes || []).some((s) => Object.keys(s?.groups || {}).some((g) => g.startsWith('sem_')))
-  || (run.notes || []).some((n) => n?.data?.seed?.layout != null);
-
 const off = (reason, short) => ({ enabled: false, reason, short });
 const CHAR_BALLS = /^sem_c[12]_balls\d*_scale$/;
-/** Run scene k's balls contraction channel over [t0, t1): runs-channel ballsScale (the plain pinned group, else a part
- *  named balls), else a character's balls group (paw-x99, PROTOCOL v4.12: sem_c1_balls_scale, sem_c2_balls_scale): the
+/** Run scene k's balls contraction channel over [t0, t1): runs-channel ballsScale (the plain pinned group), else a character's balls group (paw-x99, PROTOCOL v4.12: sem_c1_balls_scale, sem_c2_balls_scale): the
  *  one present on most of the span; '' when there is none. */
 export function ballsChannel(run, k, t0 = -Infinity, t1 = Infinity) {
   const ch = ballsScale(run, k);
@@ -49,9 +42,8 @@ export function ballsReason(app, t, { runOf = (id) => app?.tracking?.run?.(id), 
   if (!at) return off('no run under this scene', 'no run');
   const { run, k, t0, t1 } = at, ch = ballsChannel(run, k, t0, t1), key = /^sem_.+_scale$/.test(ch) ? ch.slice(0, -6) : 'sem_balls';
   const p = run.channels?.[key + '_n']?.v ? groupPresence(run, key, t0, t1) : null;
-  if (ch && (!ch.startsWith('sem_') || p == null || p >= MIN_BALLS)) return { enabled: true, reason: '', short: '', ch, at };
+  if (ch && (p == null || p >= MIN_BALLS)) return { enabled: true, reason: '', short: '', ch, at };
   if (p > 0) return off(`balls seen on ${Math.round(p * 100)} % of frames only`, `balls ${Math.round(p * 100)} %`);
-  if (!seededRun(run)) return off('run predates seeded groups (PROTOCOL < 4.6): re-track with the current sidecar', 'old run');
   if (run.channels?.sem_balls_n || Object.keys(run.channels || {}).some((c) => /^sem_c[12]_balls\d*_n$/.test(c))) return off('no balls in this scene (the tagger found none on its seed frame): place spurts with U', 'no balls here');
   return off('no balls group in this run: re-track with the current sidecar (seeded groups)', 'no balls group');
 }

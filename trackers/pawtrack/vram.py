@@ -43,7 +43,7 @@ def _cuda():
 
 def budget_gb(torch):
     """-> (budget GB, fixed): fixed when an env var sets it (then it is also the cap)."""
-    total = torch.cuda.get_device_properties(0).total_memory / GB
+    total = torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory / GB
     if os.environ.get("PAWSCRIPT_GPU_FRACTION"):
         return float(os.environ["PAWSCRIPT_GPU_FRACTION"]) * total, True
     if os.environ.get("PAWTRACK_VRAM_GB"):
@@ -79,7 +79,7 @@ def cap(name, gb):
             evict([n])
         print(f"pawtrack: unloaded {n} for {name} ({need:.1f} GB needed, budget {budget:.1f} GB)", file=sys.stderr)
     want = others_gb() + need
-    total = torch.cuda.get_device_properties(0).total_memory / GB
+    total = torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory / GB
     torch.cuda.set_per_process_memory_fraction(max(0.01, min(1.0, (budget if fixed else min(want, budget)) / total)))
 
 
@@ -114,7 +114,7 @@ def trim():
         torch.cuda.empty_cache()
 
 
-_LIB_STATUS = re.compile(r"(CUBLAS|CUDNN)_STATUS_([A-Z_]+)")
+_LIB_STATUS = re.compile(r"(CUBLAS|CUDNN|HIPBLAS)_STATUS_([A-Z_]+)")   # ROCm torch: HIPBLAS_STATUS_ as cuBLAS'
 # paw-58lg: a cuBLAS / cuDNN status by what it means. Out of memory: an allocation failure, cuBLAS' handle that could not
 # get its workspace (NOT_INITIALIZED from cublasCreate), cuDNN's INTERNAL_ERROR (its workspace, most often). Fatal: an
 # execution / mapping failure, an arch mismatch. Any other status (NOT_SUPPORTED, BAD_PARAM, INVALID_VALUE, cuBLAS'
@@ -125,16 +125,20 @@ _FATAL_STATUS = {"EXECUTION_FAILED", "MAPPING_ERROR", "ARCH_MISMATCH"}
 
 def _status(s):
     m = _LIB_STATUS.search(s)
-    return (m.group(1), m.group(2)) if m else None
+    return (m.group(1).replace("HIPBLAS", "CUBLAS"), m.group(2)) if m else None
+
+
+_OOM_MARKS = ("CUDA out of memory", "HIP out of memory", "miopenStatusAllocFailed")
 
 
 def is_oom(e):
     s = str(e)
-    return type(e).__name__ == "OutOfMemoryError" or "CUDA out of memory" in s or _status(s) in _OOM_STATUS
+    return type(e).__name__ == "OutOfMemoryError" or any(m in s for m in _OOM_MARKS) or _status(s) in _OOM_STATUS
 
 
 FATAL = "The graphics driver reported an error; the tracker restarts on the next run."
-_FATAL_MARKS = ("CUDA error", "CUDA driver error", "cuDNN error")
+_FATAL_MARKS = ("CUDA error", "CUDA driver error", "cuDNN error", "HIP error", "MIOpen Error", "hipBLASLt", "rocBLAS",
+                "miopenStatusInternalError", "miopenStatusUnknownError")   # torch raises MIOpen statuses bare
 
 
 def is_fatal(e):

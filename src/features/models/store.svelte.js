@@ -3,16 +3,16 @@
 // Every network call starts from a user's click: Download, Check for model updates (and the app's first start screen's
 // Download). The rest (what is on the disk) is read locally.
 import embedded from './manifest.json';
-import { parseManifest, rows, toFetch, baseUrl, runtimeNeeded, modelsReady, matchFile, errorWords, isRuntime, isManual, otherVersion, fmtBytes } from './logic.js';
+import { parseManifest, rows, toFetch, baseUrl, runtimeNeeded, modelsReady, matchFile, errorWords, isRuntime, isManual, isHosted, otherVersion, fmtBytes, chooseRuntime, runtimeThere, RUNTIME_WORDS } from './logic.js';
 
 export const EMBEDDED = parseManifest(embedded);
-export const runtimeEntry = () => EMBEDDED.models.find(isRuntime);
+const entryOf = (id) => EMBEDDED.models.find((m) => isRuntime(m) && m.id === id);
 
-/** info: models_info; rt: runtime_status; facts / rtFacts: {path: {exists, bytes, part}} in the models folder / beside the
- *  exe; verified: {path: sha256} (Verify, an import, a download); fetched: the server's newer manifest; picked: {id: true}
+/** info: models_info; rt: runtime_status; gpu: gpu_probe (the display adapters and the runtime they pick, paw-vdb3.3);
+ *  facts: {path: {exists, bytes, part}} in the models folder; verified: {path: sha256} (Verify, an import, a download); fetched: the server's newer manifest; picked: {id: true}
  *  optional models ticked; job: {kind, id, model, file, done, total}; ready: the required models are usable (tracking
  *  may run; true when not known, e.g. the browser harness, and with the fake tracker). */
-export const models = $state({ info: null, rt: null, facts: {}, rtFacts: {}, verified: {}, fetched: null, picked: {}, job: null, message: '', error: '', ready: true });
+export const models = $state({ info: null, rt: null, gpu: null, facts: {}, verified: {}, fetched: null, picked: {}, job: null, message: '', error: '', ready: true });
 
 /** The models folder: the setting, else beside the app. */
 export const folderOf = (app) => (app.settings.get('models.dir') || '').trim() || models.info?.defaultDir || '';
@@ -30,15 +30,18 @@ export async function refresh(app) {
     const dir = folderOf(app);
     const paths = [...new Set(list().filter((r) => !isRuntime(r.model)).flatMap((r) => [...pathsOf(r.model), ...pathsOf(r.old)]))];
     models.facts = Object.fromEntries((await be.modelsScan(dir, paths)).map((f) => [f.path, f]));
-    const rt = runtimeEntry();
-    models.rtFacts = rt && models.rt?.portable ? Object.fromEntries((await be.modelsScan(models.rt.dir, pathsOf(rt))).map((f) => [f.path, f])) : {};
+    models.gpu ||= await be.gpuProbe?.().catch(() => null) ?? null;   // the adapters do not change while the app runs
   } catch (e) { say('', errorWords(e)); }
   models.ready = !models.info || models.info.fake || modelsReady(list(), models.facts, models.verified);
   return true;
 }
 
-/** The runtime must be downloaded before the app can run its trackers or read videos. */
-export const needsRuntime = () => runtimeNeeded(models.rt, runtimeEntry());
+/** The runtime this PC uses (the setting, else the one for the GPU found) and why: logic.js chooseRuntime. Reads the settings. */
+export const choice = (app) => chooseRuntime({ setting: app.settings.get('models.runtime'), probe: models.gpu, rt: models.rt, entries: EMBEDDED.models.filter(isRuntime) });
+export const chosenEntry = (app) => entryOf(choice(app).id);
+
+/** The chosen runtime must be downloaded before the app can run its trackers or read videos. */
+export const needsRuntime = (app) => runtimeNeeded(models.rt, chosenEntry(app));
 
 const base = (app) => baseUrl({ env: models.info?.envUrl, setting: app.settings.get('models.baseUrl') });
 const strip = ({ path, url, bytes, sha256 }) => ({ path, url, bytes, sha256 });
@@ -48,7 +51,7 @@ const strip = ({ path, url, bytes, sha256 }) => ({ path, url, bytes, sha256 });
 export async function download(app, ids) {
   if (models.job) return false;
   const be = app.backend, id = crypto.randomUUID();
-  const want = list().filter((r) => ids.includes(r.model.id) && !isManual(r.model)).sort((a, b) => isRuntime(b.model) - isRuntime(a.model));
+  const want = list().filter((r) => ids.includes(r.model.id) && !isManual(r.model) && isHosted(r.model)).sort((a, b) => isRuntime(b.model) - isRuntime(a.model));
   let unpack = false;
   say('');
   try {
@@ -171,9 +174,40 @@ export async function chooseFolder(app) {
 export const openFolder = (app) => app.backend.openPath(folderOf(app)).catch((e) => say('', errorWords(e)));
 export const openLink = (app, url) => app.backend.openUrl?.(url).catch((e) => say('', errorWords(e)));
 
+/** models.runtime was just written (its Prop): an unpublished runtime that is not on the disk is refused and the setting goes
+ *  back; else the shell drops its idle tracker, and with `fetch` (Settings; the first-start screen's Download fetches by
+ *  itself) the chosen runtime is downloaded and unpacked now. The unpack runs in the shell while the app stays up: a
+ *  tracker waits for it (portable.rs wait_ready). */
+export async function runtimeChosen(app, { fetch = true } = {}) {
+  const c = choice(app), entry = entryOf(c.id);
+  if (!isHosted(entry) && !runtimeThere(models.rt, c.id)) {
+    app.settings.reset('models.runtime');
+    say('', `${RUNTIME_WORDS[c.id]} runtime is not published yet`);
+    return false;
+  }
+  app.settings.flush?.();
+  app.backend.modelsChanged?.()?.catch?.(() => {});
+  if (!fetch || !needsRuntime(app)) return true;
+  if ((await download(app, [c.id])) !== 'unpack') return false;
+  models.job = { kind: 'unpack', id: '', title: 'Unpacking the runtime', file: '', done: 0, total: 0 };
+  try {
+    do await new Promise((r) => setTimeout(r, 1500)); while ((await app.backend.portableStatus?.().catch(() => null))?.state === 'unpacking');
+  } finally { models.job = null; }
+  await refresh(app);
+  return true;
+}
+
+/** Deletes the runtime that is not the chosen one (its folder; the shared ffmpeg stays). */
+export async function removeRuntime(app, id) {
+  if (models.job || id === choice(app).id) return false;
+  try { await app.backend.runtimeRemove(id); say(`${RUNTIME_WORDS[id]} runtime removed`); } catch (e) { say('', errorWords(e)); }
+  await refresh(app);
+  return true;
+}
+
 /** Bytes the picked rows still need, and the drive's free bytes. */
-export function plan(ids) {
+export function plan(ids, app) {
   const want = list().filter((r) => ids.includes(r.model.id) && !isManual(r.model));
-  const bytes = want.reduce((n, r) => n + (isRuntime(r.model) ? (needsRuntime() ? r.model.files[0].bytes : 0) : toFetch(r.model, models.facts, models.verified).bytes), 0);
+  const bytes = want.reduce((n, r) => n + (isRuntime(r.model) ? (needsRuntime(app) ? r.model.files[0].bytes : 0) : toFetch(r.model, models.facts, models.verified).bytes), 0);
   return { bytes, free: models.info?.free ?? null, words: `${bytes ? `${fmtBytes(bytes)} to download` : 'Nothing to download'}${models.info?.free != null ? `, ${fmtBytes(models.info.free)} free` : ''}` };
 }

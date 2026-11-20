@@ -101,6 +101,11 @@ const bounded = (p) => Number.isFinite(p.min) && Number.isFinite(p.max);
 export const paramSchema = (params, group) => (params || []).map((p) => ({ key: p.key, label: p.label || p.key, type: p.type, default: p.default,
   min: p.min ?? undefined, max: p.max ?? undefined, choices: p.choices ?? undefined, hint: p.hint ?? undefined, group, control: p.type !== 'bool' && p.type !== 'choice' && bounded(p) ? 'slider' : undefined }));
 
+/** paw-0ous: CoTracker3 is an optional user install; its code and weights are CC BY-NC 4.0. */
+export const NC_BADGE = 'Non-commercial only';
+export const NC_LINE = 'Scripts made with CoTracker cannot be used commercially';
+export const NC_LICENSE = 'https://github.com/facebookresearch/co-tracker/blob/main/LICENSE.md';
+
 /** paw-vdr4: the tracker to use for a stored or requested id, from the usable trackers (the caller leaves out those
  *  that need a GPU the machine lacks). A listed id stays; else (CoTracker3 is an optional add-on the user installs, in no
  *  build; or nothing was picked yet) TAPNext++, else Optical flow (box), else the first. note: one plain line when a
@@ -132,16 +137,15 @@ export function roiOk(kind, roi) {
 const PARAM_GROUPS = [
   ['motion', 'Motion', null],
   ['reseed', 'Re-seeding', /^(reseed_every_ms|retire_ms|max_points|min_points)$/],
-  ['signal', 'Picked signal (override per scene in Runs)', /^(primary|axis(_[xy][01])?|gap_ms|pipe_sign|pipe_invert)$/],
-  ['parts', 'Parts (detector inputs)', /^(group_labels|sem_|pipe_climax_)/],
+  ['signal', 'Picked signal (override per scene in Runs)', /^(primary|axis(_[xy][01])?|gap_ms|pipe_invert)$/],
+  ['parts', 'Parts (detector inputs)', /^(group_labels|sem_)/],
   ['gate', 'Activity gate', /^pipe_gate/],
   ['shape', 'Script shaping', /^(pipe_|loop_|held_retime$)/],
   ['cut', 'Scene detection', /^cut_/],
 ];
-/** paw-t8z: the script-shaping pipe_* params (the 'shape' section's pipe_*: not the gate, the climax pulses, the sign or
- *  invert). The shot's Adjust (the band under the stroke lane) shows them under Strokes > Advanced, not in the tracker form; their keys,
+/** paw-t8z: the script-shaping pipe_* params (the 'shape' section's pipe_*: not the gate or invert). The shot's Adjust (the band under the stroke lane) shows them under Strokes > Advanced, not in the tracker form; their keys,
  *  values and the requests that carry them are unchanged. */
-export const isShapePipe = (key) => /^pipe_/.test(key) && !/^pipe_(gate|climax_|sign$|invert$)/.test(key);
+export const isShapePipe = (key) => /^pipe_/.test(key) && !/^pipe_(gate|invert$)/.test(key);
 export function groupParams(params = [], exclude = []) {
   const groups = PARAM_GROUPS.map(([id, title]) => ({ id, title, open: id === 'motion', params: [] }));
   for (const p of params) {

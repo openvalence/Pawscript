@@ -9,7 +9,7 @@
 // derived structure (an orgasm makes a scene busy) read them as before. A scene never has a modifier of its own
 // (paw-8b4h): the scene controls make one over the scene (toggleModOver); the tagger's detection is a suggestion (modHints).
 // Inner events: the spurts inside an orgasm (one per cumshot, on its frame) move and go with it (fx-edit innerOf).
-import { FX_KINDS, EVENT_KINDS, isPointFx, baseTurns } from '../../lib/fx.js';
+import { FX_KINDS, EVENT_KINDS, isPointFx, knotModeParams, tagIdOf } from '../../lib/fx.js';
 import { sceneRuns } from './shots.js';
 import { detectedMods } from './acts.js';
 import { onTurns } from './fx-edit.js';
@@ -48,7 +48,7 @@ export function withMods(list, fx) {
   if (c && c.fx === fx) return c.out;
   const out = list.slice();
   for (const [lo, hi] of sceneRuns(list)) {
-    const a = list[lo].start_ms, b = list[hi].end_ms, add = ms.filter((e) => e.t1 > a && e.t0 < b).map((e) => ({ id: e.kind, t0: Math.round(e.t0), t1: Math.round(e.t1) }));
+    const a = list[lo].start_ms, b = list[hi].end_ms, add = ms.filter((e) => e.t1 > a && e.t0 < b).map((e) => ({ id: tagIdOf(e), t0: Math.round(e.t0), t1: Math.round(e.t1) }));
     if (add.length) for (let k = lo; k <= hi; k++) out[k] = { ...list[k], tags: [...(list[k].tags || []), ...add] };
   }
   PROJ.set(list, { fx, out });
@@ -72,10 +72,10 @@ function sceneAround(scenes, t) {
   const r = sceneRuns(scenes || []).find(([lo, hi]) => t >= scenes[lo].start_ms && t < scenes[hi].end_ms);
   return r ? { t0: scenes[r[0]].start_ms, t1: scenes[r[1]].end_ms } : null;
 }
-/** A new modifier (knotting 8 s or less: one knot, mode single; paw-r9nh / paw-35pp: not over 3 strokes or more of `base`,
- *  the stroke's points when the caller has them: that stays auto, i.e. a knot on each stroke). */
+/** A new modifier. A knotting stores its mode now (paw-afoe, lib/fx knotModeParams on `base`, the stroke's points when the
+ *  caller has them): edge drags never flip it. */
 export function makeMod(id, kind, t0, t1, params = null, base = null) {
-  const p = params ?? (kind === 'knotting' && t1 - t0 <= 8000 && !(base && baseTurns(base, t0, t1).length >= 6) ? { mode: 'single' } : {});
+  const p = params ?? (kind === 'knotting' ? knotModeParams(base, t0, t1) : {});
   return { id, kind, t0: Math.round(t0), t1: Math.round(t1), params: p };
 }
 const byT0 = (a, b) => a.t0 - b.t0;

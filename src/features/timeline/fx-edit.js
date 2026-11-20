@@ -3,9 +3,9 @@
 // are never baked here: they stay a layer until Flatten (timeline.flatten) writes them into the points. No DOM, no
 // Svelte. An edit of a baked modifier (span, kind, params, a copy) un-bakes it: it acts again (on top of what it was baked
 // into) instead of silently doing nothing.
-// Inner events (innerOf): an orgasm's spurts move with it and go with it.
+// Inner events (innerOf): an orgasm's spurts are its markers (paw-d1g7): drawn on its block, they move and go with it.
 import { fillSpan } from './plan-edit.js';
-import { moveCurve, envelope, spurtKeys, knotInKeys, unknotKeys, throbBeat, FX_KINDS, fxSchema, fxParams, isPointFx, baseTurns, strength, ENV } from '../../lib/fx.js';
+import { moveCurve, spurtKeys, knotInKeys, unknotKeys, pushKeys, throbBeat, tremorKeys, FX_KINDS, fxSchema, fxParams, isPointFx, baseTurns, strength, ENV, knotModeParams, orgasmOf } from '../../lib/fx.js';
 
 const byT0 = (a, b) => a.t0 - b.t0;
 const live = ({ baked: _, ...e }) => e;
@@ -28,14 +28,23 @@ export function addFx(list, { id, kind, t0, t1, dur = Infinity, minLen = 1 }) {
 /** The scene around t as a span for a new modifier (between the cuts; 10 s without cuts). -> {t0, t1} | null. */
 export function dropSpan(t, { cuts = [], dur, minLen = 1 }) { return fillSpan([], t, { cuts, dur, minLen }); }
 
-/** Sub-row of every effect, first free row from the top (an effect starting where another ends shares its row). -> {row: Map(id -> i), rows}. */
+/** paw-d1g7: spurt id -> the orgasm it is a marker of (lib/fx orgasmOf), for the spurts inside an orgasm. */
+export function markerOwners(list) {
+  const own = new Map();
+  for (const e of list) if (isPointFx(e) && e.kind === 'spurt') { const o = orgasmOf(list, e); if (o) own.set(e.id, o); }
+  return own;
+}
+/** Sub-row of every effect, first free row from the top (an effect starting where another ends shares its row); an
+ *  orgasm's markers take its row (drawn on its block, paw-d1g7). -> {row: Map(id -> i), rows}. */
 export function fxRows(list) {
-  const ends = [], row = new Map();
+  const ends = [], row = new Map(), own = markerOwners(list);
   for (const e of [...list].sort(byT0)) {
+    if (own.has(e.id)) continue;
     let i = ends.findIndex((t) => t <= e.t0);
     if (i < 0) i = ends.push(0) - 1;
     ends[i] = e.t1; row.set(e.id, i);
   }
+  for (const [id, o] of own) row.set(id, row.get(o.id) ?? 0);
   return { row, rows: Math.max(1, ends.length) };
 }
 
@@ -51,24 +60,27 @@ export function onTurns(span, turns, maxMs = 400, minLen = 1) {
   return t1 - t0 >= minLen ? { t0, t1 } : span;
 }
 /** The default span of a new / re-fitted modifier of `kind` at t (double-click on the row; a key with nothing to go on):
- *  a slow single move (insertion, pull-out) = the stroke's half-stroke around t, from turn to turn; every other span kind
- *  = the shot around t (between cuts; no cuts: 10 s, its edges on turns). -> {t0, t1} | null. */
-export function defaultSpan(kind, t, { cuts = [], dur = Infinity, script = [], minLen = 1 } = {}) {
+ *  a slow single move (push: a knotting push / pull, lib/fx isPushFx) = the stroke's half-stroke around t, from turn to
+ *  turn; every other span kind = the shot around t (between cuts; no cuts: 10 s, its edges on turns). -> {t0, t1} | null. */
+export function defaultSpan(kind, t, { cuts = [], dur = Infinity, script = [], minLen = 1, push = false } = {}) {
   if (FX_KINDS[kind]?.point) return null;
   const T = baseTurns(script, t - 5000, t + 5000), k = T.findIndex((x) => x.at > t);
-  if ((kind === 'insertion' || kind === 'pullout') && k > 0 && T[k].at - T[k - 1].at >= minLen) return { t0: T[k - 1].at, t1: T[k].at };
+  if (push && k > 0 && T[k].at - T[k - 1].at >= minLen) return { t0: T[k - 1].at, t1: T[k].at };
   const g = dropSpan(t, { cuts, dur, minLen });
   return g && !cuts.length ? onTurns(g, baseTurns(script, g.t0 - 1000, g.t1 + 1000), 600, minLen) : g;
 }
 
 /** A drag on one modifier: part 'body' shifts it (and its inner events, unless inner: false: an Alt-drag copy) by dt,
- *  't0' / 't1' moves that edge to t. Others never move (layers). -> list (sorted by t0). */
-export function dragFx(list, id, part, { dt = 0, t = 0, dur = Infinity, minLen = 1, inner: withIn = true }) {
+ *  't0' / 't1' moves that edge to t. Others never move (layers). A knotting with no stored mode (made before the mode was
+ *  stored, or before tracking) keeps the mode it had before the drag (paw-afoe: lib/fx knotModeParams on `stroke`, the
+ *  stroke's points). -> list (sorted by t0). */
+export function dragFx(list, id, part, { dt = 0, t = 0, dur = Infinity, minLen = 1, inner: withIn = true, stroke = null }) {
   const m = list.find((e) => e.id === id), inner = part === 'body' && withIn ? innerOf(list, m) : [];
   const d = m && part === 'body' ? Math.max(-m.t0, Math.min(dur - m.t1, Math.round(dt))) : 0;
   return list.map((e) => {
     if (d && inner.includes(e)) return live({ ...e, t0: e.t0 + d, t1: e.t1 + d });
     if (e.id !== id) return e;
+    if (stroke && e.kind === 'knotting' && !fxParams(e).mode) e = { ...e, params: { ...e.params, ...knotModeParams(stroke, e.t0, e.t1) } };
     if (part === 'body') return d ? live({ ...e, t0: e.t0 + d, t1: e.t1 + d }) : e;
     if (part === 't0') return live({ ...e, t0: Math.max(0, Math.min(e.t1 - minLen, Math.round(t))) });
     return live({ ...e, t1: Math.min(dur, Math.max(e.t0 + minLen, Math.round(t))) });
@@ -132,9 +144,11 @@ export function recipeSpurt(list, t, scenes = []) {
   return prev.link || Object.keys(d).some((k) => p[k] !== d[k]) ? prev : null;
 }
 /** A spurt at t that joins the recipe before it (recipeSpurt: its link and params; an unlinked one with its own params
- *  gets linked with the new one); `unlinked` = a plain one at the defaults. -> {list, linked}. */
+ *  gets linked with the new one); `unlinked` = a plain one at the defaults. A spurt inside an orgasm is its marker (the
+ *  orgasm's spurt shape, paw-d1g7): never linked. -> {list, linked}. */
 export function addSpurt(list, { id, t, dur = Infinity, scenes = [], unlinked = false, newLink }) {
-  const src = unlinked ? null : recipeSpurt(list, t, scenes), next = addFx(list, { id, kind: 'spurt', t0: t, t1: t, dur });
+  const mark = !!orgasmOf(list, { kind: 'spurt', t0: t, t1: t });
+  const src = unlinked || mark ? null : recipeSpurt(list, t, scenes), next = addFx(list, { id, kind: 'spurt', t0: t, t1: t, dur });
   return { list: src ? linkFx(next, [src.id, id], { primary: src.id, newLink }) : next, linked: !!src };
 }
 /** Unlink the effects `ids` (their params stay as they are); a group left with one member drops its link too. */
@@ -187,126 +201,119 @@ function reshapeModel(p, kind) {
   };
 }
 
-/** Orgasm / climax: the flutter envelope over the span (x = span time), slow -> pulsing -> slow. */
-function pulseModel(p, kind) {
-  const yA = (a) => PAD + (1 - a / 2) * (CH - 2 * PAD), aOf = (y) => 2 * (1 - (y - PAD) / (CH - 2 * PAD)), pts = [];
-  for (let k = 0; k <= 60; k++) pts.push([xOf(k / 60), yA(p.pulse * envelope(k / 60, p.rampIn, p.rampOut))]);
-  const L = (key) => ({ key, value: p[key], ...lim(key, kind) });
+/** Orgasm (paw-d1g7): its band and the reference tremor on it, three periods (x = 0..1 s; its build / fade is the
+ *  strength envelope below): the ceiling and deep-end pills, the tremor's depth pill on its peak. */
+function orgasmModel(p, kind) {
+  const lo = Math.min(p.lo, p.hi), hi = Math.max(p.lo, p.hi), x = (ms) => xOf(ms / 1000), tk = tremorKeys(0, 1000, p.tremor).filter((q) => q.at <= 1000);
+  const pts = tk.length ? tk.map((q) => [x(q.at), yOf(Math.min(hi, lo + q.pos))]) : [[PAD, yOf(lo)], [CW - PAD, yOf(lo)]];
+  const L = (key) => ({ key, value: p[key], ...lim(key, kind) }), peak = tk.find((q) => q.pos === Math.max(...tk.map((r) => r.pos)));
   return {
-    // depth on the same plot, on the pos scale: two horizontal pills like the knot levels
-    lines: [{ pts: [[PAD, yA(0)], [CW - PAD, yA(0)]], kind: 'guide' }, { pts: [[PAD, yOf(p.lo)], [CW - PAD, yOf(p.lo)]], kind: 'ghost' },
-      { pts: [[PAD, yOf(p.hi)], [CW - PAD, yOf(p.hi)]], kind: 'ghost' }, { pts }],
+    lines: [{ pts: [[PAD, yOf(hi)], [CW - PAD, yOf(hi)]], kind: 'guide' }, { pts: [[PAD, yOf(lo)], [CW - PAD, yOf(lo)]], kind: 'guide' }, { pts }],
     handles: [
       { ...L('hi'), label: 'Depth ceiling, strokes pulled under it', shape: 'hpill', axis: 'y', x: xOf(0.88), y: yOf(p.hi), text: `ceiling ${Math.round(p.hi)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
       { ...L('lo'), label: 'Deep end the strokes are pulled to', shape: 'hpill', axis: 'y', x: xOf(0.96), y: yOf(p.lo), text: `deep ${Math.round(p.lo)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
-      { ...L('rampIn'), label: 'Flutter builds over (share of the span)', shape: 'vpill', axis: 'x', x: xOf(p.rampIn), y: yA(p.pulse), text: `build ${pct(p.rampIn)}`, toValue: (x) => clamp(uOf(x), 0, 0.5) },
-      { ...L('rampOut'), label: 'Flutter fades over (share of the span)', shape: 'vpill', axis: 'x', x: xOf(1 - p.rampOut), y: yA(p.pulse), text: `fade ${pct(p.rampOut)}`, toValue: (x) => clamp(1 - uOf(x), 0, 0.5) },
-      { ...L('pulse'), label: 'Flutter at the peak', shape: 'hpill', axis: 'y', x: xOf(0.5), y: yA(p.pulse), text: `flutter ${p.pulse.toFixed(2)}×`, toValue: (_, y) => clamp(aOf(y), 0, 2) },
+      { ...L('tremor'), label: 'Tremor depth, from the deep end', shape: 'hpill', axis: 'y', x: peak ? x(peak.at) : xOf(0.15), y: yOf(lo + p.tremor),
+        text: `tremor ${Math.round(p.tremor)}`, toValue: (_, y) => clamp(posOf(y) - lo, 0, 40) },
     ],
   };
 }
+/** A marker (a spurt inside an orgasm, paw-d1g7): its orgasm's spurt shape (op = fxParams of the orgasm) at its velocity;
+ *  one pill, the velocity (the swing it reaches over the orgasm's). */
+export function markerModel(op, vel) {
+  const m = spurtModel({ ...op, hold: 0, amount: op.amount * vel }, 'orgasm'), B = 50, a = Math.max(1, op.amount);
+  return { lines: m.lines, handles: [{ key: 'vel', value: vel, min: 0, max: 2, step: 0.05, label: 'Velocity: its swing over the orgasm\'s', shape: 'hpill', axis: 'y',
+    x: m.handles[0].x, y: yOf(clamp(B - op.amount * vel, 0, 100)), text: `velocity ${vel.toFixed(2)}×`, toValue: (_, y) => clamp((B - posOf(y)) / a, 0, 2) }] };
+}
+
+/** paw-afoe: the knot's one level set, named the same in every mode. */
+const KNOT_LV = { lo: 'full depth', knotIn: 'catch', press: 'knot depth', knotOut: 'tie', popTo: 'pop out to', hi: 'top' };
+/** A knot level as a horizontal pill at x (share of the span). */
+const knotLevel = (p, kind, key, x, label) => ({ key, value: p[key], ...lim(key, kind), label, shape: 'hpill', axis: 'y', x: xOf(x), y: yOf(p[key]),
+  text: `${KNOT_LV[key]} ${Math.round(p[key])}`, toValue: (_, y) => clamp(posOf(y), 0, 100) });
 
 /** Knotting: one knot cycle (the fitted move shares), its levels as horizontal pills. */
 function knotModel(p, kind) {
   const fr = [p.fPull, p.fPopOut, p.fTop, p.fDown, p.fPress, p.fPopIn].map((x) => Math.max(0, x)), sum = fr.reduce((a, b) => a + b, 0) || 1;
-  const lv = [['lo', 'full depth'], ['knotOut', 'knot out'], ['popTo', 'pop to'], ['hi', 'top'], ['knotIn', 'knot in'], ['press', 'press']];
+  const lv = ['lo', 'knotOut', 'popTo', 'hi', 'knotIn', 'press'];
   let u = 0;
   const at = [0, ...fr.map((x) => (u += x / sum))];
-  const pts = [[xOf(0), yOf(p.lo)], ...lv.slice(1).map(([k], i) => [xOf(at[i + 1]), yOf(p[k])]), [xOf(1), yOf(p.lo)]];
-  return {
-    lines: [{ pts }],
-    handles: lv.map(([key, name], i) => ({ key, value: p[key], ...lim(key, kind), label: `Knot: ${name} level`, shape: 'hpill', axis: 'y',
-      x: xOf(i ? at[i] : 0.02), y: yOf(p[key]), text: `${name} ${Math.round(p[key])}`, toValue: (_, y) => clamp(posOf(y), 0, 100) })),
-  };
+  const pts = [[xOf(0), yOf(p.lo)], ...lv.slice(1).map((k, i) => [xOf(at[i + 1]), yOf(p[k])]), [xOf(1), yOf(p.lo)]];
+  return { lines: [{ pts }], handles: lv.map((key, i) => knotLevel(p, kind, key, i ? at[i] : 0.02, `Knot level: ${KNOT_LV[key]}`)) };
 }
 
-/** Knotting, one knot (mode 'single'): the insertion over the span (x = span time): start level, push (start + ease
- *  diamonds), the pop (time, drop), the full depth, the settle and the tie's hold level. */
+/** Knotting, one knot (mode 'single') over the span (x = span time): the start level, the push, the catch and the press,
+ *  the pop (time, knot depth, full depth), the settle onto the tie, and the pull-out (its length, the level it passes). */
 function knotInModel(p, kind) {
-  const from = p.from ?? 100, a = p.popAt, u0 = Math.max(0, a - p.push), knot = clamp(p.lo + p.popDepth, 0, 100), b = Math.min(1, a + 0.02), c = Math.min(1, b + p.settle);
-  const pushY = (w) => yOf(from + moveCurve(w, p.easeIn, p.easeOut) * (knot - from)), pts = [[xOf(0), yOf(from)]];
-  for (let k = 0; k <= 24; k++) pts.push([xOf(u0 + ((a - u0) * k) / 24), pushY(k / 24)]);
-  pts.push(...knotInKeys(p, from).slice(-3).map(([u, pos]) => [xOf(u), yOf(pos)]));
-  const L = (key) => ({ key, value: p[key], ...lim(key, kind) }), mw = Math.max(a - u0, 1e-3);
-  const depU = 0.05 + 0.2 * (p.easeIn + 1), arrU = 0.95 - 0.2 * (p.easeOut + 1);
+  const from = p.from ?? p.hi, a = p.popAt, u0 = Math.max(0, a - p.push), uP = Math.max(u0, a - p.pressTakes), popU = 0.04;
+  const b = Math.min(1, a + popU), c = Math.min(1, b + p.settle), q = p.pullOut > 0 && c < 1 ? Math.max(c, 1 - p.pullOut) : 1;
+  const L = (key) => ({ key, value: p[key], ...lim(key, kind) }), lv = (key, x, label) => knotLevel(p, kind, key, x, label);
   return {
-    lines: [{ pts: [[PAD, yOf(p.hold)], [CW - PAD, yOf(p.hold)]], kind: 'guide' }, { pts: [[PAD, yOf(p.lo)], [CW - PAD, yOf(p.lo)]], kind: 'guide' }, { pts }],
+    lines: [{ pts: [[PAD, yOf(p.knotOut)], [CW - PAD, yOf(p.knotOut)]], kind: 'guide' }, { pts: [[PAD, yOf(p.lo)], [CW - PAD, yOf(p.lo)]], kind: 'guide' },
+      { pts: knotInKeys(p, from, popU).map(([u, pos]) => [xOf(u), yOf(pos)]) }],
     handles: [
-      { ...L('from'), label: 'Push starts from (as tracked: the trace)', shape: 'hpill', axis: 'y', x: xOf(Math.min(0.04, u0 / 2)), y: yOf(from),
+      { ...L('from'), label: 'Starts from (as tracked: the trace)', shape: 'hpill', axis: 'y', x: xOf(Math.min(0.04, u0 / 2)), y: yOf(from),
         text: p.from == null ? 'from as tracked' : `from ${Math.round(from)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
-      { ...L('push'), label: 'Push length, share of the span before the pop', shape: 'vpill', axis: 'x', x: xOf(u0), y: yOf(from) + 16,
+      { ...L('push'), label: 'Push takes, share of the span before the pop', shape: 'vpill', axis: 'x', x: xOf(u0), y: yOf(from) + 16,
         text: `push ${pct(p.push)}`, toValue: (x) => clamp(a - uOf(x), 0.05, a) },
-      { ...L('easeIn'), label: 'Ease into the push (right = slower start)', shape: 'diamond', axis: 'x', x: xOf(u0 + mw * depU), y: pushY(depU),
-        text: `ease in ${p.easeIn.toFixed(2)}`, toValue: (x) => (clamp((uOf(x) - u0) / mw, 0.05, 0.45) - 0.05) / 0.2 - 1 },
-      { ...L('easeOut'), label: 'Ease onto the knot (left = slower arrival)', shape: 'diamond', axis: 'x', x: xOf(u0 + mw * arrU), y: pushY(arrU),
-        text: `ease out ${p.easeOut.toFixed(2)}`, toValue: (x) => (0.95 - clamp((uOf(x) - u0) / mw, 0.55, 0.95)) / 0.2 - 1 },
-      { ...L('popDepth'), label: 'The pop drops by, onto the full depth', shape: 'hpill', axis: 'y', x: xOf(Math.max(0, a - 0.07)), y: yOf(knot),
-        text: `pop ${Math.round(p.popDepth)}`, toValue: (_, y) => clamp(posOf(y) - p.lo, 0, 60) },
-      { ...L('popAt'), label: 'The knot pops at (share of the span)', shape: 'vpill', axis: 'x', x: xOf(a), y: yOf((knot + p.lo) / 2),
+      lv('knotIn', Math.max(0, uP - 0.06), 'Catch: where the press starts'),
+      { ...L('pressTakes'), label: 'Press takes, share of the span before the pop', shape: 'vpill', axis: 'x', x: xOf(uP), y: yOf(p.knotIn) - 16,
+        text: `press ${pct(p.pressTakes)}`, toValue: (x) => clamp(a - uOf(x), 0, a - u0) },
+      lv('press', Math.max(0, a - 0.03), 'Knot depth: where the knot pops'),
+      { ...L('popAt'), label: 'The knot pops at (share of the span)', shape: 'vpill', axis: 'x', x: xOf(a), y: yOf((p.press + p.lo) / 2),
         text: `pops at ${pct(a)}`, toValue: (x) => clamp(uOf(x), 0.05, 1) },
-      { ...L('lo'), label: 'Full depth (where the pop lands)', shape: 'hpill', axis: 'y', x: xOf(Math.min(0.99, b + 0.02)), y: yOf(p.lo),
-        text: `depth ${Math.round(p.lo)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
-      { ...L('settle'), label: 'Settles over, share of the span after the pop', shape: 'vpill', axis: 'x', x: xOf(c), y: yOf(p.hold) - 16,
+      lv('lo', Math.min(0.99, b + 0.02), 'Full depth: where the pop lands'),
+      { ...L('settle'), label: 'Settles over, share of the span after the pop', shape: 'vpill', axis: 'x', x: xOf(c), y: yOf(p.knotOut) - 16,
         text: `settle ${pct(p.settle)}`, toValue: (x) => clamp(uOf(x) - b, 0, 0.5) },
-      { ...L('hold'), label: 'Held at (the tie, to the end of the span)', shape: 'hpill', axis: 'y', x: xOf(0.97), y: yOf(p.hold),
-        text: `tie ${Math.round(p.hold)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
+      lv('knotOut', q < 1 ? (c + q) / 2 : 0.97, 'Tie: where it settles'),
+      { ...L('pullOut'), label: 'Pull-out takes (far right: held at the tie)', shape: 'vpill', axis: 'x', x: xOf(1 - p.pullOut), y: yOf(p.knotOut) + 16,
+        text: p.pullOut > 0 ? `pull-out ${pct(p.pullOut)}` : 'held', toValue: (x) => clamp(1 - uOf(x), 0, 0.5) },
+      ...(q < 1 ? [lv('popTo', q + 0.36 * (1 - q), 'Pull-out passes')] : []),
     ],
   };
 }
 
-/** Insertion: one slow push over the span (x = span time): the start level, the push (start pill, ease diamonds), where
- *  it arrives and the depth it ends at (held to the end). Drag the end above the start for a slow pull-out. */
-function insertionModel(p, kind) {
-  const from = p.from ?? 100, a = p.arrive, u0 = Math.max(0, a - p.push), mw = Math.max(a - u0, 1e-3), out = p.to > from;
-  const pushY = (w) => yOf(from + moveCurve(w, p.easeIn, p.easeOut) * (p.to - from)), pts = [[xOf(0), yOf(from)]];
-  for (let k = 0; k <= 24; k++) pts.push([xOf(u0 + (mw * k) / 24), pushY(k / 24)]);
-  pts.push([xOf(1), yOf(p.to)]);
+/** Knotting, push / pull (mode 'none'): one slow move over the span (x = span time): the start level, the move's start
+ *  (push), where it arrives (popAt) and the level it ends at (held to the end). Drag the end above the start: a pull. */
+function pushModel(p, kind) {
+  const from = p.from ?? 100, to = p.to ?? from, a = p.popAt, u0 = Math.max(0, a - p.push), out = to > from;
   const L = (key) => ({ key, value: p[key], ...lim(key, kind) }), dy = out ? -16 : 16;
-  const depU = 0.05 + 0.2 * (p.easeIn + 1), arrU = 0.95 - 0.2 * (p.easeOut + 1);
   return {
-    lines: [{ pts: [[PAD, yOf(p.to)], [CW - PAD, yOf(p.to)]], kind: 'guide' }, { pts }],
+    lines: [{ pts: [[PAD, yOf(to)], [CW - PAD, yOf(to)]], kind: 'guide' }, { pts: pushKeys(p, from, to).map(([u, pos]) => [xOf(u), yOf(pos)]) }],
     handles: [
-      { ...L('from'), label: 'Starts from (as before: the script at the start)', shape: 'hpill', axis: 'y', x: xOf(Math.min(0.04, u0 / 2)), y: yOf(from),
-        text: p.from == null ? 'from as before' : `from ${Math.round(from)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
+      { ...L('from'), label: 'Starts from (as tracked: the trace at the start)', shape: 'hpill', axis: 'y', x: xOf(Math.min(0.04, u0 / 2)), y: yOf(from),
+        text: p.from == null ? 'from as tracked' : `from ${Math.round(from)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
       { ...L('push'), label: `${out ? 'Pull' : 'Push'} length, share of the span`, shape: 'vpill', axis: 'x', x: xOf(u0), y: yOf(from) + dy,
         text: `${out ? 'pull' : 'push'} ${pct(p.push)}`, toValue: (x) => clamp(a - uOf(x), 0.05, a) },
-      { ...L('easeIn'), label: 'Ease into it (right = slower start)', shape: 'diamond', axis: 'x', x: xOf(u0 + mw * depU), y: pushY(depU),
-        text: `ease in ${p.easeIn.toFixed(2)}`, toValue: (x) => (clamp((uOf(x) - u0) / mw, 0.05, 0.45) - 0.05) / 0.2 - 1 },
-      { ...L('easeOut'), label: 'Settle onto the end (left = slower arrival)', shape: 'diamond', axis: 'x', x: xOf(u0 + mw * arrU), y: pushY(arrU),
-        text: `settle ${p.easeOut.toFixed(2)}`, toValue: (x) => (0.95 - clamp((uOf(x) - u0) / mw, 0.55, 0.95)) / 0.2 - 1 },
-      { ...L('arrive'), label: 'Arrives at, then held', shape: 'vpill', axis: 'x', x: xOf(a), y: yOf(p.to) - dy,
+      { ...L('popAt'), label: 'Arrives at, then held', shape: 'vpill', axis: 'x', x: xOf(a), y: yOf(to) - dy,
         text: `arrives ${pct(a)}`, toValue: (x) => clamp(uOf(x), 0.05, 1) },
-      { ...L('to'), label: 'Ends at, held to the end (above the start: a pull-out)', shape: 'hpill', axis: 'y', x: xOf(0.97), y: yOf(p.to),
-        text: `${out ? 'out to' : 'depth'} ${Math.round(p.to)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
+      { ...L('to'), label: 'Ends at, held to the end (above the start: a pull)', shape: 'hpill', axis: 'y', x: xOf(0.97), y: yOf(to),
+        text: p.to == null ? 'to as tracked' : `${out ? 'out to' : 'depth'} ${Math.round(to)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
     ],
   };
 }
 
 /** Knotting, unknot (mode 'unknot'): the knot coming out over the span (x = span time): the tie, the pull (start pill,
- *  tug diamonds: the first slip's depth and, left-right, how many), the level where the knot gives, the pop (time, where
+ *  tug diamonds: the first slip's depth and, left-right, how many), the catch where the knot gives, the pop (time, where
  *  it lands), the settle and the level it ends at. */
 function unknotModel(p, kind) {
-  const to = p.to ?? 100, a = p.popAt, u0 = Math.max(0, a - p.pull), b = Math.min(1, a + 0.02), c = Math.min(1, b + p.settle), n = Math.round(p.tugs);
-  const L = (key) => ({ key, value: p[key], ...lim(key, kind) }), mw = Math.max(a - u0, 1e-3);
-  const line = (w) => p.hold + w * (p.knotOut - p.hold), wTug = n ? 0.4 + 0.3 / n : 0.9;   // the first slip (no tugs: parked at 0.9)
+  const to = p.to ?? 100, a = p.popAt, u0 = Math.max(0, a - p.pull), b = Math.min(1, a + 0.04), c = Math.min(1, b + p.settle), n = Math.round(p.tugs);
+  const L = (key) => ({ key, value: p[key], ...lim(key, kind) }), mw = Math.max(a - u0, 1e-3), lv = (key, x, label) => knotLevel(p, kind, key, x, label);
+  const line = (w) => p.knotOut + w * (p.knotIn - p.knotOut), wTug = n ? 0.4 + 0.3 / n : 0.9;   // the first slip (no tugs: parked at 0.9)
   return {
-    lines: [{ pts: [[PAD, yOf(p.hold)], [CW - PAD, yOf(p.hold)]], kind: 'guide' }, { pts: [[PAD, yOf(to)], [CW - PAD, yOf(to)]], kind: 'guide' },
+    lines: [{ pts: [[PAD, yOf(p.knotOut)], [CW - PAD, yOf(p.knotOut)]], kind: 'guide' }, { pts: [[PAD, yOf(to)], [CW - PAD, yOf(to)]], kind: 'guide' },
       { pts: unknotKeys(p, to).map(([u, pos]) => [xOf(u), yOf(pos)]) }],
     handles: [
-      { ...L('hold'), label: 'The tie, held deep until the pull', shape: 'hpill', axis: 'y', x: xOf(Math.min(0.04, u0 / 2)), y: yOf(p.hold),
-        text: `tie ${Math.round(p.hold)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
-      { ...L('pull'), label: 'Pull length, share of the span before the pop', shape: 'vpill', axis: 'x', x: xOf(u0), y: yOf(p.hold) - 16,
+      lv('knotOut', Math.min(0.04, u0 / 2), 'Tie: held until the pull'),
+      { ...L('pull'), label: 'Pull length, share of the span before the pop', shape: 'vpill', axis: 'x', x: xOf(u0), y: yOf(p.knotOut) - 16,
         text: `pull ${pct(p.pull)}`, toValue: (x) => clamp(a - uOf(x), 0.05, a) },
       { ...L('tugs'), label: 'Tugs before it gives (left: more, far right: none)', shape: 'diamond', axis: 'x', x: xOf(u0 + wTug * mw), y: yOf(line(wTug)) - 14,
         text: `${n} tug${n === 1 ? '' : 's'}`, toValue: (x) => { const w = (uOf(x) - u0) / mw; return w >= 0.78 ? 0 : clamp(Math.round(0.3 / Math.max(0.01, w - 0.4)), 1, 6); } },
       ...(n ? [{ ...L('tugAmp'), label: 'Each tug slips back in by (pos)', shape: 'diamond', axis: 'y', x: xOf(u0 + wTug * mw), y: yOf(Math.max(0, line(wTug) - p.tugAmp)),
         text: `slip ${Math.round(p.tugAmp)}`, toValue: (_, y) => clamp(line(wTug) - posOf(y), 0, 30) }] : []),
-      { ...L('knotOut'), label: 'The knot gives at (pos the pull reaches)', shape: 'hpill', axis: 'y', x: xOf(Math.max(0, a - 0.07)), y: yOf(p.knotOut),
-        text: `gives ${Math.round(p.knotOut)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
-      { ...L('popAt'), label: 'The knot pops out at (share of the span)', shape: 'vpill', axis: 'x', x: xOf(a), y: yOf((p.knotOut + p.popTo) / 2),
+      lv('knotIn', Math.max(0, a - 0.07), 'Catch: where the knot gives'),
+      { ...L('popAt'), label: 'The knot pops out at (share of the span)', shape: 'vpill', axis: 'x', x: xOf(a), y: yOf((p.knotIn + p.popTo) / 2),
         text: `pops at ${pct(a)}`, toValue: (x) => clamp(uOf(x), 0.05, 1) },
-      { ...L('popTo'), label: 'The pop lands at (pos)', shape: 'hpill', axis: 'y', x: xOf(Math.min(0.99, b + 0.02)), y: yOf(p.popTo),
-        text: `pop to ${Math.round(p.popTo)}`, toValue: (_, y) => clamp(posOf(y), 0, 100) },
+      lv('popTo', Math.min(0.99, b + 0.02), 'The pop lands at'),
       { ...L('settle'), label: 'Settles over, share of the span after the pop', shape: 'vpill', axis: 'x', x: xOf(c), y: yOf(to) + 16,
         text: `settle ${pct(p.settle)}`, toValue: (x) => clamp(uOf(x) - b, 0, 0.5) },
       { ...L('to'), label: 'Ends at, held to the end (as tracked: the trace)', shape: 'hpill', axis: 'y', x: xOf(0.97), y: yOf(to),
@@ -327,8 +334,8 @@ function spurtModel(p, kind) {
     handles: [
       { ...L('amount'), label: 'Swing about the trace, deeper first', shape: 'hpill', axis: 'y', x: xMs(p.hold / 2), y: yOf(clamp(B - p.amount, 0, 100)),
         text: `\u00b1${Math.round(p.amount)}`, toValue: (_, y) => clamp(B - posOf(y), 0, 50) },
-      { ...L('rise'), label: 'Each swing deeper takes at least (ms)', shape: 'diamond', axis: 'x', x: xMs(-p.rise), y: yOf(B), text: `deeper ${Math.round(p.rise)} ms`, toValue: (x) => clamp(-msX(x), 20, 500) },
-      ...(out ? [{ ...L('fall'), label: 'Each swing shallower takes at least (ms)', shape: 'diamond', axis: 'x', x: xMs(out[0]), y: yOf(B + out[1]),
+      { ...L('rise'), label: 'Each swing deeper takes (ms)', shape: 'diamond', axis: 'x', x: xMs(-p.rise), y: yOf(B), text: `deeper ${Math.round(p.rise)} ms`, toValue: (x) => clamp(-msX(x), 20, 500) },
+      ...(out ? [{ ...L('fall'), label: 'Each swing shallower takes (ms)', shape: 'diamond', axis: 'x', x: xMs(out[0]), y: yOf(B + out[1]),
         text: `shallower ${Math.round(p.fall)} ms`, toValue: (x) => clamp(msX(x) - p.hold, 20, 500) }] : []),
     ],
   };
@@ -336,9 +343,9 @@ function spurtModel(p, kind) {
 
 /** Throbbing: three beats on a flat trace over -100..2100 ms (x = ms, fixed, so dragging the period moves the second
  *  beat; depth drawn x2): the dip's depth, attack / release diamonds on the trace, the period pill on the second beat,
- *  the lub-dub pill, and the build / fade pills (share of the span) along the top. point (a single throb: one beat
- *  long): the one beat over -100..800 ms, no period / build / fade. */
-const SPAN_ONLY = new Set(['period', 'rampIn', 'rampOut', 'jitter']);
+ *  and the lub-dub pill (its build / fade is the strength envelope). point (a single throb: one beat long): the one beat
+ *  over -100..800 ms, no period. */
+const SPAN_ONLY = new Set(['period', 'jitter']);
 function throbModel(p, kind, point = false) {
   const ms0 = -100, ms1 = point ? 800 : 2100, xMs = (ms) => xOf((ms - ms0) / (ms1 - ms0)), msX = (x) => ms0 + uOf(x) * (ms1 - ms0);
   const sg = p.dir === 'swell' ? 1 : -1, B = sg < 0 ? 90 : 10, G = 2,   // offsets drawn x2 (a beat is small)
@@ -353,16 +360,14 @@ function throbModel(p, kind, point = false) {
     handles: [
       { ...L('amount'), label: `Each beat ${sg < 0 ? 'dips deeper' : 'swells out'} by (pos, from the trace)`, shape: 'hpill', axis: 'y', x: xMs(atk), y: yOf(B + G * sg * A),
         text: `${sg < 0 ? '−' : '+'}${Math.round(A)}`, toValue: (_, y) => clamp((sg * (posOf(y) - B)) / G, 0, 40) },
-      { ...L('attack'), label: 'The dip takes at least (ms)', shape: 'diamond', axis: 'x', x: xMs(atk), y: yOf(B) - up,
+      { ...L('attack'), label: 'The dip takes (ms)', shape: 'diamond', axis: 'x', x: xMs(atk), y: yOf(B) - up,
         text: `down ${Math.round(p.attack)} ms`, toValue: (x) => clamp(msX(x), 10, 500) },
-      { ...L('release'), label: 'The return takes at least (ms)', shape: 'diamond', axis: 'x', x: xMs(end), y: yOf(B) - up,
+      { ...L('release'), label: 'The return takes (ms)', shape: 'diamond', axis: 'x', x: xMs(end), y: yOf(B) - up,
         text: `back ${Math.round(p.release)} ms`, toValue: (x) => clamp(msX(x) - (end - p.release), 20, 1500) },
       { ...L('period'), label: `Beat every (ms, ${bpm} bpm): drag the second beat`, shape: 'vpill', axis: 'x', x: xMs(p.period), y: yOf(B) - 2 * up,
         text: `${Math.round(p.period)} ms · ${bpm} bpm`, toValue: (x) => clamp(msX(x), 250, 2000) },
       { ...L('double'), label: 'Second beat at +120 ms (lub-dub), 0: none', shape: 'hpill', axis: 'y', x: xMs(dub[0]), y: yOf(B + G * sg * A * p.double),
         text: p.double > 0 ? `dub ${pct(p.double)}` : 'no dub', toValue: (_, y) => clamp((sg * (posOf(y) - B)) / G / Math.max(1, A), 0, 1) },
-      { ...L('rampIn'), label: 'Builds over (share of the span)', shape: 'vpill', axis: 'x', x: xOf(p.rampIn), y: yOf(sg < 0 ? 6 : 94), text: `build ${pct(p.rampIn)}`, toValue: (x) => clamp(uOf(x), 0, 0.5) },
-      { ...L('rampOut'), label: 'Fades over (share of the span)', shape: 'vpill', axis: 'x', x: xOf(1 - p.rampOut), y: yOf(sg < 0 ? 6 : 94), text: `fade ${pct(p.rampOut)}`, toValue: (x) => clamp(1 - uOf(x), 0, 0.5) },
     ].filter((h) => !point || !SPAN_ONLY.has(h.key)),
   };
 }
@@ -394,17 +399,19 @@ export function envModel(p) {
 }
 
 /** -> {lines, handles} for CurveEditor; p = fxParams(modifier) merged with the drag draft (knotting: p.mode resolved,
- *  'single' draws the one-knot insertion, 'unknot' the knot coming out, anything else the cycle); point = a single throb
- *  (one beat long: its one beat). Idle has no curve (a hold). */
+ *  'single' draws the one knot in, 'unknot' the knot coming out, 'none' the one push / pull, anything else the cycle);
+ *  point = a single throb (one beat long: its one beat). Idle has no curve (a hold). */
 export function curveModel(kind, p, point = false) {
-  return kind === 'shape' ? reshapeModel(p, kind) : kind === 'insertion' || kind === 'pullout' ? insertionModel(p, kind) : kind === 'knotting' ? (p.mode === 'single' ? knotInModel(p, kind) : p.mode === 'unknot' ? unknotModel(p, kind) : knotModel(p, kind))
-    : kind === 'spurt' ? spurtModel(p, kind) : kind === 'throbbing' ? throbModel(p, kind, point) : kind === 'orgasm' || kind === 'climax' ? pulseModel(p, kind) : { lines: [], handles: [] };
+  return kind === 'shape' ? reshapeModel(p, kind) : kind === 'knotting' ? (p.mode === 'single' ? knotInModel(p, kind) : p.mode === 'unknot' ? unknotModel(p, kind) : p.mode === 'none' ? pushModel(p, kind) : knotModel(p, kind))
+    : kind === 'spurt' ? spurtModel(p, kind) : kind === 'throbbing' ? throbModel(p, kind, point) : kind === 'orgasm' ? orgasmModel(p, kind) : { lines: [], handles: [] };
 }
+/** paw-d1g7: an orgasm's markers' spurt shape (its MARKER_KEYS) as the spurt curve, at velocity 1. */
+export const orgasmSpurtModel = (p) => spurtModel({ ...p, hold: 0 }, 'orgasm');
 // numbers with no handle that still belong in the twins (the rest of a kind's schema stays at its defaults)
-const EXTRA = { knotting: ['popSpeed', 'variation'], orgasm: ['fastMs', 'flutterMs', 'edgeMs'], climax: ['fastMs', 'flutterMs', 'edgeMs'], spurt: ['hold', 'count', 'decay'], throbbing: ['jitter'] };
+const EXTRA = { knotting: ['variation'], orgasm: ['mix'], spurt: ['hold', 'count', 'decay', 'vel', 'mix'], throbbing: ['jitter', 'mix'] };
 /** The numeric twins: one per handle, plus EXTRA[kind] (null = as tracked shows the default). */
 export function curveTwins(kind, p, handles = curveModel(kind, p).handles, point = false) {
-  const keys = new Set([...handles.map((h) => h.key), ...((kind === 'knotting' && (p.mode === 'single' || p.mode === 'unknot') ? [] : EXTRA[kind]) || []).filter((k) => !(point && SPAN_ONLY.has(k)))]);
+  const keys = new Set([...handles.map((h) => h.key), ...((kind === 'knotting' && p.mode && p.mode !== 'cycles' ? [] : EXTRA[kind]) || []).filter((k) => !(point && SPAN_ONLY.has(k)))]);
   return fxSchema(kind).filter((s) => keys.has(s.key))
     .map((s) => ({ key: s.key, label: s.label, value: p[s.key] ?? s.default ?? s.min, min: s.min, max: s.max, step: s.step, unit: s.unit }));
 }

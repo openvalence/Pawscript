@@ -315,9 +315,8 @@ export function afterScript(t0, t1, { maxMs = CLIMAX_FIT.afterglowMs } = {}) {
 
 // ---- internal views: what tracks them ----
 // An x-ray / cross-section shows the inserted part of the shaft inside the body: more mask pixels = deeper. SAM's
-// `area` (mask pixels / frame) is oriented larger = higher = out (PROTOCOL.md), so the sign is flipped: pipe_sign keep
-// (no auto guess first), pipe_invert true.
-export const INTERNAL_TRACK = { tracker: 'sam2_mask', params: { primary: 'area', pipe_sign: 'keep', pipe_invert: true }, label: 'SAM · area' };
+// `area` (mask pixels / frame) is oriented larger = higher = out (PROTOCOL.md), so the sign is flipped: pipe_invert true.
+export const INTERNAL_TRACK = { tracker: 'sam2_mask', params: { primary: 'area', pipe_invert: true }, label: 'SAM · area' };
 // describe.py LOCALIZABLE tags that box the shaft, best first; then the internal view itself (its box covers the x-ray)
 const SHAFT_RUNGS = [['penis', '*_penis'], ['knot'], ['internal*', 'x-ray*', 'cross_section', 'cutaway_view']];
 const like = (pat, n) => (pat.endsWith('*') ? n.startsWith(pat.slice(0, -1)) : pat.startsWith('*') ? n.endsWith(pat.slice(1)) : n === pat);

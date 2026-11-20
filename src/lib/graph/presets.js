@@ -39,38 +39,6 @@ const cleanup = (row = 0, col = 0, prefix = '') => ({
 
 const C = cleanup();
 
-// Grid runs (whole-frame point grid, motion groups): a channel of the run -> fill gaps -> smooth -> strokes at the
-// extremes -> mirror the scenes flipped by the run's sign / the user's F flips -> speed cap -> stroke. `head` is the
-// node feeding the chain (col 0 or 1); the chain starts one column right of it.
-const GROUPS = 'Group colours on the video and in the tracker panel: g1 sky blue, g2 orange, g3 green, g4 pink (grey = static).';
-const gridChain = (head, col, slots, extraNodes = [], extraLinks = []) => ({
-  nodes: [
-    n('run', 'src.run', 0, 0, slots.channel, { label: 'Grid run' }),
-    ...extraNodes,
-    n('fill', 'sig.fillGaps', col + 1, 0, { maxGapMs: 500, mode: 'linear' }),
-    n('smooth', 'sig.smooth', col + 2, 0, { method: 'gaussian', windowMs: 120 }),
-    n('fit', 'sig.toScript', col + 3, 0, { mode: 'extremes', minProminence: 4, minGapMs: 60 }),
-    n('flipped', 'spans.filter', col + 3, 1, { value: 'below', valueA: 0 }),
-    n('invert', 'edit.invert', col + 4, 0),
-    n('cap', 'edit.capSpeed', col + 5, 0, { maxSpeed: 450 }),
-    n('out', 'out.axis', col + 6, 0, { axis: 'stroke' }),
-  ],
-  links: [
-    ...extraLinks,
-    l(head, 'signal', 'fill', 'signal'), l('fill', 'signal', 'smooth', 'signal'), l('smooth', 'signal', 'fit', 'signal'),
-    l('run', 'scenes', 'flipped', 'spans'), l('fit', 'script', 'invert', 'script'), l('flipped', 'spans', 'invert', 'where'),
-    l('invert', 'script', 'cap', 'script'), l('cap', 'script', 'out', 'script'),
-  ],
-  slots: [{ node: 'run', param: 'run', auto: 'run' }, ...(slots.more || [])],
-});
-const G1 = gridChain('run', 0, { channel: { channel: 'g1_proj' } });
-const PAIR = gridChain('run', 0, { channel: { channel: 'pair_proj' } });
-const HAND = gridChain('norm', 2, { channel: { channel: 'g1_proj' }, more: [{ node: 'run2', param: 'run', auto: 'run', n: 0 }] }, [
-  n('run2', 'src.run', 0, 1, { channel: 'g2_proj' }, { label: 'Grid run: g2' }),
-  n('diff', 'sig.math', 1, 0, { fn: 'sub' }, { label: 'g1 − g2' }),
-  n('norm', 'sig.normalise', 2, 0, { mode: 'global', pLo: 2, pHi: 98 }),
-], [l('run', 'signal', 'diff', 'a'), l('run2', 'signal', 'diff', 'b'), l('diff', 'signal', 'norm', 'signal')]);
-
 // [lo, hi] per plan kind for depth-by-kind (pos 0 = deepest)
 const DEPTH_TABLE = { foreplay: [55, 95], oral: [40, 95], penetration: [0, 85], knotting: [0, 30], climax: [0, 90], orgasm: [0, 40], afterglow: [20, 90] };
 
@@ -332,23 +300,5 @@ export const PRESETS = [
       l('gain', 'script', 'cap', 'script'), l('cap', 'script', 'out', 'script'),
     ],
     slots: [{ node: 'stroke', param: 'axis', auto: 'axis:stroke' }],
-  },
-  {
-    id: 'grid-one-body', name: 'Grid: one body',
-    description: `A grid run's motion group g1 (the sky-blue points: the largest moving body) on the stroke axis (channel g1_proj, larger = out) → fill gaps → smooth → strokes at its extremes → flipped scenes mirrored → speed cap → stroke. To use another body, set the run node's channel to g2_proj … g4_proj (or click its points on the video in the Track tab). ${GROUPS}`,
-    tags: ['tracker', 'run', 'grid', 'groups', 'stroke'],
-    ...G1,
-  },
-  {
-    id: 'grid-two-bodies', name: 'Grid: two bodies',
-    description: `A grid run's two largest moving groups (usually g1 sky blue and g2 orange) as their distance along the stroke axis (channel pair_proj: larger = farther apart = out) → fill gaps → smooth → strokes → flipped scenes mirrored → speed cap → stroke. For two bodies moving against each other, so the camera and a shared sway cancel. ${GROUPS}`,
-    tags: ['tracker', 'run', 'grid', 'groups', 'pair', 'stroke'],
-    ...PAIR,
-  },
-  {
-    id: 'grid-hand-on-shaft', name: 'Grid: hand on shaft',
-    description: `The hand (g1, sky blue) relative to the body it strokes (g2, orange): g1_proj − g2_proj on the stroke axis, normalised (2–98 %) → fill gaps → smooth → strokes → flipped scenes mirrored → speed cap → stroke. If the groups are the other way round, swap the two run nodes' channels. ${GROUPS}`,
-    tags: ['tracker', 'run', 'grid', 'groups', 'hand', 'stroke'],
-    ...HAND,
   },
 ];

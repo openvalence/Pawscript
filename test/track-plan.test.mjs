@@ -41,7 +41,7 @@ test('internal view in the middle of an action: SAM area item of its own, the ac
   const p = planTracks(s, base);
   assert.deepEqual(brief(p), [['S1 + S3', 'track', 'tapnext_points', [[0, 1000], [2000, 3000]]], ['S2', 'track', 'sam2_mask', [[1000, 2000]]]]);
   assert.deepEqual(p[1].roi, { kind: 'box', x: 0.4, y: 0.4, w: 0.2, h: 0.2 });
-  assert.deepEqual(p[1].params, { primary: 'area', pipe_sign: 'keep', pipe_invert: true });
+  assert.deepEqual(p[1].params, { primary: 'area', pipe_invert: true });
   assert.equal(p[1].name, 'SAM · area');
   assert.match(p[1].reason, /box from describe/);
   assert.match(p[0].reason, /S2 \(internal\)/);
@@ -87,7 +87,7 @@ test('done: a scene linked to a live run, or wholly covered by a tracker run (no
 
 test('camera tags: the item\'s default signal (runs-channel.js cameraDefault picks it after the run)', () => {
   const p = planTracks(sc({ tags: ['pan'] }, { tags: ['offscreen'] }, { continues: true, tags: ['orbit'] }, { tags: ['static'] }), base);
-  assert.deepEqual(p.map((x) => [x.label, x.signal]), [['S1 + S3', 'proj_cam, pair_proj / g1_proj'], ['S2', ''], ['S4', '']]);
+  assert.deepEqual(p.map((x) => [x.label, x.signal]), [['S1 + S3', 'proj_cam, who_pair_proj / fused'], ['S2', ''], ['S4', '']]);
   assert.deepEqual(p[0].cameras, ['pan', 'orbit']);
 });
 

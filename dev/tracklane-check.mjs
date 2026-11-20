@@ -140,9 +140,11 @@ try {
     await field.click(); await field.press('Control+a'); await field.type('640'); await field.press('Enter'); await wait(300);
     ok(await ev(() => app.settings.get('tracking.gridPoints')) === 640, 'the point count changed there (tracking.gridPoints 640)');
     ok(await ev(() => !!document.querySelector('[data-testid="track-menu"] [aria-label^="Model input size"], [data-testid="track-menu"] label')), 'the tracker params are in the popover');
+    ok(await ev(() => !!document.querySelector('[data-testid="track-menu-track.gridFrame"]') && !!document.querySelector('[data-testid="track-menu-track.run"]') && !document.querySelector('[data-testid="track-menu"] [aria-label="Tracker"]')), 'the cog has a Track and a Track ROI section and no tracker dropdown');
     await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await wait(300);
     await page.click('[data-btn="track"]', { button: 'right' }); await wait(400);
-    ok(await page.locator('[data-testid="track-menu"]').isVisible(), 'a right-click on Track opens them too');
+    const rc = await ev(() => [...document.querySelectorAll('[role=menu] [role=menuitem], [role=menu] [role=menuitemcheckbox]')].map((e) => e.textContent.trim()).join(' | '));
+    ok(!(await page.locator('[data-testid="track-menu"]').isVisible()) && /Quick menu/.test(rc) && /shortcut/.test(rc) && /Custom box track/.test(rc) && /Custom point track/.test(rc), `a right-click on Track: the command menu plus the custom tracks: ${rc}`);
     await page.keyboard.press('Escape'); await wait(200);
     ok(await ev(() => !document.querySelector('[data-chip="tracker"]')), 'no tracker chip in the toolbar');
     await ev(() => app.settings.set('tracking.gridPoints', 512));
@@ -156,8 +158,7 @@ try {
       tr.runs = []; app.doc.ghosts = []; tr.select('');
       app.doc.scenes = [{ start_ms: 0, end_ms: 8000 }, { start_ms: 8000, end_ms: 14000 }, { start_ms: 14000, end_ms: Math.round(app.durationMs) }];
       const c = fx.auto.channels;
-      for (const k of ['g3_n', 'g4_n']) c[k] = c.g1_n.map(([t]) => [t, 0]);
-      for (const [to, from, dy] of [['sem_c1_hips', 'g1', 0], ['sem_c2_hips', 'g2', 0], ['sem_c1_penis', 'g1', 0.03]]) {
+      for (const [to, from, dy] of [['sem_c1_hips', 'who_c1', 0], ['sem_c2_hips', 'who_c2', 0], ['sem_c1_penis', 'who_c1', 0.03]]) {
         c[to + '_x'] = c[from + '_x'].map(([t, v]) => [t, v == null ? null : v + 0.01]);
         c[to + '_y'] = c[from + '_y'].map(([t, v]) => [t, v == null ? null : v + dy]);
         c[to + '_n'] = c[from + '_n'];

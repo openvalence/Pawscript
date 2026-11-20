@@ -46,6 +46,7 @@
   import { setScenes, scenesOf as scenesNow } from './state.svelte.js';
   import { confirmGroup } from '../tracking/groups.js';
   import { camOptionsFor } from '../tracking/DeriveStrip.svelte';
+  import { roiTip, trackerShort } from '../tracking/TrackMenu.svelte';
   import AxesLine from '../tracking/AxesLine.svelte';   // paw-2pcf: the shot's secondary axes
   import { fmtSpan } from '../../lib/time-format.js';
 
@@ -173,9 +174,9 @@
   {#if shown && tr && !tagsOnly && !scenesTab && S('tracker')}
     <Select size="sm" label="Tracker" placeholder={tr.listed ? 'Tracker' : 'Trackers…'} options={trackerOptions(tr.trackers, (t) => tr.gpuOff?.(t))} value={tr.trackerId}
       disabled={!!tr.busy} onchange={(v) => { tr.selectTracker(v); note('tracker'); back(); }} />
-    <Button size="sm" variant="primary" icon="grid" {...cmd(app, 'track.gridFrame', undefined, { tip: gridBlock(tr) || `Track ${trackWhat}: a point grid over the frame`, before: () => note('grid') })}
+    <Button size="sm" variant="primary" icon="grid" {...cmd(app, 'track.gridFrame', undefined, { tip: gridBlock(tr) || `Track ${trackWhat} with ${trackerShort(tr.gridTracker) || 'no point tracker'}: a point grid over the frame`, before: () => note('grid') })}
       loading={tr.busy === 'track' || tr.queued === 'grid'}>Track</Button>
-    <Button size="sm" icon="crosshair" {...cmd(app, 'track.run', undefined, { tip: `Track ROI ${trackWhat}: one painted part (several painted: pick one)`, before: () => note('track') })}>Track ROI</Button>
+    <Button size="sm" icon="crosshair" {...cmd(app, 'track.run', undefined, { tip: roiTip(tr, trackWhat), before: () => note('track') })}>Track ROI</Button>
     <span class="k-sep"></span>
     <span class="sig k-hint" {@attach tooltip(run ? `Lane signal of ${run.name}` : 'No run for this scene yet')}>signal <b class="k-num">{sig || '–'}</b></span>
     {#if tr.busyRange && tr.busyRange.t0 < span.t1 && tr.busyRange.t1 > span.t0}<span class="sig k-hint num" aria-live="polite">{tr.progressLabel}</span>{/if}

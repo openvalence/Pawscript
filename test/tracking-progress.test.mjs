@@ -38,9 +38,9 @@ test('progressText: before frames, percentage + time left, stages, finishing', (
 
 test('progressText: every stage before the first tracked frame has its own words (paw-mhme, sidecar v4.43)', () => {
   const at = (stage, done = 0) => progressText({ done, total: 1000, stage });
-  assert.deepEqual(['starting', 'freeing', 'levels', 'model read', 'model gpu', 'tagger', 'labels'].map((s) => at(s)),
+  assert.deepEqual(['starting', 'freeing', 'levels', 'model read', 'model gpu', 'tagger', 'labels', 'warming'].map((s) => at(s)),
     ['starting the tracker', 'freeing GPU memory', 'adjusting levels', 'reading the model weights', 'moving the model to the GPU',
-      'loading the tagger', 'naming the groups']);
+      'loading the tagger', 'naming the groups', 'warming up the GPU']);
   assert.equal(at('reading', 120), '12 % · reading frames');
   assert.equal(at('inference', 370), '37 % · tracking the scene');   // a buffered scene counts its tracked frames
   assert.equal(at('model read', 400), '40 % · reading the model weights');   // a first load inside it names itself

@@ -97,9 +97,9 @@ test('modifiers: ONE Modifier submenu in every tab, the same kinds everywhere; t
     assert.equal(fx.length, 1, `${t} / ${tab}: one Modifier submenu`);
     assert.equal(fx[0].label, 'Modifier');
     const rows = fx[0].items.filter((x) => !x.separator), grey = rows.filter((x) => x.disabled);
-    assert.equal(rows.length, 9, 'every kind once');
+    assert.equal(rows.length, 6, 'every kind once');
     if (tab === 'refine') assert.equal(grey.length, 0);
-    else { assert.deepEqual(grey.map((x) => x.label), ['Spurt', 'Reshape', 'Climax run-in']); assert.ok(grey.every((x) => x.tip.includes(REFINE_WHY))); }
+    else { assert.deepEqual(grey.map((x) => x.label), ['Spurt', 'Reshape']); assert.ok(grey.every((x) => x.tip.includes(REFINE_WHY))); }
   }
   for (const t of ['cut', 'move']) assert.ok(!full(t).some((r) => r.id === 'fx'), `${t}: a boundary has no modifiers`);
 });

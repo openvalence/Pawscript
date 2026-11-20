@@ -34,8 +34,9 @@ def fake_torch(monkeypatch, cap=(12, 0), archs=CU126, available=True, boom=False
             raise RuntimeError("driver said no")
         return cap
     cuda = types.SimpleNamespace(is_available=lambda: available, get_device_capability=capability,
-                                 get_arch_list=lambda: archs, get_device_name=lambda i: "NVIDIA GeForce RTX 5070")
-    t = types.SimpleNamespace(cuda=cuda)
+                                 get_arch_list=lambda: archs, get_device_name=lambda i: "NVIDIA GeForce RTX 5070",
+                                 device_count=lambda: 1)
+    t = types.SimpleNamespace(cuda=cuda, version=types.SimpleNamespace(hip=None))
     monkeypatch.setitem(sys.modules, "torch", t)
     monkeypatch.setattr(gpu, "STATE", None)
     monkeypatch.setattr(gpu, "_REAL", None)
@@ -210,3 +211,100 @@ def test_gpu_tracker_on_cpu_says_so(monkeypatch, tmp_path):
     ev.clear()
     res = cli.cmd_track(req, ev.append)
     assert "device" not in res and not any("device" in e for e in ev)   # a CPU tracker: nothing to say
+
+
+# ---------------------------------------------------------------- paw-vdb3.1: ROCm (AMD) cards
+
+GB = 2 ** 30
+TORCH_HIP_ARCHS = ["gfx1030", "gfx1036", "gfx1100", "gfx1200", "gfx1201", "gfx1150", "gfx90a"]   # torch's kernels, not the runtime's
+RX9070 = ("AMD Radeon RX 9070 XT", "gfx1201", 15.9, 0)
+IGPU = ("AMD Radeon(TM) Graphics", "gfx1036", 12.2, 1)
+
+
+def fake_hip(monkeypatch, devices, packages=("rocm-sdk-device-gfx1201",), integrated_flag=True, probe_err=None):
+    """devices: [(name, gcnArchName, GB, is_integrated)]; packages: the installed distributions' names."""
+    props = [types.SimpleNamespace(name=n, gcnArchName=f"{g}:sramecc-:xnack-", total_memory=int(gb * GB), major=12, minor=0,
+                                   **({"is_integrated": i} if integrated_flag else {})) for n, g, gb, i in devices]
+    cur = [0]
+    cuda = types.SimpleNamespace(
+        is_available=lambda: True, device_count=lambda: len(props), get_device_properties=lambda i: props[i],
+        get_device_name=lambda i: props[i].name, get_device_capability=lambda i: (props[i].major, props[i].minor),
+        get_arch_list=lambda: TORCH_HIP_ARCHS, set_device=lambda i: cur.__setitem__(0, i), current_device=lambda: cur[0])
+    t = fake_torch(monkeypatch, probe_err=probe_err)
+    t.cuda, t.version = cuda, types.SimpleNamespace(hip="7.17.26434")
+    dists = [types.SimpleNamespace(metadata={"Name": n}) for n in ("torch", "rocm", "rocm-sdk-core", *packages)]
+    monkeypatch.setattr(gpu.importlib.metadata, "distributions", lambda: dists)
+    return t
+
+
+@pytest.mark.parametrize("integrated_flag", [True, False])
+def test_rocm_picks_the_discrete_card_over_the_igpu(monkeypatch, integrated_flag):
+    """The rig: iGPU listed first, with more shared memory than some cards have. The 9070 XT is picked and set current
+    before anything loads; the state names its gfx target, not "12.0"."""
+    big_igpu = (IGPU[0], IGPU[1], 32.0, 1)   # without is_integrated, its gfx name marks it
+    t = fake_hip(monkeypatch, [big_igpu, RX9070], integrated_flag=integrated_flag)
+    gpu.install()
+    assert t.cuda.is_available()
+    s = gpu.state()
+    assert s == {"state": "ok", "name": "AMD Radeon RX 9070 XT", "capability": "gfx1201", "probe_ms": s["probe_ms"]}
+    assert t.cuda.current_device() == 1 and t.probes == [1]
+    monkeypatch.setenv("PAWSCRIPT_GPU_FRACTION", "0.5")
+    assert vram.budget_gb(t)[0] == pytest.approx(0.5 * 15.9, abs=0.01), "the budget is the picked card's, not device 0's"
+
+
+def test_rocm_most_vram_among_discrete_cards(monkeypatch):
+    t = fake_hip(monkeypatch, [("AMD Radeon RX 9060 XT", "gfx1200", 8.0, 0), RX9070],
+                 packages=("rocm-sdk-device-gfx1200", "rocm-sdk-device-gfx1201"))
+    assert gpu.state()["name"] == "AMD Radeon RX 9070 XT" and t.cuda.current_device() == 1
+
+
+@pytest.mark.parametrize("arch, reason", [("gfx1100", "old"), ("gfx1030", "old"), ("gfx1250", "new")])
+def test_rocm_card_the_runtime_lacks_is_unsupported_unprobed(monkeypatch, arch, reason):
+    """torch has kernels for gfx1100 but the runtime ships no rocBLAS / MIOpen code objects for it (they can abort the
+    process): CUDA off WITHOUT the probe, the same unsupported state the app shows for an old NVIDIA card."""
+    t = fake_hip(monkeypatch, [("AMD Radeon RX 7900 XTX", arch, 24.0, 0)])
+    gpu.install()
+    assert not t.cuda.is_available()
+    s = gpu.state()
+    assert s["state"] == "unsupported" and s["reason"] == reason and s["capability"] == arch and t.probes == []
+    gpu.STATE = None
+    assert gpu.state(probe=False)["state"] == "unsupported", "list greys out the GPU trackers at once"
+
+
+def test_rocm_probe_without_the_cards_kernels_turns_it_off(monkeypatch):
+    """Measured on the rig's iGPU: a card torch has no kernels for fails its first op with hipErrorInvalidKernelFile."""
+    t = fake_hip(monkeypatch, [RX9070], probe_err="CUDA error: invalid kernel file")
+    assert gpu.state()["state"] == "unsupported" and not t.cuda.is_available()
+
+
+def test_rocm_family_package_and_no_package(monkeypatch):
+    fake_hip(monkeypatch, [("AMD Radeon RX 9060 XT", "gfx1200", 8.0, 0)], packages=("rocm-sdk-device-gfx120X-all",))
+    assert gpu.state()["state"] == "ok"
+    fake_hip(monkeypatch, [("AMD Radeon RX 6800", "gfx1030", 16.0, 0)], packages=())   # nothing listed: torch's own list
+    assert gpu.state()["state"] == "ok"
+    fake_hip(monkeypatch, [("AMD Radeon VII", "gfx906", 16.0, 0)], packages=())
+    assert gpu.state()["state"] == "unsupported"
+
+
+def test_probe_shows_as_warming_inside_a_track(monkeypatch):
+    from pawtrack import progress
+    fake_hip(monkeypatch, [RX9070])
+    ev = []
+    monkeypatch.setattr(progress, "CURRENT", progress.Progress(ev.append))
+    gpu.state()
+    assert [e.get("stage") for e in ev] == ["warming"]
+
+
+def test_miopen_cache_goes_to_the_models_folder(monkeypatch):
+    from pawtrack import MODELS_DIR
+    monkeypatch.delenv("MIOPEN_USER_DB_PATH", raising=False)
+    monkeypatch.setenv("MIOPEN_CUSTOM_CACHE_DIR", r"D:\mine")
+    gpu.install()
+    import os
+    assert os.environ["MIOPEN_USER_DB_PATH"] == str(MODELS_DIR / ".cache" / "miopen")
+    assert os.environ["MIOPEN_CUSTOM_CACHE_DIR"] == r"D:\mine", "a value set from outside stays"
+
+
+def test_hint_names_any_vendors_card(monkeypatch):
+    monkeypatch.setattr(gpu, "STATE", {"state": "ok", "outside": "new", "name": "AMD Radeon RX 9070 XT"})
+    assert gpu.hint() == " This graphics card (RX 9070 XT) is newer than this build was made for, which may be the cause."

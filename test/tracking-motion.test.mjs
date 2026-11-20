@@ -16,7 +16,7 @@ test('cameraMotion: a run that follows the camera is flagged', () => {
   const ref = { samples: ser((s) => pan(s) + 0.01 * rnd()) };
   const r = cameraMotion(run((s) => pan(s) + 0.02 * rnd()), ref);
   assert.ok(r.flag, JSON.stringify(r)); assert.ok(r.score > 0.8); assert.ok(r.together > 0.6);
-  // flipped in one scene (pipe_sign): still the camera
+  // flipped in one scene: still the camera
   const flipped = cameraMotion(run((s, i) => (i < 150 ? pan(s) : 1 - pan(s)) + 0.02 * rnd()), ref);
   assert.ok(flipped.flag, JSON.stringify(flipped));
 });

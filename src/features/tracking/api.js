@@ -2,7 +2,7 @@
 //   import { trackingApi } from '../tracking/api.js'   (or import.meta.glob it, to stay optional)
 //   const t = trackingApi(app);
 //   t.selectedId()               id of the run / ghost selected in the tracker panel, or null
-//   t.runs()                     [{id, n, name, tracker, tag, range:{t0,t1}, roi, scenes:[{t0,t1,sign,autoSign}],
+//   t.runs()                     [{id, n, name, tracker, tag, range:{t0,t1}, roi, scenes:[{t0,t1,sign}],
 //                                  orient:[{t0,t1,sign}], flipSpans:[[t0,t1]] (paw-57ve, relative to the scene), events, frames (overlay store, lib/runs.js), confidence,
 //                                  cameraMotion: {flag, score, together, n, refId} | {pending} | {skipped} | {error} | null,
 //                                  notes: [{code, message, scene_index?, data?}] (sidecar info: low_motion, primary, held_input),
@@ -21,7 +21,7 @@
 //   t.currentScene()             index of the scene the panel works on (timeline selection, else the playhead), -1 none
 //   t.sceneLink(i)               scene i's live run link {runId, channel, ghost} | null (project block 'links'; a link
 //                                whose ghost was removed is kept but not live)
-//   t.linkScene(i, runId, channel)   scene i uses channel `channel` ('primary' | 'g2_proj' | ...) of run runId; only that
+//   t.linkScene(i, runId, channel)   scene i uses channel `channel` ('primary' | 'sem_c1_hips_proj' | ...) of run runId; only that
 //                                scene's points change (channels are per scene; the ghost keeps every linked channel's series,
 //                                so it survives a reload) -> bool
 // Programmatic jobs (no panel state touched: tracker, range, ROI, params, span labels, selection stay as they are).

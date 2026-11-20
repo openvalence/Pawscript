@@ -1,4 +1,4 @@
-// runs-channel.js -- a run's points rebuilt from one of its raw channels (lane channel pick, e.g. g2_proj), pure.
+// runs-channel.js -- a run's points rebuilt from one of its raw channels (lane channel pick, e.g. sem_c1_hips_proj), pure.
 // The sidecar's points always come from its primary signal; picking a channel must change what Accept gets, so the
 // channel goes through the graph's own kernels (sig.fillGaps, sig.smooth gaussian, sig.toScript extremes) per scene.
 
@@ -25,18 +25,6 @@ import { flipChannel, flipsIn, flipsClean, directionOf, loopFlips, flippedAt } f
 // fit 'scene' (each scene's min..max), 'rolling' (the sidecar's 3 s p5..p95 window: a drift or one big move stops
 // squashing the strokes, but small strokes become full ones), smoothing, a higher prominence.
 export const CHANNEL_FIT = { fit: 'run', maxGapMs: 500, sigmaMs: 0, minProminence: 1, minGapMs: 60, normWindowMs: 3000, detail: 0, stitch: 'smart' };
-export const CHANNEL_FIT_SCHEMA = [
-  { key: 'stitch', label: 'Stitch scenes', type: 'choice', default: 'smart', choices: ['smart', 'off'],
-    hint: 'smart: a continuing scene starts where the last one ended' },
-  // paw-e3i: a shot with Smart stroke or its own Strokes settings (Runs -> Adjust) uses lib/strokes.js instead of fit /
-  // min stroke / detail below (they still shape every other channel pick)
-  { key: 'fit', label: 'Fit', type: 'choice', default: 'run', choices: ['run', 'scene', 'rolling'],
-    hint: 'run: its own range · scene: per scene · rolling: 3 s window' },
-  { key: 'sigmaMs', label: 'Smooth', type: 'int', default: 0, min: 0, max: 500, step: 10, unit: 'ms', hint: 'Gaussian sigma (0: the tracker data as is)' },
-  { key: 'minProminence', label: 'Min stroke', type: 'number', default: 1, min: 0, max: 50, step: 0.5, hint: 'turns smaller than this (0..100) are not points' },
-  { key: 'detail', label: 'Detail', type: 'number', default: 0, min: 0, max: 10, step: 1, hint: '0: turns only, higher keeps more shape between turns' },
-  { key: 'maxGapMs', label: 'Bridge gaps', type: 'int', default: 500, min: 0, max: 5000, step: 50, unit: 'ms' },
-];
 
 // paw-4c48.10: an absolute channel (the shaft source) keeps its shape between the turns too (its points within detailTol(8) =
 // 3.4 pos of what it reads), so the script follows the position bar's diamond, not only at the turns
@@ -173,8 +161,7 @@ function removeCarrier(g, c, [lo, hi], lv = null) {
 }
 
 // ---- paw-2ntn: the anchor, where a stroke shorter than the range sits (a shot's derive.anchorTo, per run per shot) ----
-// Fusion centres every relationship over two strokes (fusion.js rows' r.f) and the strokes step takes the drift over two
-// strokes out again (strokes.js undrift) before the piece's p2..p98 sets the scale: a stretch of half strokes comes out
+// Fusion centers every relationship over two strokes (fusion.js rows' r.f) before the piece's p2..p98 sets the scale: a stretch of half strokes comes out
 // 25..75, round the middle. 'middle' (absent) keeps that; 'in' / 'out' pin the deep / out ends; 'full' is the link's envelope.
 export const ANCHORS = ['middle', 'in', 'out', 'full'];
 /** One scene's points q [[at, pos, ...rest]] (sorted, as played) with every stroke's deep end ('in': its bottom, pos 0) or out
@@ -225,7 +212,7 @@ function scenePoints(t, v, sign, o, range, lev = null) {
     const local = o.fit === 'rolling' && o.normWindowMs > 0 && n * dt > o.normWindowMs;
     fit = normalise.eval({ signal: x }, { mode: local ? 'local' : 'global', pLo: local ? 5 : 0, pHi: local ? 95 : 100, windowMs: o.normWindowMs, outLo: 0, outHi: 100, clamp: true }, ctx).signal.v;
   }
-  // larger value = out = pos 100 (proj's convention); the sidecar's scene sign (pipe_sign / pipe_invert) as on the primary
+  // larger value = out = pos 100 (proj's convention); the sidecar's scene sign (shaft / pipe_invert) as on the primary
   if (sign < 0) for (let k = 0; k < n; k++) fit[k] = 100 - fit[k];
   const p = { mode: 'extremes', minProminence: o.minProminence, minGapMs: Math.max(o.minGapMs, 2 * dt), gaps: 'break' };
   let turns = toScript.eval({ signal: { i0: 0, dt, v: fit } }, p, ctx).script;
@@ -360,29 +347,25 @@ export function carriers(run, links = [], fit = {}) {
 }
 
 const pct = (x) => Math.round(x * 100) + '%';
-// ---- motion groups: bodies g1..g4 and their parts g{k}p{j} (PROTOCOL v3.4), named per scene (v3.3) ----
-const BODY_ALTS = ['proj', 'scale', 'rot'], PART_ALTS = ['rel', 'proj', 'scale'];
+// ---- groups: the pinned ones (painted, or seeded from the tagger), named per scene ----
 // pinned semantic groups (v4.6, seeded from the tagger's CAM): hips / penis default to _proj, balls to _scale (contraction)
 // paw-ol3: _pulse = a pulse group's contraction signal from detect cumshots (lib/cum.js pulseChannels); an anus shows it first
 const SEM_ALTS = { hips: ['proj', 'rel', 'scale', 'pulse'], penis: ['proj', 'rel', 'scale', 'pulse'], balls: ['scale', 'proj', 'rel', 'pulse'], anus: ['pulse', 'proj', 'rel', 'scale'] };
-/** 'g1_scale' -> {key: 'g1', body: 1, part: 0, kind: 'scale'}; 'g2p1_rel' -> {key: 'g2p1', body: 2, part: 1, kind: 'rel'};
- *  'sem_hips_proj' -> {key: 'sem_hips', body: 0, part: 0, sem: 'hips', kind: 'proj'} (a pinned group, v4.6); else null. */
+/** 'sem_hips_proj' -> {key: 'sem_hips', sem: 'hips', kind: 'proj'} (a pinned group); else null. */
 export function groupOfChannel(c) {
   // v4.11: any user group name; v4.12 a character's ('sem_c1_hand_l_proj': the name holds underscores, the kind does not)
   const s = /^sem_([a-z0-9_]+?)_(x|y|n|proj|rel|scale|area|pulse)$/.exec(c || '');
-  if (s) return { key: 'sem_' + s[1], body: 0, part: 0, sem: s[1], kind: s[2] };
-  const m = /^(g[1-4])(p[12])?_(\w+)$/.exec(c || '');
-  return m ? { key: m[1] + (m[2] || ''), body: +m[1][1], part: m[2] ? +m[2][1] : 0, kind: m[3] } : null;
+  return s ? { key: 'sem_' + s[1], sem: s[1], kind: s[2] } : null;
 }
-/** The channels one picker chip offers that the run has, its default first: a body _proj, _scale, _rot; a part _rel,
- *  _proj, _scale; a pinned group _proj, _rel, _scale (balls: _scale first); any other channel just itself. */
+/** The channels one picker chip offers that the run has, its default first: a pinned group _proj, _rel, _scale (balls:
+ *  _scale first); any other channel just itself. */
 export function chipVariants(run, c) {
-  const g = groupOfChannel(c), alts = g && (g.sem ? SEM_ALTS[splitName(g.sem).part] || SEM_ALTS.hips : g.part ? PART_ALTS : BODY_ALTS);
+  const g = groupOfChannel(c), alts = g && (SEM_ALTS[splitName(g.sem).part] || SEM_ALTS.hips);
   return alts?.includes(g.kind) ? alts.map((k) => `${g.key}_${k}`).filter((n) => run?.channels?.[n]) : [c];
 }
-const PICK = /^g[1-4]_(proj|scale|rot)$|^g[1-4]p[12]_(rel|proj|scale)$|^sem_[a-z0-9_]+_(proj|rel|scale|pulse)$|^pair_proj$|^who_(c[12]|x|pair|p1h2|p2h1)_proj$|^cam_[xy]$|^proj_cam$/;
-const SEM_RANK = { hips: 12.1, balls: 12.2, penis: 12.3 };   // after the bodies and their parts
-// v4.12: a character's groups after the plain ones, Bottom then Top then Extra; the characters' own channels after pair_proj
+const PICK = /^sem_[a-z0-9_]+_(proj|rel|scale|pulse)$|^who_(c[12]|x|pair|p1h2|p2h1)_proj$|^cam_[xy]$|^proj_cam$/;
+const SEM_RANK = { hips: 12.1, balls: 12.2, penis: 12.3 };
+// v4.12: a character's groups after the plain ones, Bottom then Top then Extra; the characters' own channels after them
 const semRank = (s) => { const q = splitName(s); return q.who ? 12.5 + ({ c2: 0.25, x: 0.5 }[q.who] || 0) + (SEM_RANK[q.part] ?? 12.4) / 1000 : SEM_RANK[s] ?? 12.5; };
 const WHO_RANK = { who_c1_proj: 13.1, who_c2_proj: 13.2, who_x_proj: 13.25, who_pair_proj: 13.3, who_p1h2_proj: 13.4, who_p2h1_proj: 13.5 };
 /** A character channel (PROTOCOL v4.12) as people read it: 'who_c1_proj' -> 'Bottom center', 'who_pair_proj' -> 'Bottom ↔ Top',
@@ -396,18 +379,17 @@ export function whoLabel(c) {
 }
 // paw-u6s5: a channel as the source menu says it (user words; the channel id never reaches a label)
 const CHANNEL_WORDS = { primary: "Tracker's choice", fused: 'Fused', proj: 'All points', proj_cam: 'All points, camera removed', cam_x: 'Camera left / right',
-  cam_y: 'Camera up / down', pair_proj: 'Body 1 to body 2 distance', centroid_x: 'Points left / right', centroid_y: 'Points up / down',
+  cam_y: 'Camera up / down', centroid_x: 'Points left / right', centroid_y: 'Points up / down',
   centroid_auto: 'Points along their motion', dist01: 'Distance of the first two clicks', vis_frac: 'Share of points visible',
   vis_extent: 'Share of the seed line visible', vis_len: 'Visible length' };
-/** A group channel's variant as people read it ('g1p1_rel' in the variants submenu -> 'Own motion'). */
-export const VARIANT_WORDS = { proj: 'Position', rel: 'Own motion', scale: 'Size', rot: 'Rotation', pulse: 'Contractions', area: 'Area' };
-/** 'cam_x' -> 'Camera left / right', 'g2p1_rel' -> 'Body 2 part 1', 'p0_y' -> 'Point 1 up / down', 'who_c1_proj' -> 'Bottom center';
+/** A group channel's variant as people read it ('sem_penis_rel' in the variants submenu -> 'Own motion'). */
+export const VARIANT_WORDS = { proj: 'Position', rel: 'Own motion', scale: 'Size', pulse: 'Contractions', area: 'Area' };
+/** 'cam_x' -> 'Camera left / right', 'p0_y' -> 'Point 1 up / down', 'who_c1_proj' -> 'Bottom center';
  *  an unknown id -> its words ('vis_foo' -> 'Vis foo'). A pinned group's own name comes from labelOf. */
 export function channelWord(c) {
   if (CHANNEL_WORDS[c]) return CHANNEL_WORDS[c];
-  const p = /^p(\d+)_([xy])$/.exec(c || ''), g = groupOfChannel(c);
+  const p = /^p(\d+)_([xy])$/.exec(c || '');
   if (p) return `Point ${+p[1] + 1} ${p[2] === 'x' ? 'left / right' : 'up / down'}`;
-  if (g && !g.sem) return g.part ? `Body ${g.body} part ${g.part}` : `Body ${g.body}`;
   const w = whoLabel(c) || String(c || '').replace(/_/g, ' ');
   return w ? w[0].toUpperCase() + w.slice(1) : '';
 }
@@ -421,17 +403,16 @@ export function channelHasData(run, c, t0 = -Infinity, t1 = Infinity) {
   for (let i = 0; i < (ch?.v?.length || 0); i++) { const t = ch.t ? ch.t[i] : t0; if (t >= t0 && t < t1 && Number.isFinite(ch.v[i])) return true; }
   return false;
 }
-/** The channels a lane picker offers for a run: 'primary', then the camera-removed / motion-group set when the run has
- *  one (proj_cam; per body its default channel, then its parts': g1_proj, g1p1_rel, g1p2_rel, g2_proj, ...; the pinned
- *  groups: sem_hips_proj, sem_balls_scale, sem_penis_proj; pair_proj, cam_x, cam_y), else every channel it has. A group's other channels are its chip's variants (chipVariants). */
+/** The channels a lane picker offers for a run: 'primary', then the camera-removed / group set when the run has one
+ *  (proj_cam; the pinned groups: sem_hips_proj, sem_balls_scale, sem_penis_proj; the characters' who_*; cam_x, cam_y),
+ *  else every channel it has. A group's other channels are its chip's variants (chipVariants). */
 export function pickerChannels(run) {
   const names = Object.keys(run?.channels || {}).filter((n) => n !== 'fused');   // 'fused' (paw-e3i): second, when the run has parts to fuse
-  const rank = (n) => { const g = groupOfChannel(n); return n === 'proj_cam' ? 0 : g?.sem ? semRank(g.sem) : g ? g.body * 3 + g.part - 2 : n === 'pair_proj' ? 13 : WHO_RANK[n] ?? (n === 'cam_x' ? 14 : 15); };
+  const rank = (n) => { const g = groupOfChannel(n); return n === 'proj_cam' ? 0 : g ? semRank(g.sem) : WHO_RANK[n] ?? (n === 'cam_x' ? 14 : 15); };
   const set = [...new Set(names.filter((n) => PICK.test(n)).sort((a, b) => rank(a) - rank(b)).map((n) => chipVariants(run, n)[0]))];
   return ['primary', ...(canFuse(run) ? ['fused'] : []), ...(set.length ? set : names.filter((n) => !n.startsWith('rel:')))];
 }
-/** Share of the frames in [t0, t1) on which group `key` ('g1', 'g2p1') is present ({key}_n > 0; a part's is null when
- *  absent). No _n channel: 1. */
+/** Share of the frames in [t0, t1) on which group `key` ('sem_c1_hips') is present ({key}_n > 0). No _n channel: 1. */
 export function groupPresence(run, key, t0 = -Infinity, t1 = Infinity) {
   const ch = run?.channels?.[key + '_n'];
   if (!ch?.v) return 1;
@@ -439,19 +420,19 @@ export function groupPresence(run, key, t0 = -Infinity, t1 = Infinity) {
   for (let i = 0; i < ch.v.length; i++) { const t = ch.t ? ch.t[i] : 0; if (t >= t0 && t < t1) { n++; if (ch.v[i] > 0) on++; } }
   return n ? on / n : 0;
 }
-/** The names of run scene k's motion groups ({g1: {label, score, tags, frames, stable, suspect?}, g1p1: ...}): the
- *  scene record's groups, else that scene's group_labels note data; {} when none. */
+/** The records of run scene k's pinned groups ({sem_c1_penis: {label, source, points, ...}, ...}): the scene record's
+ *  groups, else that scene's group_labels note data; {} when none. */
 export function sceneGroups(run, k) {
   const g = run?.scenes?.[Math.max(0, k)]?.groups;
   if (g && typeof g === 'object') return g;
   const n = (run?.notes || []).find((x) => x?.code === 'group_labels' && (x.scene_index ?? 0) === Math.max(0, k) && x.data?.groups);
   return n ? n.data.groups : {};
 }
-/** A channel's group name: 'g1p1_rel' -> groups.g1p1.label ('balls'); a pinned group 'sem_hips_proj' -> 'hips (seeded)'
- *  (named by its channel when the scene has no record); none -> ''. */
+/** A channel's group name: a pinned group 'sem_hips_proj' -> 'hips (seeded)' (named by its channel when the scene has
+ *  no record); none -> ''. */
 export const labelOf = (groups, c) => {
   const g = groupOfChannel(c);
-  return g?.sem ? `${partLabel(groups?.[g.key]?.label || g.sem)} (${groups?.[g.key]?.source === 'user' ? 'drawn' : 'seeded'})` : (g && groups?.[g.key]?.label) || '';
+  return g ? `${partLabel(groups?.[g.key]?.label || g.sem)} (${groups?.[g.key]?.source === 'user' ? 'drawn' : 'seeded'})` : '';
 };
 /** A group name's evidence as text: top tags (tagger heat), margin, stability, a suspect fallback; a pinned group
  *  (source cam): where it came from, its tag score and points. */
@@ -463,23 +444,15 @@ export function labelText(rec) {
   return [`named ${rec.label}`, tags.length && `tags ${tags.join(', ')}`, rec.score && `margin ${rec.score}`,
     rec.stable != null && `stable ${pct(rec.stable)} of ${rec.frames ?? '?'} frames`, rec.suspect && `${rec.suspect} won but the group is too big for it`].filter(Boolean).join(' · ');
 }
-/** A body channel whose parts include a penis or a tail: the sentence saying the body's signal leaves them out; else ''. */
-export function partsLeftOut(groups, c) {
-  const g = groupOfChannel(c);
-  if (!g || g.part) return '';
-  const ps = [1, 2].map((j) => `${g.key}p${j}`).filter((k) => ['penis', 'tail'].includes(groups?.[k]?.label));
-  return ps.length ? `${g.key}'s signal already leaves out its ${ps.map((k) => `${groups[k].label} (${k})`).join(' and ')}: a part's points are not in its body's channels` : '';
-}
 /** Run scene k's balls contraction channel: the pinned balls group's 'sem_balls_scale' when it has a value in the
- *  scene, else its part named balls with a _scale channel -> 'g{k}p{j}_scale', else ''. */
+ *  scene, else ''. */
 export function ballsScale(run, k) {
   const sb = run?.channels?.sem_balls_scale, sc = run?.scenes?.[k];
   for (let i = 0; i < (sb?.t?.length || 0); i++) if (sb.v[i] === sb.v[i] && sb.v[i] != null && (!sc || (sb.t[i] >= sc.start_ms && sb.t[i] < sc.end_ms))) return 'sem_balls_scale';
-  const g = sceneGroups(run, k), key = Object.keys(g).find((q) => /^g[1-4]p[12]$/.test(q) && g[q]?.label === 'balls' && run.channels?.[q + '_scale']);
-  return key ? key + '_scale' : '';
+  return '';
 }
 /**
- * Spurt times from a part's contraction channel (g{k}p{j}_scale, raw, high-passed) over [t0, t1): local maxima of
+ * Spurt times from a part's contraction channel (sem_<name>_scale, raw, high-passed) over [t0, t1): local maxima of
  * sign x its 3-sample mean that clear median + k x MAD (robust sigma), at least minGapMs apart (the taller wins).
  * sign -1 = the part shrinking (a contraction), +1 = swelling. Fewer than 5 values or a flat signal: []. -> [t ms].
  * ponytail: one robust threshold per scene; add a rate prior (pulses ~0.6-1 s apart) if real runs show false peaks.
@@ -506,14 +479,14 @@ export function camWeak(run) {
   for (const y of v || []) if (y === y) { s += y; n++; }
   return n > 0 && s / n < 0.3;
 }
-/** Channels that rest on the camera estimate (greyed when it is weak): proj_cam, g*_proj, pair_proj, a part's or a
- *  pinned group's _proj / _rel. */
-export const camChannel = (c) => c === 'proj_cam' || /^(g[1-4]|pair|who_(?:c[12]|x))_proj$|^(g[1-4]p[12]|sem_[a-z0-9_]+)_(proj|rel)$/.test(c);
+/** Channels that rest on the camera estimate (greyed when it is weak): proj_cam, a character's center, a pinned
+ *  group's _proj / _rel. */
+export const camChannel = (c) => c === 'proj_cam' || /^who_(?:c[12]|x)_proj$|^sem_[a-z0-9_]+_(proj|rel)$/.test(c);
 
 // ---- relative channels (frontend): one group's centroid relative to another's, on the stroke axis ----
-// 'rel:<a>:<b>' (a, b = chip groups: g1, g2p1, sem_penis, ...) is built here from the run's camera-removed centroids
+// 'rel:<a>:<b>' (a, b = pinned groups: sem_penis, sem_c2_hips, ...) is built here from the run's camera-removed centroids
 // ({a}_x / _y, PROTOCOL channel table), never by the sidecar: penis vs the other body's hips, hips vs hips, ...
-const REL_GROUP = /^(g[1-4](p[12])?|sem_[a-z0-9_]+)$/;
+const REL_GROUP = /^sem_[a-z0-9_]+$/;
 /** 'rel:sem_penis:sem_hips' -> {a: 'sem_penis', b: 'sem_hips'}; anything else (or a = b) -> null. */
 export function relParse(id) {
   const m = /^rel:([^:]+):([^:]+)$/.exec(id || '');
@@ -531,10 +504,10 @@ function sceneDeg(run, k) {
  * Relative channel of `run`: per run scene, s = (centroid a − centroid b) · u, frame heights (x times aspect = w / h),
  * NaN where either group is absent. u = the custom axis (opts.axis {x0, y0, x1, y1}, else run.params' axis: 'custom'),
  * else the sidecar's axis.deg for the scene (0° right, 90° up), else the principal axis of the difference over the scene.
- * Signed (not |s|), so the two may cross along the axis, then oriented so the scene's mean is >= 0 (pair_dist's rule):
- * smaller = closer. Normalised 0..1 per scene by its min..max (pair_proj's rule; flat: 0.5), so closer = deeper = lower
+ * Signed (not |s|), so the two may cross along the axis, then oriented so the scene's mean is >= 0 (groups.axis_dist's rule):
+ * smaller = closer. Normalised 0..1 per scene by its min..max (who_pair_proj's rule; flat: 0.5), so closer = deeper = lower
  * pos. -> a channel ({t, v, min, max, scaled}, + axes: [{kind, deg}] per run scene) | null (a group has no centroid).
- * ponytail: one axis per scene; pair_dist's rolling axis (turntables) if an orbit scene ever needs it.
+ * ponytail: one axis per scene; the sidecar groups.pair_dist's rolling axis (turntables) if an orbit scene ever needs it.
  */
 /** run with its pinned groups' centres camera-handled per run scene as the derives say (cam only: a pair has its own `against`;
  *  paw-hiq5: a pair used to read the stored centres whatever the camera setting was, so "vs camera" did nothing on it). */
@@ -563,7 +536,7 @@ export function relChannel(run, a, b, { axis = null, aspect = 16 / 9, derives = 
     const deg = custom ? null : sceneDeg(run, k);
     let u = custom, kind = 'custom';
     if (!u && deg != null) { u = [Math.cos((deg * Math.PI) / 180), -Math.sin((deg * Math.PI) / 180)]; kind = 'sidecar'; }   // screen y grows down
-    if (!u) {   // principal axis of the difference (pair_dist's fit); under 3 frames: its mean direction
+    if (!u) {   // principal axis of the difference (groups.axis_dist's fit); under 3 frames: its mean direction
       let mx = 0, my = 0, sxx = 0, syy = 0, sxy = 0;
       for (const j of ok) { mx += dx[j]; my += dy[j]; }
       mx /= ok.length; my /= ok.length;
@@ -594,37 +567,24 @@ export function relChannels(run, ids, ctx = {}) {
   for (const id of want) { const { a, b } = relParse(id), c = relChannel(run, a, b, ctx); if (c) out[id] = c; else delete out[id]; }
   return out;
 }
-const relName = (groups, k) => (k.startsWith('sem_') ? partLabel(k.slice(4)) : groups?.[k]?.label && groups[k].label !== 'body' ? groups[k].label : k);
-/** 'rel:sem_penis:sem_hips' -> 'penis ↔ hips (seeded)'; 'rel:g1p2:g2' with g1p2 named penis -> 'penis ↔ g2'; else ''. */
+/** 'rel:sem_penis:sem_hips' -> 'penis ↔ hips (seeded)'; else ''. */
 export function relLabel(groups, id) {
   const r = relParse(id);
-  return r ? `${relName(groups, r.a)} ↔ ${relName(groups, r.b)}${r.a.startsWith('sem_') || r.b.startsWith('sem_') ? ' (seeded)' : ''}` : '';
+  return r ? `${partLabel(r.a.slice(4))} ↔ ${partLabel(r.b.slice(4))} (seeded)` : '';
 }
-/** The run's two largest bodies by member share over the run (the sidecar's pair_dist pair): ['g1', 'g2'] sorted, or []. */
-export function pairBodies(run) {
-  const tot = [1, 2, 3, 4].map((k) => { let s = 0; for (const y of run?.channels?.[`g${k}_n`]?.v || []) if (y > 0) s += y; return [`g${k}`, s]; });
-  const two = tot.filter(([, s]) => s > 0).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([k]) => k).sort();
-  return two.length === 2 ? two : [];
-}
-/** A rel id over exactly the run's two largest bodies, with the sidecar's pair_proj there: 'pair_proj', else ''. */
-export function relPairOf(run, id) {
-  const r = relParse(id), two = pairBodies(run);
-  return r && run?.channels?.pair_proj && two.length && [r.a, r.b].sort().join() === two.join() ? 'pair_proj' : '';
-}
-/** Ready-made relative channels for the picker where both groups exist: penis (the seeded one, else a part named penis
- *  in `groups`) ↔ the seeded hips. -> [rel id]. ponytail: one hips group is seeded per scene, so "hips ↔ hips" is arm + click. */
-export function relSuggestions(run, groups = {}) {
+/** Ready-made relative channels for the picker where both groups exist: the seeded penis ↔ the seeded hips. -> [rel id].
+ *  ponytail: one hips group is seeded per scene, so "hips ↔ hips" is arm + click. */
+export function relSuggestions(run) {
   const has = (k) => !!run?.channels?.[k + '_x'];
-  const penis = has('sem_penis') ? 'sem_penis' : Object.keys(groups).find((k) => /^g[1-4]p[12]$/.test(k) && groups[k]?.label === 'penis' && has(k));
-  return penis && has('sem_hips') ? [relId(penis, 'sem_hips')] : [];
+  return has('sem_penis') && has('sem_hips') ? [relId('sem_penis', 'sem_hips')] : [];
 }
 
 /** The sidecar's primary decision per run scene (track result notes, code 'primary', PROTOCOL v3.2):
  *  [{message, chosen?, rule?, candidates?, axis?, sign?, camera?, low_motion?, cadence_fill?, held_input?}] by
- *  scene_index (holes = no record). A note without data (older sidecar; code 'primary_used') -> {message} only. */
+ *  scene_index (holes = no record). A note without data -> {message} only. */
 export function decisionsOf(notes) {
   const out = [];
-  for (const n of notes || []) if (n?.code === 'primary' || n?.code === 'primary_used') out[n.scene_index ?? 0] = { ...(n.data || {}), message: n.message };
+  for (const n of notes || []) if (n?.code === 'primary') out[n.scene_index ?? 0] = { ...(n.data || {}), message: n.message };
   return out;
 }
 /** One candidate's numbers as text (signals in frame heights, fh). */
@@ -643,17 +603,17 @@ const sgn = (s) => (s > 0 ? '+1' : s < 0 ? '−1' : '?');
 // ---- the scene's camera tag (timeline/acts.js camera category, from pawtrack camera.py) ----
 const share = (c, t0, t1) => { let n = 0, k = 0; for (let j = 0; j < (c?.t?.length || 0); j++) if (c.t[j] >= t0 && c.t[j] < t1) { n++; if (c.v[j] === c.v[j]) k++; } return n ? k / n : 0; };
 /** The signal a run defaults to in a scene [t0, t1) with camera tag `cam`, or null (leave the sidecar's pick): pan / zoom /
- *  handheld -> proj_cam (camera removed); orbit (turntable: a translational camera model is wrong there) -> pair_proj
- *  when two bodies cover half the scene, else g1_proj; reciprocal (the camera rides the stroke) and pov (a character's eyes:
- *  its motion is part of the action) -> proj (no removal). */
-export const CAMERA_SIGNAL = { pan: 'proj_cam', zoom: 'proj_cam', handheld: 'proj_cam', reciprocal: 'proj', pov: 'proj', orbit: 'pair_proj / g1_proj' };   // what cameraDefault picks (orbit: by the run's bodies)
+ *  handheld -> proj_cam (camera removed); orbit (turntable: a translational camera model is wrong there) -> the two
+ *  characters' distance who_pair_proj when it covers half the scene, else the painted parts' fusion; reciprocal (the camera
+ *  rides the stroke) and pov (a character's eyes: its motion is part of the action) -> proj (no removal). */
+export const CAMERA_SIGNAL = { pan: 'proj_cam', zoom: 'proj_cam', handheld: 'proj_cam', reciprocal: 'proj', pov: 'proj', orbit: 'who_pair_proj / fused' };   // what cameraDefault picks (orbit: by the run's characters)
 export function cameraDefault(cam, run, t0, t1) {
   const ch = run?.channels || {}, has = (c) => !!ch[c]?.t?.length;
   const pick = cam !== 'orbit' && CAMERA_SIGNAL[cam];
   if (pick) return has(pick) ? pick : null;
   if (cam !== 'orbit') return null;
-  if (has('pair_proj') && share(ch.pair_proj, t0, t1) >= 0.5) return 'pair_proj';
-  return has('g1_proj') ? 'g1_proj' : null;
+  if (has('who_pair_proj') && share(ch.who_pair_proj, t0, t1) >= 0.5) return 'who_pair_proj';
+  return canFuse(run) ? 'fused' : null;
 }
 /** paw-iasp: the signal a new run takes on a scene [t0, t1): 'fused' where two painted groups or more have data there (the
  *  fusion is measured at least as good as the old default on the owner's scripts: experiments/fusion), else the camera
@@ -670,7 +630,7 @@ export function cameraNote(cam) {
     pan: 'camera tag: pan — the default signal is proj_cam (camera removed)',
     zoom: 'camera tag: zoom — the default signal is proj_cam (camera removed)',
     handheld: 'camera tag: handheld — the default signal is proj_cam (camera removed)',
-    orbit: 'turntable: camera removal off, rolling axis (default signal pair, else g1)',
+    orbit: 'turntable: camera removal off (default signal Bottom ↔ Top, else fused)',
     pov: 'camera tag: POV (a character\'s eyes) — no camera removal, the default signal is proj',
   }[cam] || '';
 }
@@ -697,7 +657,7 @@ export function decisionLines(d, cam = null) {
   if (cameraNote(cam)) L.push(cameraNote(cam));
   if (d?.axis) L.push(`axis: ${d.axis.mode}${d.axis.deg != null ? ` ${d.axis.deg}°` : ''} (direction of rising value; 0° right, 90° up)`);
   const s = d?.sign;
-  if (s) L.push(`sign: ${s.mode}${s.mode === 'auto' ? (s.auto ? ` → ${sgn(s.auto)} (score ${s.score}: picture motion at the top ${s.energy_top}, at the bottom ${s.energy_bottom})` : ` undecided (${s.why || 'no picture'})`) : ''}${s.invert ? ', inverted' : ''} · applied ${sgn(s.applied)}`);
+  if (s) L.push(`sign: ${s.mode}${s.invert ? ', inverted' : ''} · applied ${sgn(s.applied)}`);
   const sd = d?.seed;   // v4.3: the frame the scene's points were laid on (tracked both ways from it)
   if (sd) L.push(`seed: ${sd.mode} at ${(sd.frame_ms / 1000).toFixed(1)} s (${sd.reason})`);
   if (d?.camera) L.push(`camera: conf ${d.camera.cam_conf ?? '–'} · moves ${d.camera.std ?? '–'} fh (std)`);
@@ -724,20 +684,18 @@ export function segmentLines(segs) {
 const NORM = 'normalised 0..1 per scene';
 /** How a primary is computed, one plain sentence (fixed strings; unknown id -> ''). */
 export function primaryHow(id) {
-  const g = /^g([1-4])_proj$/.exec(id || ''), p = /^p([0-3])_([xy])$/.exec(id || ''), s = /^sem_(penis|balls|hips)_proj$/.exec(id || ''), u = /^sem_([a-z0-9_]+?)_proj$/.exec(id || '');
+  const p = /^p([0-3])_([xy])$/.exec(id || ''), s = /^sem_(penis|balls|hips)_proj$/.exec(id || ''), u = /^sem_([a-z0-9_]+?)_proj$/.exec(id || '');
   const w = /^who_(c[12]|x|pair|p1h2|p2h1)_proj$/.exec(id || '');
   if (s) return `the ${s[1]} points seeded from the tagger (CAM) on the seed frame: their centroid, camera removed, projected on the stroke axis, ${NORM}`;
   if (u) return `the ${partLabel(u[1])} group's pinned points: their centroid, camera removed, projected on the stroke axis, ${NORM}`;
   if (w) return WHOS.includes(w[1]) ? `${whoName(w[1])}'s center: the mean of all its pinned groups (anchored at the seed), camera removed, projected on the stroke axis, ${NORM}`
     : `${whoLabel(id)}: their distance along the stroke axis (larger = farther apart; camera moves cancel out), ${NORM}`;
-  if (g) return `motion group ${g[1]}'s centroid, camera removed, projected on the stroke axis, ${NORM}`;
   if (p) return `point ${+p[1] + 1}'s ${p[2]} position (${p[2] === 'y' ? 'image up' : 'image right'} = higher), ${NORM}`;
   if (id === 'fused') return `every tracked part combined (lib/fusion.js): each character's parts as one body, the relationships the scene's act names leading (rimming: Top head on Bottom hips, ...), the two bodies against each other (camera moves cancel), each weighed by how rhythmic, visible and in phase with the stroke it is (a lagging tail fades), ${NORM}`;
   return {
     proj: `visible points' mean position, projected on the stroke axis, ${NORM}`,
     proj_cam: `visible points' mean position, camera removed, projected on the stroke axis, ${NORM}`,
     dist01: `distance between the first two clicks, ${NORM}`,
-    pair_proj: `distance between the two motion groups along the stroke axis (larger = farther apart), ${NORM}`,
     centroid_x: `visible points' mean x (image right = higher), ${NORM}`,
     centroid_y: `visible points' mean y (image up = higher), ${NORM}`,
     centroid_auto: `visible points' mean position along its own main direction of motion (up / right = higher), ${NORM}`,
@@ -878,23 +836,25 @@ export function channelPatch(run, channel, opts = {}, links = [], ctx = {}) {
     return c === p.channel ? { ...p, src, home: p.channel } : { ...p, channel: c, source: true, src, home: p.channel };
   });
   const names = base.map((p) => p.channel);
-  const stOpts = (d) => ({ ...(d.strokes || {}), ...(d.detail && !ctx.live ? { shapes: d.detail } : {}) });   // paw-izk: + the Detail over its time (paw-o60v.2: not during a drag between rests)
+  // paw-d323: undrift on for a raw channel (its drift eats the depth range), off for the fused one (its held level is the
+  // depth); the shot's own strokes.undrift wins
+  const stOpts = (d, c) => ({ undrift: c !== 'fused', ...(d.strokes || {}), ...(d.detail && !ctx.live ? { shapes: d.detail } : {}) });   // paw-izk: + the Detail over its time (paw-o60v.2: not during a drag between rests)
   const pf = ctx.picAt ? { picAt: ctx.picAt } : {};   // paw-w7wr: a loop's passes get one layout (stroke-shape.js PICTURES)
   const per = base.map((p, i) => {   // a re-derived scene on the sidecar's pick: that pick's channel, recomputed
     const d = dAt(i), sm = !!d?.smart && !!run.channels?.fused, st = sm || !!d?.strokes;
     // paw-e3i: Smart stroke = the fused signal through the new strokes step; strokes alone = the shot's signal through it
     const cal = d?.shaft ? { calib: d.shaft } : {};   // paw-azd: the owner's fully-out / hilted marks for the shaft depth
-    if (sm) return { ...p, channel: p.source && run.channels[p.channel] ? p.channel : 'fused', derived: true, fit: { ...p.fit, ...cal, ...pf, strokes: stOpts(d) } };
+    if (sm) { const c = p.source && run.channels[p.channel] ? p.channel : 'fused'; return { ...p, channel: c, derived: true, fit: { ...p.fit, ...cal, ...pf, strokes: stOpts(d, c) } }; }
     if (!dOn(i) && !st) return p.source ? { ...p, derived: true } : p;
     // strokes alone on the sidecar's pick: the sidecar's own processed signal (samples), so the new step starts where its
     // pipeline did (camera trend removed); a camera / axis change re-derives the pick's channel instead
     if (st && !dOn(i) && (p.channel === 'primary' || p.channel === run.params?.primary) && run.samples?.t?.length) {
       withSamples();
-      return { ...p, channel: '__samples', derived: true, fit: { ...p.fit, ...cal, ...pf, strokes: stOpts(d) } };
+      return { ...p, channel: '__samples', derived: true, fit: { ...p.fit, ...cal, ...pf, strokes: stOpts(d, '__samples') } };
     }
     const c = p.channel === 'primary' || p.channel === run.params?.primary ? (p.channel === 'primary' ? chosen[i]?.chosen ?? run.params?.primary : p.channel) : p.channel;
     if (!run.channels?.[c]) return p;
-    return { ...p, channel: c, derived: dOn(i) || st || c !== p.channel, ...(st ? { fit: { ...p.fit, ...cal, ...pf, strokes: stOpts(d) } } : {}) };
+    return { ...p, channel: c, derived: dOn(i) || st || c !== p.channel, ...(st ? { fit: { ...p.fit, ...cal, ...pf, strokes: stOpts(d, c) } } : {}) };
   });
   // scene i = [its start, the next scene's start) as sceneAt has it (the first from -inf, the last to +inf)
   const sc = run.scenes?.length ? run.scenes : null, lo = (i) => (i && sc ? sc[i].start_ms : -Infinity), hi = (i) => (sc && i + 1 < sc.length ? sc[i + 1].start_ms : Infinity);

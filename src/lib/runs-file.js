@@ -330,7 +330,7 @@ export const drive = async (g, budget = 8) => {
   for (;;) {
     const x = g.next();
     if (x.done) return x.value;
-    if (performance.now() - t > budget) { await macrotask(); t = performance.now(); }
+    if (performance.now() - t >= budget) { await macrotask(); t = performance.now(); }
   }
 };
 

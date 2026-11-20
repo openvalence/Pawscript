@@ -5,9 +5,10 @@
   //     structure with the suggestions, Fill, the modifier chips, offers, new scene / merge.
   //   Shot: 'Shot 3.2 · pan · internal' (a selection: 'Shots 3.1 to 3.3', '5 shots'); popover: view and camera, the cut
   //     before it (cut / camera move), cut here / merge, Stabilise, re-found groups to accept.
-  //   Tracker (paw-unuy: no chip of its own any more): the tracker, its points, the picked signal, the progress are the ▾'s tooltip
-  //     beside Track; the ▾ and a right-click on Track / Track ROI open its settings (tracking/TrackMenu.svelte: the tracker,
-  //     Track's grid points, the tracker's params, Cancel, the Tracker panel; Groups / Track ROI too when the row is narrow).
+  //   Tracker (paw-unuy: no chip of its own any more): the tracker, its points, the picked signal, the progress are the cog's tooltip
+  //     beside Track; the cog opens its settings (tracking/TrackMenu.svelte: Track's and Track ROI's own sections, Cancel, the
+  //     Tracker panel; Groups / Track ROI too when the row is narrow). Right-click on Track / Track ROI is the standard command
+  //     menu plus the custom box / point tracks (palette/quick.js).
   // Hints that used to be extra lines ('needs a where', 'cannot fill: ...', offers, groups to confirm, a busy tracker)
   // are a dot on their chip, the words in its tooltip and popover. paw-rw84: beside the Tracker chip, in the order of the
   // work: Groups (the painting tool on the shot, pressed while it is open, the take's painted groups counted), Track (the
@@ -30,14 +31,12 @@
   import { trackingOf, noteUsage } from './deps.js';
   import { ctlLog } from '../../app/ctl-log.js';
   import IconButton from '../../ui/kit/IconButton.svelte';
-  import TrackMenu, { trackTip } from '../tracking/TrackMenu.svelte';
+  import TrackMenu, { trackTip, roiTip } from '../tracking/TrackMenu.svelte';
   import RunBar from '../tracking/RunBar.svelte';
 
   let { app } = $props();
   let w = $state(0), open = $state(''), els = $state({}), trackAnchor = $state(null);
   const gridPts = $derived(Math.round(+app.settings.get('tracking.gridPoints', 512)) || 512);
-  /** Right-click on Track / Track ROI: the tracker's settings, next to that button. */
-  function menuAt(e) { e.preventDefault(); trackAnchor = e.currentTarget; if (open !== 'tracker') toggle('tracker'); }
   const list = $derived(scenesOf(app));
   const span = $derived(currentSpan(list, selOf(), app.doc.range, app.player.timeMs, durOf(app)));
   const tr = $derived(span ? trackingOf(app) : null);
@@ -105,9 +104,9 @@
         {#if inline}<Button size="sm" icon="brush" data-btn="groups" pressed={gb.pressed} disabled={!gb.enabled} onclick={groups} tip={groupsTip} shortcut={key('tracking.groups')} aria-label="Groups{gb.count ? ` (${gb.count})` : ''}"
           children={worded || gb.count ? groupsLabel : undefined} />{/if}
         <Button size="sm" variant="primary" icon="grid" data-btn="track" {...cmd(app, 'track.gridFrame', undefined, { tip: gridBlock(tr) || trackTip(tr, gridPts, tracksRange(span, app.doc.range, selOf()) ? 'the I-O range' : span.text.toLowerCase()), before: () => noteUsage(app, 'chips.grid') })}
-          oncontextmenu={menuAt} loading={tr.busy === 'track' || tr.queued === 'grid'}>Track</Button>
-        {#if inline}<Button size="sm" icon="crosshair" data-btn="track-roi" {...cmd(app, 'track.run', undefined, { tip: 'Track ROI: one painted part; several: pick one', before: () => noteUsage(app, 'chips.track') })}
-          oncontextmenu={menuAt} aria-label="Track ROI" label={worded ? 'Track ROI' : ''} />{/if}
+          loading={tr.busy === 'track' || tr.queued === 'grid'}>Track</Button>
+        {#if inline}<Button size="sm" icon="crosshair" data-btn="track-roi" {...cmd(app, 'track.run', undefined, { tip: roiTip(tr), before: () => noteUsage(app, 'chips.track') })}
+          aria-label="Track ROI" label={worded ? 'Track ROI' : ''} />{/if}
         <!-- owner: "remove the dropdown, this is a group of controls, add a cog and use a vertical bar like on the footer to separate them" -->
         <span class="mw">
           <IconButton size="sm" icon="gear" data-btn="track-menu" class={busy ? 'busy' : ''} aria-haspopup="dialog" aria-expanded={open === 'tracker'}

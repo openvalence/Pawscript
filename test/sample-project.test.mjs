@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { score, turnsOf } from '../dev/sample/score.mjs';
 import { privacyIssues } from '../src/app/pack.js';
+import { CURRENT_VERSION } from '../src/lib/io/project.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const S = join(root, 'sample'), NAME = 'Pawscript sample';
@@ -38,6 +39,12 @@ test('the published v1 follows the true stroke: turns within a few frames, depth
   assert.ok(rest.matched >= 0.95 * rest.turns, `${rest.matched} of ${rest.turns} turns found`);
   assert.ok(rest.frames.median <= 1, `median turn error ${rest.frames.median} frames`);
   assert.ok(rest.pos.mae <= 12, `mean position error ${rest.pos.mae}`);
+});
+
+// paw-5uyg: an older format opens with a "migrated" toast on the person's first look; re-save it through the app (open + write)
+test('the sample project is at the current project format', () => {
+  assert.equal(proj.format, 'pawproj');
+  assert.equal(proj.version, CURRENT_VERSION, 'open the sample in the app and let it write, then scrub the folder as dev/sample/build-project.mjs does');
 });
 
 test('score: a perfect script scores zero, a shifted one by its shift, a missing turn counts', () => {
@@ -117,6 +124,7 @@ test('Open the sample project: the bundled files are copied to Videos\\Pawscript
   assert.equal(app.project.path, `${dir}\\${NAME}.pawproj`);
   assert.equal(app.mode, 'track');
   assert.equal(app.doc.scenes.length, 3);
+  assert.deepEqual(toasts.filter(([, m]) => /migrated/.test(m)), [], 'no migration note on open');
   app.tracking.openVideo(app.doc.media.path);   // the store's media effect, which SSR does not run
   await app.tracking.runsLoad;
   assert.equal(app.tracking.runs.length, 1, 'the run read back from the copied (copy-on-write) runs file');

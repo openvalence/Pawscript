@@ -42,10 +42,11 @@
 #   <Out> must not hold an earlier full build's runtime / models (use a fresh -Out). Afterwards <Out>.zip is made: the
 #   one file to publish. Without -Online the folder is the full offline bundle, as before (nothing to download).
 # -Release <x.y.z>: the version the exe reports (tauri.conf.json "version" for this build) and the updater files in
-#   <Out>-release\: Pawscript-<x.y.z>-update.zip (Pawscript.exe + code.zip), its .sig (tauri signer sign, needs
-#   TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD in the environment) and latest.json (platform
-#   windows-x86_64-portable, URL https://github.com/openvalence/Pawscript/releases/download/v<x.y.z>/...): upload all
-#   three to the GitHub release v<x.y.z> (docs/BUILDING.md, "Updates"). -Notes <file>: the release notes in latest.json.
+#   <Out>-release\: Pawscript-<x.y.z>-update.zip (Pawscript.exe + code.zip), its .sig (tauri signer sign, bound to
+#   <x.y.z>; the key is %USERPROFILE%\.tauri\pawscript-updater-auto.key, no password, unless TAURI_SIGNING_PRIVATE_KEY is
+#   set) and latest.json (platform windows-x86_64-portable, URL
+#   https://github.com/openvalence/Pawscript/releases/download/v<x.y.z>/...). dev\share\publish-release.ps1
+#   publishes them (docs/BUILDING.md, "Updates"). -Notes <file>: the release notes in latest.json.
 # Either way the compiled manifest (src/features/models/manifest.json) must pin the runtime this build ships
 # ($RuntimeArchive): else the app would ask friends to download another runtime. Checked below.
 #Requires -Version 7
@@ -59,7 +60,9 @@ param(
   [string]$Notes = ''
 )
 if ($Release -and $Release -notmatch '^\d+\.\d+\.\d+$') { throw "-Release must be a version like 0.2.0 (semver, higher than the last release)" }
-if ($Release -and -not $env:TAURI_SIGNING_PRIVATE_KEY) { throw '-Release needs TAURI_SIGNING_PRIVATE_KEY (and TAURI_SIGNING_PRIVATE_KEY_PASSWORD): docs/BUILDING.md, "Updates"' }
+# Must match the pubkey in src-tauri/tauri.conf.json; TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD) overrides it.
+$AutoKey = if ($env:TAURI_SIGNING_PRIVATE_KEY) { '' } else { Join-Path $env:USERPROFILE '.tauri\pawscript-updater-auto.key' }
+if ($Release -and $AutoKey -and -not (Test-Path -LiteralPath $AutoKey)) { throw "-Release needs the signing key $AutoKey (or TAURI_SIGNING_PRIVATE_KEY): docs/BUILDING.md, Updates" }
 $ErrorActionPreference = 'Stop'
 # The runtime this build ships, in dev\share\runtime (git-ignored; its record is the .txt of the same name). Pinned by
 # name, never "the newest": runtime-public-2026-11-18.zip (cu126) sorts after it. Select-Runtime checks it against the
@@ -310,7 +313,7 @@ Move-Item "$zip.part" $zip -Force
 $keep = Select-Runtime (Join-Path $PSScriptRoot 'runtime') (Join-Path $src 'trackers\uv.lock')
 $pinned = ((Get-Content (Join-Path $src 'src\features\models\manifest.json') -Raw | ConvertFrom-Json).models | Where-Object { $_.kind -eq 'runtime' }).version
 $rtWant = (& "$env:SystemRoot\System32\tar.exe" -xOf $keep.FullName runtime.stamp | Out-String).Trim()
-if ($pinned -ne $rtWant) { throw "src/features/models/manifest.json pins runtime '$pinned', this build ships '$rtWant': run dev/share/build-models.ps1 -Embed and commit it" }
+if (@($pinned) -notcontains $rtWant) { throw "src/features/models/manifest.json pins runtime '$pinned', this build ships '$rtWant': run dev/share/build-models.ps1 -Embed and commit it" }
 if ($Online) {
   $old = @('runtime.zip', 'runtime.zip.001', 'parts.txt', 'trackers\.cache', 'trackers\.models', 'tapnextpp_ckpt.pt.001') | Where-Object { Test-Path (Join-Path $Out $_) }
   if ($old) { throw "-Online: $Out still holds $($old -join ', ') from a full build: use a fresh -Out (nothing was deleted)" }
@@ -390,11 +393,12 @@ if ($Release -and -not $StageOnly) {
   $upd = Join-Path $rel "Pawscript-$Release-update.zip"
   Native "$env:SystemRoot\System32\tar.exe" --format zip -c -f $upd -C $Out Pawscript.exe code.zip
   Remove-Item "$upd.sig" -Force -ErrorAction SilentlyContinue
-  Native node (Join-Path $repo 'node_modules\@tauri-apps\cli\tauri.js') signer sign $upd   # key and password from the environment
+  $keyArgs = if ($AutoKey) { @('-f', $AutoKey, '-p', '') } else { @() }   # else key and password from the environment
+  Native node (Join-Path $repo 'node_modules\@tauri-apps\cli\tauri.js') signer sign @keyArgs --app-version $Release $upd   # requireSignedVersion
   $notesText = if ($Notes) { Get-Content $Notes -Raw } else { "Pawscript $Release" }
   [ordered]@{ version = $Release; notes = $notesText; pub_date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     platforms = [ordered]@{ 'windows-x86_64-portable' = [ordered]@{ signature = (Get-Content "$upd.sig" -Raw).Trim()
       url = "https://github.com/openvalence/Pawscript/releases/download/v$Release/Pawscript-$Release-update.zip" } } } |
     ConvertTo-Json -Depth 5 | Set-Content (Join-Path $rel 'latest.json')
-  Step "release $Release`: $rel (latest.json, the update zip and its .sig: upload all three to the GitHub release v$Release)"
+  Step "release $Release`: $rel (publish: pwsh -File dev\share\publish-release.ps1 -Out $Out)"
 }

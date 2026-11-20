@@ -5,9 +5,9 @@
 //   orgasm     balls contraction peaks (runs-channel scalePeaks of sem_balls_scale / sem_c1_balls_scale ...): its spurts,
 //              one per peak, where no spurt was placed by hand inside it (hand-placed spurts always win)
 //   throbbing  the beat period off balls / penis scale peaks (lib/fx throbPeriod, as its Fit button)
-//   knotting   one knot in / out: the push / pull and pop timing off a SAM-measured shaft's inserted fraction
-//   insertion  (lib/shaft.js sem_<name>_in, confident frames only) through lib/fx fitKnotIn / fitKnotOut / fitInsertion;
-//   pullout    a knotting in cycles keeps its cycles on the tracked turns (it always follows the strokes)
+//   knotting   one knot in / out, a push / pull: the move and pop timing off a SAM-measured shaft's inserted fraction
+//              (lib/shaft.js sem_<name>_in, confident frames only) through lib/fx fitKnotIn / fitKnotOut / fitInsertion;
+//              a knotting in cycles keeps its cycles on the tracked turns (it always follows the strokes)
 //   idle       generated only (a hold)
 // The owner's own params win over the fitted ones (an edit in Refine is never overwritten). Not measured: whether a
 // tracked timing is better than the generated one (the big-knot probe found plain pushes beat the tracker's timing on
@@ -18,7 +18,7 @@ import { throbPeriod, fitKnotIn, fitKnotOut, fitInsertion, knotMode, fxParams } 
 import { measureOf } from './mod-runs.js';
 
 /** The part that reacts, per kind: the prompt's word and the Groups part to paint (none: generated only). */
-export const REACTS = { orgasm: 'balls', throbbing: 'penis', knotting: 'penis', insertion: 'penis', pullout: 'penis' };
+export const REACTS = { orgasm: 'balls', throbbing: 'penis', knotting: 'penis' };
 const SCALE = { balls: /^sem_(c[12]_)?balls\d*_scale$/, penis: /^sem_(c[12]_)?penis\d*_scale$/ };
 const partOf = (ch) => (/balls/.test(ch) ? 'balls' : 'penis');
 

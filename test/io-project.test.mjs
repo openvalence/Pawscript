@@ -82,7 +82,7 @@ test('validation: precise messages with paths', () => {
   assert.throws(() => parse('[]'), /top level/);
   assert.throws(() => parse('{"format":"other","version":1}'), /format: expected "pawproj", got "other"/);
   assert.throws(() => parse('{"format":"pawproj"}'), /version: expected a non-negative integer, got undefined/);
-  assert.throws(() => parse('{"format":"pawproj","version":99,"axes":{}}'), /version 99 .* up to 3/);
+  assert.throws(() => parse('{"format":"pawproj","version":99,"axes":{}}'), /version 99 .* up to 4/);
 
   const e = (mut) => { const o = good(); o.axes = { stroke: [[0, 1], [10, 2], [20, 3]], roll: [[1, 1]] }; o.activeAxis = 'stroke'; o.chapters = []; o.bookmarks = []; o.loops = []; o.plan = []; o.ghosts = []; o.view = null; mut(o); return errs(o).map((x) => `${x.path}: ${x.message}`); };
   assert.deepEqual(e((o) => { o.axes.stroke[1] = [10, 200]; }), ['axes.stroke[1]: expected [at, pos] with integer at >= 0 and pos in 0..100, got [10,200]']);

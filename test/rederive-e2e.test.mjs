@@ -29,7 +29,6 @@ describe('rederive e2e', { skip: !ON && 'set REDERIVE_E2E=1 to run the browser c
       const tr = T.trackingFor(window.app);
       app.doc.media = { ...app.doc.media, width: 1920, height: 1080 };
       app.doc.scenes = [{ start_ms: 0, end_ms: 8000 }, { start_ms: 8000, end_ms: 14000 }];
-      for (const k of ['g3_n', 'g4_n']) fx.auto.channels[k] = fx.auto.channels.g1_n.map(([t]) => [t, 0]);   // a real run has all four bodies' shares (the panel legend reads them)
       const notes = [0, 1].map((k) => ({ code: 'primary', scene_index: k, message: 'proj', data: { chosen: 'proj' } }));
       const run = R.makeRun({ n: 7, tracker: { id: 'cotracker_points', name: 'CoTracker3' }, params: fx.auto.params, range: { start: 0, end: 14000 }, roi: null,
         result: { samples: fx.auto.channels.proj, points: [{ at: 100, pos: 0 }, { at: 7000, pos: 100 }, { at: 9000, pos: 0 }, { at: 13000, pos: 100 }], scenes: fx.scenes.map((s) => ({ ...s, sign: 1 })), channels: fx.auto.channels, notes },

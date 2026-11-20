@@ -100,7 +100,7 @@ export function setSignalSpan(list, { t0, t1 }, value, from = null) {
 }
 
 // ---- resolving a source ----
-const groupKey = (c) => { const s = /^(sem_[a-z0-9_]+?)_(proj|rel)$/.exec(c || '') || /^(g[1-4](p[12])?)_(proj|rel)$/.exec(c || ''); return s ? s[1] : ''; };
+const groupKey = (c) => { const s = /^(sem_[a-z0-9_]+?)_(proj|rel)$/.exec(c || ''); return s ? s[1] : ''; };
 /** Can run build channel `name` (fused needs two parts with centres; a pair both centres)? canFuse is passed in (no
  *  import of fusion.js here: fusion imports nothing back, but runs-channel wires both). */
 export function canSource(run, name, canFuse = () => false) {

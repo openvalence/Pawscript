@@ -25,11 +25,16 @@
 # commands are printed. Big files first, manifest.json last and on its own (a manifest never names a file not there
 # yet). docs/BUILDING.md, "Models and the runtime on R2".
 # Never in the manifest: CoTracker3 (CC BY-NC 4.0, in no build: docs/guide/cotracker.md).
+# paw-vdb3.2: the AMD runtime (-RuntimeRocm, made by dev/share/make-runtime-rocm.ps1) is the entry runtime-rocm; the app
+# picks between the two runtimes (paw-vdb3.3). Its "hosted" is carried over from the compiled manifest (false until the
+# owner uploads it; then set it true there; a new zip starts at false again).
+# Without the zip on this machine the compiled manifest's entry is kept as it is.
 #Requires -Version 7
 param(
   [string]$Out = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Pawscript-models\v1'),
   [string]$Models = (Join-Path $PSScriptRoot '..\..\trackers'),
   [string]$Runtime = '',
+  [string]$RuntimeRocm = (Join-Path $PSScriptRoot 'runtime\runtime-rocm-2026-11-19.zip'),
   [switch]$Embed,
   [switch]$Upload,
   [string]$Bucket = 'openvalence-downloads',   # OpenValence's R2 bucket (served as https://dl.openvalence.org/)
@@ -94,6 +99,20 @@ $rtName = Split-Path $Runtime -Leaf
 $list += [ordered]@{ id = 'runtime'; kind = 'runtime'; title = 'Runtime (Python, PyTorch, ffmpeg)'; for = 'Runs the trackers and reads your videos'; required = $true
   licence = 'PSF / BSD / GPL-3.0 (ffmpeg) and more'; licenceUrl = 'https://github.com/openvalence/Pawscript/blob/main/dev/share/LICENSES-SUMMARY.txt'; notice = ''; version = $rtStamp
   files = @(Add-File $Runtime 'runtime.zip' "runtime/$rtName") }   # -> runtime/runtime-<date>-<sha8>.zip
+# paw-vdb3.2: the AMD runtime, runtime-rocm.zip (python-rocm\ beside the CUDA runtime's python\, portable.rs ZIPS)
+$compiled = Get-Content (Join-Path $PSScriptRoot '..\..\src\features\models\manifest.json') -Raw | ConvertFrom-Json
+$wasRocm = $compiled.models | Where-Object { $_.id -eq 'runtime-rocm' }
+if (Test-Path -LiteralPath $RuntimeRocm) {
+  $rocmStamp = (& "$env:SystemRoot\System32\tar.exe" -xOf $RuntimeRocm runtime-rocm.stamp | Out-String).Trim()
+  $pin = (Select-String -Path (Join-Path $PSScriptRoot '..\..\trackers\requirements-rocm.txt') -Pattern '^torch==(\S+)').Matches[0].Groups[1].Value
+  if (($rocmStamp -split ' ') -notcontains "torch$pin") { throw "$RuntimeRocm (stamp '$rocmStamp') is not built from trackers/requirements-rocm.txt (torch $pin)" }
+  $archs = (& "$env:SystemRoot\System32\tar.exe" -xOf $RuntimeRocm python-rocm/gpu-archs.json | Out-String | ConvertFrom-Json).archs
+  $list += [ordered]@{ id = 'runtime-rocm'; kind = 'runtime'; hosted = [bool]($wasRocm -and $wasRocm.hosted -ne $false -and $wasRocm.version -eq $rocmStamp)
+    gpu = 'amd'; archs = @($archs); title = 'Runtime for AMD (Python, PyTorch ROCm, ffmpeg)'; for = 'Runs the trackers on an AMD Radeon RX 9000 or RX 7000 card'
+    required = $true; licence = 'PSF / BSD / Apache-2.0 / MIT (ROCm) / GPL-3.0 (ffmpeg) and more'
+    licenceUrl = 'https://github.com/openvalence/Pawscript/blob/main/dev/share/LICENSES-SUMMARY.txt'; notice = ''; version = $rocmStamp
+    files = @(Add-File $RuntimeRocm 'runtime-rocm.zip' "runtime/$(Split-Path $RuntimeRocm -Leaf)") }   # -> runtime/runtime-rocm-<date>-<sha8>.zip
+} elseif ($wasRocm) { Write-Warning "no $RuntimeRocm here: runtime-rocm kept as the compiled manifest has it"; $list += $wasRocm }
 $manifest = [ordered]@{ kind = 'pawscript.models/1'; version = 1; generated = (Get-Date -Format 'yyyy-MM-dd'); models = $list }
 $json = ($manifest | ConvertTo-Json -Depth 8) + "`n"
 Set-Content (Join-Path $Out 'manifest.json') $json -NoNewline

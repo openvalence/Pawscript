@@ -14,7 +14,7 @@ const pulses = (t0, t1, every) => { const t = [], v = []; for (let x = t0; x < t
 const push = (t0, t1, a, b) => { const t = [], v = [], c = []; for (let x = t0; x < t1; x += 33) { t.push(x); v.push(x < a ? 0 : x > b ? 1 : (x - a) / (b - a)); c.push(1); } return [{ t, v }, { t, v: c }]; };
 
 test('the reacting part per kind; idle and the Refine kinds are generated only', () => {
-  assert.deepEqual(REACTS, { orgasm: 'balls', throbbing: 'penis', knotting: 'penis', insertion: 'penis', pullout: 'penis' });
+  assert.deepEqual(REACTS, { orgasm: 'balls', throbbing: 'penis', knotting: 'penis' });
   assert.equal(trackedBy(M('i', 'idle', 0, 5000), { channels: { sem_balls_scale: pulses(0, 5000, 700) } }), null);
   assert.equal(trackedBy(M('o', 'orgasm', 0, 5000), null), null, 'no run: generated');
   assert.equal(trackedBy(M('o', 'orgasm', 0, 5000), { channels: {} }), null, 'a run without the part: generated');
@@ -42,17 +42,17 @@ test('orgasm: its spurts from the balls contraction peaks, only where no spurt w
 
 test('insertion / one knot: the push timing off a SAM shaft\'s inserted fraction (confident frames); the owner\'s own params win', () => {
   const [v, c] = push(0, 20000, 6000, 12000), run = { channels: { sem_c1_penis_in: v, sem_c1_penis_in_conf: c } };
-  const ins = trackedBy(M('i', 'insertion', 5000, 15000), run);
+  const ins = trackedBy(M('i', 'knotting', 5000, 15000, { params: { mode: 'none', to: 0 } }), run);
   assert.equal(ins.part, 'penis'); assert.equal(ins.ch, 'sem_c1_penis_in');
-  assert.ok(ins.params.push > 0.4 && ins.params.push < 0.8 && ins.params.arrive > 0.6, JSON.stringify(ins.params));
-  const r = resolveTracked([M('i', 'insertion', 5000, 15000, { params: { push: 0.2 } })], () => run);
+  assert.ok(ins.params.push > 0.4 && ins.params.push < 0.8 && ins.params.popAt > 0.6, JSON.stringify(ins.params));
+  const r = resolveTracked([M('i', 'knotting', 5000, 15000, { params: { mode: 'none', to: 0, push: 0.2 } })], () => run);
   assert.equal(r.list[0].params.push, 0.2, 'own push kept');
-  assert.ok(r.list[0].params.arrive > 0.6, 'the fitted arrival fills in');
+  assert.ok(r.list[0].params.popAt > 0.6, 'the fitted arrival fills in');
   const knot = trackedBy(M('k', 'knotting', 5000, 15000, { params: { mode: 'single' } }), run);
   assert.equal(knot.params.mode, 'single');
   assert.equal(trackedBy(M('k', 'knotting', 5000, 15000, { params: { mode: 'cycles' } }), run), null, 'cycles always follow the tracked strokes');
   const low = { channels: { sem_c1_penis_in: v, sem_c1_penis_in_conf: { t: c.t, v: c.v.map(() => 0.2) } } };
-  assert.equal(trackedBy(M('i', 'insertion', 5000, 15000), low), null, 'unconfident frames say nothing: generated');
+  assert.equal(trackedBy(M('i', 'knotting', 5000, 15000, { params: { mode: 'none', to: 0 } }), low), null, 'unconfident frames say nothing: generated');
 });
 
 test('the final script takes the resolved modifiers only for the list they were resolved from', () => {

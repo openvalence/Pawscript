@@ -83,7 +83,7 @@ export function makeFakeSidecar({ delay = 4, write = null } = {}) {
     if (req.tracker === 'sam2_mask') channels.area = samples.map(([t, v]) => [t, +(0.02 + 0.01 * v).toFixed(5)]);
     const ts = samples.map((x) => x[0]), vs = samples.map((x) => x[1]), tt = new Set(turnsOf(ts, vs));
     const points = samples.filter(([t]) => tt.has(t)).map(([t, v]) => ({ at: t, pos: Math.round(v * 100) }));
-    const scenes = WORLD.scenes.filter(([a, b]) => b > req.start_ms && a < req.end_ms).map(([a, b]) => ({ start_ms: Math.max(a, req.start_ms), end_ms: Math.min(b, req.end_ms), sign: 1, auto_sign: null }));
+    const scenes = WORLD.scenes.filter(([a, b]) => b > req.start_ms && a < req.end_ms).map(([a, b]) => ({ start_ms: Math.max(a, req.start_ms), end_ms: Math.min(b, req.end_ms), sign: 1 }));
     return { result: { type: 'result', samples, points, events: [], media, scenes, channels, confidence: samples.map(([t]) => [t, 0.9]) } };
   }
 

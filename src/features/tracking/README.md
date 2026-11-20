@@ -68,13 +68,10 @@ else the run's default `channel` ('primary' = the sidecar's points there); its l
 likewise each scene's channel, a gap between scenes; the ghost script is the composed points.
 - `setChannel(id, ch, scene)`: scene >= 0 changes only that scene's link (the run it named before goes back to its default
   there, both recompose); no scene / -1 sets the run's default `channel` (the Director's whole-run calls land here).
-- `pickChannel(id, ch)` (lane dropdown, `pickGroup`, a group click on the video): `setChannel` with `sceneOf(run)` = the
-  current scene if the run overlaps it, else the scene it overlaps most (`sceneForRun`), else the default.
 - `channelFor(run, i = sceneOf(run))`: the channel the run uses in scene i (the dropdown, legend chips and lane group
   traces show it).
 - `sceneLink(i)` -> `{runId, channel, ghost} | null` (live only), `linkScene(i, runId, channel)` -> bool (= `setChannel`
   with scene i); both on `api.js` too, with `currentScene()`.
-- `setChannelFit(patch)`: the default and every channel link take the new fit; every run using a channel recomposes.
 - Continuing actions (`lib/scenes-continue.js`): `proposed` (start_ms of scenes proposed to continue, from 16×16 grey
   fingerprints of each scene's first / last frame through a WebCodecs scrubber, recomputed 600 ms after any scene change,
   cached per video), `liveScenes(list)` (the scenes with the proposals applied, internal-view runs between two scenes of one kind included), `bridges` ($derived `[{t0, t1, script}]`:
@@ -121,7 +118,7 @@ picks and `runsInfo()` work; each replaces a ghost-rebuilt record of the same id
 - Format: `src/lib/runs-file.js` header. Masks (sam2 polygons) are not stored (`run.masksOmitted` = frame count; the box
   stays); a grid frame's points / boxes are rebuilt from `pts`. 256 points x 1800 frames is about 2.9 MB.
 
-Usage notes (`app.usage`): `tracking:track` (tracker id), `tracking:gridFrame`, `tracking:describe` (scene index; describeAll notes each), `tracking:pickGroup` (g1..g4),
+Usage notes (`app.usage`): `tracking:track` (tracker id), `tracking:gridFrame`, `tracking:describe` (scene index; describeAll notes each),
 `tracking:setChannel` (channel).
 
 ## Run ranges: which run plays where (paw-1ysd; the rule: `lib/run-ranges.js`)
@@ -283,8 +280,8 @@ a chosen mode is explicit (`cam.explicit` keeps a chosen auto), `camState(i, spa
 under untouched shots as `cam.tag` (it never swaps the sidecar's points: `userReprojects`), pairs and fusion read it (`camInput`).
 API for the video overlay (paw-ufv): `tr.setPair(a, b, span?)`, `tr.signalState(t)` -> {runId, shot, source, pair,
 against, override, parts, fusion: {candidates, windows, weightsAt}}, `tr.pairPick` + `tr.pickPairPart(key)` (two
-tracker clicks = a pair). The g1..g4 motion groups have no chips or legend in the panel / Shot popover / lane any more
-(the picker lists them last; `tr.pickGroup` and the overlay's group click still work; old projects load as they were).
+tracker clicks = a pair). The sidecar sends no motion-group channels (PROTOCOL v4.60, paw-57dw): the group pass' moving
+groups exist only as the overlay `pts` group / part elements (the blobs view and dock draw them; nothing picks them).
 paw-0sn8 (jitter; measured in experiments/fusion/RESULTS.md): `FUSE.JIT`, per shot / range in `fuse.jit` (fuseClean keeps
 only `{dir: true}` / `{refine: 0}`), the panel's **Signal** chips. *smooth* (default on, `refine` 0.15): a quadratic
 Savitzky-Golay pass over the fused signal and its timing series, half-width 0.15 x the stroke period (twice the 25th
@@ -334,7 +331,9 @@ them all ({shot, ms, pos}) for measurement scripts.
 `lib/strokes.js` (pure): `strokes(t, v, {smoothMs, minStroke, minMs, range: scene | follow | local, detail, maxSpeed,
 sign, timing, conf})` -> {points [{at, pos, why}], low [{t0, t1}]}: the sidecar's `to_points` ported (Savitzky-Golay,
 local-range prominence, alternation, sub-frame, min interval, speed clamp) plus min stroke duration, the range policy
-(scene = drift over two strokes removed, then p2..p98), detail by tolerance, a timing series, low-confidence spans.
+(scene = p2..p98; `undrift` takes the drift over two strokes out first: on for a raw channel, off for `fused`, a shot's
+`strokes.undrift` wins; a stroke under `minAmp` x the piece's median goes where the signal holds beside it, `stillRange`),
+detail by tolerance, a timing series, low-confidence spans.
 `pointsFromChannel(run, name, {strokes})` uses it (and returns `why`, `low`); `channelPatch` routes a scene there when
 its shot derive has `smart` (channel `fused`) or `strokes` (its signal; the sidecar's pick from `run.samples`), and
 returns `whys` / `low` for the lane. Store: `setSmart(i, on)`, the A/B preview ghost `smart-ab` (`#publishSmartAB`,
@@ -503,8 +502,8 @@ trackers/tests/test_knot_section_reseed.py.
 
 A finished points run is re-derived from what it stored, no sidecar: `lib/rederive.js` (pure; parity with the sidecar's
 `stroke_proj` through `test/fixtures/rederive-run.json`, made by `trackers/tests/rederive_fixture.py`) recomputes `proj`,
-`proj_cam`, every `{group}_proj` with a stored centre, and (axis not auto, or a zoom / rotation camera) `pair_proj` and
-the characters' distances, per run scene, from `centroid_x/_y`, `cam_x/_y`, `{group}_x/_y` and the frames' `pts`.
+`proj_cam`, every `{group}_proj` with a stored centre, and (axis not auto, or a zoom / rotation camera) the characters'
+distances, per run scene, from `centroid_x/_y`, `cam_x/_y`, `{group}_x/_y` and the frames' `pts`.
 - Settings live on the shot: `app.doc.scenes[i].derive = {cam?: {mode: auto|off|move|zoom|full, strength, source:
   background|all, smoothMs}, axis?: {mode: auto|vertical|horizontal|custom, x0..y1}}` (`deriveClean`: overrides only).
   Undoable (`setDerive(i, patch, {commit, scope: 'shot'|'scene'})` = one `app.transact`); a drag sets `derivePreview`

@@ -31,7 +31,7 @@
   // says from where, Drop removes them; the "auto" box turns it off, then "Use groups from" does it); a take without
   // groups shows its best frame to paint (most empty takes its repeats would fill), also marked on the ruler.
   import { untrack } from 'svelte';
-  import { groupsRoom, pictureTarget } from './groups-room.js';
+  import { groupsBar, groupsRoom, pictureTarget } from './groups-room.js';
   import { leaves } from '../../app/areas.js';
   import { groupsFor, BRUSH, repeatCopyAt, copyGroupsToRepeats, twinGroupsAt, useTwinGroups, autoFill, dropFill, bestPaintMark } from './groups.svelte.js';
   import { repeatsOf } from '../timeline/repeats.svelte.js';
@@ -39,7 +39,7 @@
   import { PAIRED, WHOS, whoName, whoShort, nextWho, SOFT, partLabel, partWord, splitName, takeGroups, groupsShownAt, polyArea, isUnassigned, unassignedIn, canPulse, isPulse, canShaft, isShaft, canDepth, isDepth, isSuggested, isCopy, confidenceOf, isTentative, shownLine, youngNote, WHO_GATE, isIgnore, dockRows } from './groups.js';
   import { veilPixels } from './ignore-veil.js';
   import { shortTag, sharedWho, dropWho, LABEL_MODE_NAMES } from './group-labels.js';
-  import { maskStats, chainDirs, hatchOf, ditherOf, ditherOn, ditherGeom, busyCells, fitLabel, readable, labelTone, DASH, FILL_NAMES } from './group-look.js';
+  import { maskStats, chainDirs, hatchOf, ditherOf, ditherOn, ditherGeom, busyCells, fitLabel, readable, labelTone, DASH, FILL_NAMES, causticField, growAt, shimmerOn, GROW } from './group-look.js';
   import { groupTarget } from './commands.js';
   import { shotLabel, sceneRange } from '../timeline/shots.js';
   import { modLabel } from '../timeline/mods.js';
@@ -199,16 +199,20 @@
     c.cv.width = nw * cd; c.cv.height = nh * cd;
     const g = c.cv.getContext('2d'), img = g.createImageData(nw * cd, nh * cd), px = img.data, W4 = nw * cd;
     const hx = /^#?([0-9a-f]{6})$/i.exec(color)?.[1], rgb = hx ? [16, 8, 0].map((s) => (parseInt(hx, 16) >> s) & 255) : [230, 233, 238], al = Math.round(2.55 * dAlpha);
+    const cells = new Uint8Array(nw * nh), cov = new Float32Array(nw * nh);   // per cell: inside the mask, its coverage (the shimmer / grow move it)
+    let rmax = 0;
     for (let j = 0; j < nh; j++) for (let i = 0; i < nw; i++) {
       const X = (ox + (i0 + i + 0.5) * cd) / dpr, Y = (oy + (j0 + j + 0.5) * cd) / dpr, [nx, ny] = env.unmap(X, Y);   // the cell's middle, stage px -> picture
       const mx = Math.floor(nx * m.w), my = Math.floor(ny * m.h);
       if (mx < 0 || my < 0 || mx >= m.w || my >= m.h || m.a[my * m.w + mx] < 0.5) continue;
+      cells[j * nw + i] = 1; rmax = Math.max(rmax, Math.hypot(i0 + i + 0.5, j0 + j + 0.5));
       const t = dir.ramp ? Math.min(1, Math.max(0, ((X - cx) * ux + (Y - cy) * uy - t0) / Math.max(1e-6, t1 - t0))) : 0.5;
-      if (!ditherOn(i0 + i, j0 + j, d.hi + (d.lo - d.hi) * t, d.mirror)) continue;
+      cov[j * nw + i] = d.hi + (d.lo - d.hi) * t;
+      if (!ditherOn(i0 + i, j0 + j, cov[j * nw + i], d.mirror)) continue;
       for (let y = 0; y < ds; y++) for (let x = 0; x < ds; x++) { const k = ((j * cd + off + y) * W4 + i * cd + off + x) * 4; px[k] = rgb[0]; px[k + 1] = rgb[1]; px[k + 2] = rgb[2]; px[k + 3] = al; }
     }
     g.putImageData(img, 0, 0);
-    return Object.assign(c, { key, x: (ox + i0 * cd) / dpr, y: (oy + j0 * cd) / dpr, w: (nw * cd) / dpr, h: (nh * cd) / dpr });
+    return Object.assign(c, { key, x: (ox + i0 * cd) / dpr, y: (oy + j0 * cd) / dpr, w: (nw * cd) / dpr, h: (nh * cd) / dpr, cells, cov, mirror: d.mirror, i0, j0, nw, nh, cd, ds, off, rmax, rgb, al });
   }
   // ---- paw-c1m1: what a part is set to do, readable from its look in every fill style (never colour alone): measured (depth with
   // SAM / how much of the shaft is inside) = a ruler along its long edge; spurt cue (its contractions) = dotted rings inside its
@@ -255,14 +259,14 @@
     ctx.restore();
   }
   /** A part's mask in the fill style: dither (the dot grid alone; parts without one: the gradient), hatch (a fainter tint + the
-   *  lines), gradient, flat. */
-  function drawLook(ctx, env, m, color, ver, h, dir, name) {
+   *  lines), gradient, flat. skip: the dot grid built, not drawn (it is animated on the stroke canvas). -> the dot grid's cache entry. */
+  function drawLook(ctx, env, m, color, ver, h, dir, name, skip = false) {
     if (fillStyle === 'flat') return drawMask(ctx, env, m, color, ver, 'flat');
     if (fillStyle === 'dither') {
       const d = ditherOf(name), st = d && dir ? statsOf(m, ver) : null, dc = st?.n ? ditherCanvas(env, m, ver, color, d, dir, st) : null;
       if (!dc) return drawMask(ctx, env, m, color, ver);
-      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(dc.cv, dc.x, dc.y, dc.w, dc.h); ctx.restore();
-      return;
+      if (!skip) { ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(dc.cv, dc.x, dc.y, dc.w, dc.h); ctx.restore(); }
+      return dc;
     }
     if (fillStyle !== 'hatch' || !h || !dir) return drawMask(ctx, env, m, color, ver);
     const a0 = ctx.globalAlpha, st = statsOf(m, ver), hc = st.n ? hatchCanvas(env, m, ver, color, h, dir, st) : null;
@@ -324,6 +328,8 @@
       if (!free(b)) continue;
       boxes.push({ x: X, y: Y, bw: b.bw, bh: b.bh });
       ctx.save(); ctx.translate(X, Y); ctx.rotate(o.ang);
+      const ae = q.k >= 0 && anim.find((e) => e.k === q.k);
+      if (ae) { const w = Math.round(b.w), h = Math.round(b.h), dc = ae.dc; ctx.save(); ctx.beginPath(); ctx.rect(-w / 2 - 2, -h / 2 - 2, w + 4, h + 4); ctx.clip(); ctx.rotate(-o.ang); ctx.translate(-X, -Y); ctx.globalAlpha = ae.alpha; ctx.imageSmoothingEnabled = false; ctx.drawImage(dc.cv, dc.x, dc.y, dc.w, dc.h); ctx.restore(); }
       ctx.globalAlpha = LABEL_ALPHA * (q.alpha ?? 1);
       ctx.font = LABEL_FONT(f.px, f.full);
       ctx.strokeStyle = PLATE; ctx.lineWidth = fillStyle === 'dither' ? 4 : 2.5; ctx.strokeText(f.text, 0, 0);   // a thin dark halo: reads on any footage (a wider one on the loud dither)
@@ -375,8 +381,76 @@
     return out;
   }
 
+  // ---- the shimmer and the grow (group-look.js causticField / growAt / shimmerOn): an unassigned part's dither shimmers; a part
+  // just given a name fills in from its middle out, then settles. Both move each cell's coverage, so dots switch on and off (its colour and alpha,
+  // whole dots). The overlay leaves an animated part's dots out and the stroke canvas draws them each frame, the parts above, the
+  // outlines and the label boxes cut out (the overlay draws the static dots under its labels). The loop runs only while one is shown;
+  // off under reduced motion ----
+  const calm = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+  let wasUn = new WeakSet();   // mask arrays drawn unassigned on the last draw (a mask array survives its group's assign)
+  const grows = new WeakMap();   // mask array -> t0 of its grow
+  let anim = [], animPolys = [], animDrawn = false;   // [{k, dc (its dot grid), a (mask array), shimmer, alpha}], every group drawn in draw order, the stroke canvas shows them
+  /** Group k (mask m) on this draw: notes it unassigned / starts its grow. -> animated (its dots go on the stroke canvas). */
+  function animOf(g, m, was, un, motion, now) {
+    const unas = isUnassigned(g);
+    if (unas) un.add(m.a); else if (motion && was.has(m.a)) grows.set(m.a, now);
+    return motion && (unas || now - grows.get(m.a) < GROW.ms);
+  }
+  const smallCv = typeof document === 'undefined' ? null : document.createElement('canvas'), cellCv = smallCv && document.createElement('canvas');
+  const dotPats = new Map();   // `${cd}|${ds}|${off}` -> a one-cell tile with the dot in it
+  /** One part's dots on ctx: tc its shimmer clock (-1 none), rt ms since its assign (-1 none). One px per cell, scaled up unsmoothed,
+   *  cut to the dot's square. The shimmer keeps each cell's last state (hon: its hysteresis), from the static pattern per grid. */
+  function animCells(ctx, c, tc, rt, alpha) {
+    const { nw, nh, cd, ds, off, cells, cov, mirror, i0, j0, rmax, rgb, al } = c, W = nw * cd, H = nh * cd;
+    if (smallCv.width !== nw || smallCv.height !== nh) { smallCv.width = nw; smallCv.height = nh; }
+    if (cellCv.width !== W || cellCv.height !== H) { cellCv.width = W; cellCv.height = H; }
+    const sg = smallCv.getContext('2d'), cg = cellCv.getContext('2d');
+    if (c.img?.width !== nw || c.img?.height !== nh) { c.img = sg.createImageData(nw, nh); c.field = new Float32Array(nw * nh); }
+    const px = c.img.data, f = tc >= 0 ? causticField(i0, j0, nw, nh, tc, c.field) : null;
+    if (f && c.honKey !== c.key) { c.hon = new Uint8Array(nw * nh); for (let k = 0; k < c.hon.length; k++) c.hon[k] = cells[k] && ditherOn(i0 + (k % nw), j0 + Math.floor(k / nw), cov[k], mirror) ? 1 : 0; c.honKey = c.key; }
+    for (let j = 0, k = 0; j < nh; j++) for (let i = 0; i < nw; i++, k++) {
+      const q = k * 4, on = !!cells[k] && shimmerOn(i0 + i, j0 + j, cov[k], f ? f[k] : 0, rt >= 0 ? growAt(Math.hypot(i0 + i + 0.5, j0 + j + 0.5), rt, rmax) : 0, mirror, f ? c.hon[k] : null);
+      if (f) c.hon[k] = on ? 1 : 0;
+      px[q] = rgb[0]; px[q + 1] = rgb[1]; px[q + 2] = rgb[2]; px[q + 3] = on ? al : 0;
+    }
+    sg.putImageData(c.img, 0, 0);
+    cg.clearRect(0, 0, W, H); cg.imageSmoothingEnabled = false; cg.drawImage(smallCv, 0, 0, W, H);
+    if (ds < cd) {
+      const pk = `${cd}|${ds}|${off}`;
+      let pat = dotPats.get(pk);
+      if (!pat) { const t = document.createElement('canvas'); t.width = t.height = cd; t.getContext('2d').fillRect(off, off, ds, ds); pat = cg.createPattern(t, 'repeat'); dotPats.set(pk, pat); }
+      cg.globalCompositeOperation = 'destination-in'; cg.fillStyle = pat; cg.fillRect(0, 0, W, H); cg.globalCompositeOperation = 'source-over';
+    }
+    ctx.save(); ctx.globalAlpha = alpha; ctx.imageSmoothingEnabled = false; ctx.drawImage(cellCv, c.x, c.y, c.w, c.h); ctx.restore();
+  }
+  /** The animated parts on ctx at now; the groups drawn above one, the outlines and the labels cut out of it. -> 0 done, 1 a
+   *  shimmer only, 2 a grow running. A grow just ended: the overlay draws that part's dots again. */
+  function drawAnim(ctx, env, now) {
+    if (!anim.length || !smallCv) return 0;
+    let live = 0, drew = false;
+    ctx.save();
+    for (const { k, poly } of animPolys) {
+      const e = anim.find((q) => q.k === k);
+      if (!e) {   // a group drawn above the animated ones (a part over another)
+        if (drew && poly?.length >= 3) { ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); pathPoly(ctx, env, poly); ctx.fill(); ctx.globalCompositeOperation = 'source-over'; }
+        continue;
+      }
+      const t0 = grows.get(e.a), rt = t0 == null || now - t0 >= GROW.ms ? -1 : now - t0;
+      if (!e.shimmer && rt < 0) { layer?.invalidate(); continue; }
+      animCells(ctx, e.dc, e.shimmer ? now : -1, rt, e.alpha); drew = true; live = Math.max(live, rt >= 0 ? 2 : 1);
+    }
+    if (drew) {
+      ctx.globalCompositeOperation = 'destination-out'; ctx.lineWidth = 3.5; ctx.lineJoin = 'round';
+      for (const { poly } of animPolys) if (poly?.length >= 3) { ctx.beginPath(); pathPoly(ctx, env, poly); ctx.stroke(); }
+      for (const l of shown) { ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(l.ang); ctx.fillRect(-l.w / 2 - 2, -l.h / 2 - 2, l.w + 4, l.h + 4); ctx.restore(); }
+    }
+    ctx.restore();
+    return live;
+  }
+  let animNext = 0;   // a shimmer alone repaints at most every 30 ms (it moves a few cells a second)
+
   let hl = $state.raw(null), hlKey = '';   // the active group's highlight (SVG layer): geometry of the last draw
-  const flash = driver(() => paintStroke());   // the one animation loop: the fade of a just-assigned group, on the stroke canvas (paw-o60v.6: not the whole overlay per frame)
+  const flash = driver(() => { if (performance.now() >= animNext) paintStroke(); });   // the one animation loop: the fade of a just-assigned group, the shimmer and the grow, on the stroke canvas (paw-o60v.6: not the whole overlay per frame)
   $effect(() => () => flash.stop());
   let lastEnv = null;   // the overlay layer's env of the last paint (map / unmap: the cursor canvas, coalesced samples, drops)
   let dropK = $state(-1);   // a drag hovering group k on the video (its drop highlight)
@@ -408,7 +482,10 @@
     if (on && here) order.forEach((k) => { const g = list[k]; if (k !== dk && !g.off && isIgnore(g)) { const lv = liveOf(k); drawVeil(ctx, env, lv ? lv.mask : G.maskFor(g), lver(lv)); } });   // ignore regions: the veil first, parts draw above it
     const lookName = (k) => (k === assignK && prev ? prev : tintName(list[k])), maskOfK = (k) => liveOf(k)?.mask || G.maskFor(list[k]);   // paw-c1m1: the hatch follows the would-be name too
     const dirs = on && here && (fillStyle === 'hatch' || fillStyle === 'dither') ? dirsOf(list.map((g, k) => (k === dk || g.off || isIgnore(g) ? null : { name: lookName(k), m: maskOfK(k), ver: lver(liveOf(k)) }))) : [];
-    if (on && here) order.forEach((k) => { const g = list[k]; if (k !== dk && !g.off && !isIgnore(g)) { const lv = liveOf(k); if (assignK >= 0 && k !== assignK) ctx.globalAlpha = OTHERS_ALPHA; drawLook(ctx, env, lv ? lv.mask : G.maskFor(g), groupPaint(lookName(k)), lver(lv), hatchOf(lookName(k)), dirs[k], lookName(k)); const kn = !lv && G.knotFor(g); if (kn) drawMask(ctx, env, kn, knotPaint(g.name)); ctx.globalAlpha = 1; } });   // tints first: outlines and chips stay on top; paw-njnf: a penis' knot section a darker shade on it
+    const was = wasUn, un = new WeakSet(), motion = on && here && fillStyle === 'dither' && !calm?.matches, now = performance.now();
+    wasUn = un; anim = [];
+    if (on && here) order.forEach((k) => { const g = list[k]; if (k !== dk && !g.off && !isIgnore(g)) { const lv = liveOf(k), m = lv ? lv.mask : G.maskFor(g), am = animOf(g, m, was, un, motion, now); if (assignK >= 0 && k !== assignK) ctx.globalAlpha = OTHERS_ALPHA; const dc = drawLook(ctx, env, m, groupPaint(lookName(k)), lver(lv), hatchOf(lookName(k)), dirs[k], lookName(k), am); if (am && dc) anim.push({ k, dc, a: m.a, shimmer: isUnassigned(g), alpha: ctx.globalAlpha }); const kn = !lv && G.knotFor(g); if (kn) drawMask(ctx, env, kn, knotPaint(g.name)); ctx.globalAlpha = 1; } });   // tints first: outlines and chips stay on top; paw-njnf: a penis' knot section a darker shade on it
+    animPolys = anim.length ? order.map((k) => ({ k, poly: liveOf(k)?.poly || list[k].poly })) : [];
     const Q = [], oth = on && !G.draft ? G.othersHere() : [];   // the labels, placed and drawn together after the outlines
     const who1 = on ? sharedWho([...list.map((g) => g.name), ...oth.map((o) => o.g.name)]) : null;   // one character: its name left out of the labels (said once beside the bar)
     order.forEach((k) => {
@@ -463,7 +540,8 @@
       ctx.strokeStyle = PLATE; ctx.lineWidth = 3.5; ctx.stroke(); ctx.strokeStyle = ring; ctx.lineWidth = 1.5; ctx.stroke();
     }
     ctx.restore();
-    untrack(paintStroke);   // the view moved / the stroke began or ended: the stroke canvas follows
+    if (anim.length || animDrawn) untrack(() => { cancelAnimationFrame(rafStroke); rafStroke = 0; drawStroke(); });   // the animated dots left out above: drawn in the same frame
+    else untrack(paintStroke);   // the view moved / the stroke began or ended: the stroke canvas follows
     cursorSoon();   // ... and the ring (once a frame: the pointer draws it right away itself)
   }
 
@@ -536,9 +614,13 @@
     const ctx = cv.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
     if (!env?.map || !G.on || app.mode !== 'track' || G.copyPreview) { flash.run(false); return; }
-    const fl = G.flash, fa = fl ? 1 - (performance.now() - fl.t0) / 700 : 0, fg = fa > 0 ? G.groups.find((x) => x.name === fl.name) : null;
-    if (fg?.poly?.length >= 3) { ctx.beginPath(); pathPoly(ctx, env, fg.poly); ctx.fillStyle = groupPaint(tintName(fg)); ctx.globalAlpha = 0.55 * fa; ctx.fill(); ctx.globalAlpha = 1; }
-    flash.run(fa > 0);
+    const now = performance.now(), fl = G.flash, fa = fl ? 1 - (now - fl.t0) / 700 : 0, fg = fa > 0 ? G.groups.find((x) => x.name === fl.name) : null;
+    if (fg?.poly?.length >= 3 && !(now - grows.get(G.maskFor(fg).a) < GROW.ms)) { ctx.beginPath(); pathPoly(ctx, env, fg.poly); ctx.fillStyle = groupPaint(tintName(fg)); ctx.globalAlpha = 0.55 * fa; ctx.fill(); ctx.globalAlpha = 1; }   // a part growing: the grow instead
+    const live = drawAnim(ctx, env, now);
+    animDrawn = live > 0;
+    G.animMs = performance.now() - now; G.animN = (G.animN || 0) + 1;   // dev readout: the last paint's flash + shimmer + grow cost, paints so far
+    animNext = live === 1 && fa <= 0 && !d ? now + 30 : 0;
+    flash.run(fa > 0 || live > 0);
     if (!d) return;
     const g = d.g, name = g ? g.name : d.name || G.nextName, color = groupPaint(g ? tintName(g) : name), fitted = d.fitVer === d.ver, m = fitted ? d.mask : d.raw;
     ctx.save(); ctx.lineJoin = 'round';
@@ -857,7 +939,8 @@
   // picture keeps the pointer (capture) under the bar. Its wrapper stays put for Svelte (TrackerDock's portal).
   // paw-q3ad: the bar's width (one column, two or three on a short stage) is published on the stage as --gdock-w, so the cards
   // beside it and the first-run hint (onboard/NextStep.svelte) stay clear of it
-  let dockStage = $state(null), dockW = $state(36);
+  let dockStage = $state(null), dockW = $state(36), planH = $state(0);
+  const gb = $derived(planH ? groupsBar(planH) : null);   // paw-gj8y: button size from the stage's height, set in plan
   function onStage(node) {
     dockStage = node.parentElement?.closest('[data-testid="video-stage"], [data-testid="label-stage"]') || null;
     dockStage?.append(node);
@@ -869,12 +952,13 @@
   // (player.inset; groups-room.js); a stage too narrow even so has the side docks folded while the tool is open, then unfolded
   let folded = [];
   $effect(() => {
-    const st = dockStage, p = app.player, bar = dockW + 4;
+    const st = dockStage, p = app.player;
     if (!st || st.dataset.testid !== 'video-stage' || !p) return;
     const plan = () => {
       const W = st.clientWidth, H = st.clientHeight, vw = p.vw || app.doc.media?.width, vh = p.vh || app.doc.media?.height;
       if (!W || !H || !vw || !vh) return;
-      const r = groupsRoom(W, H, vw / vh, bar);
+      planH = H;   // paw-gj8y: planned from the full button set's width (groupsBar), never from the buttons showing now
+      const r = groupsRoom(W, H, vw / vh, groupsBar(H).barW + 4);
       if (r.fold && app.layout) {   // any side dock open again meanwhile (a layout reset) folds again too
         const open = leaves(app.layout.tree).filter((l) => (l.home === 'left' || l.home === 'right') && !l.collapsed).map((l) => l.home);
         for (const d of open) { app.layout.toggle(d, false); if (!folded.includes(d)) folded.push(d); }
@@ -987,7 +1071,7 @@
   {#if noneTip}<div class="k-tip gtip" role="tooltip" data-testid="groups-label-tip" style:left="{hoverPt.x + 16}px" style:top="{hoverPt.y + 18}px">{noneTip}</div>{/if}
   <!-- paw-i5qx: the bar, the chips beside it and the context line, moved onto the stage together (onStage) -->
   <div class="gdock-at"><div class="gtools" class:painting use:onStage>
-    <div class="gdock" class:col={collapsed} bind:offsetWidth={dockW} style:--gbar-a="{barAlpha}%" data-testid="groups-tools" role="toolbar" aria-orientation="vertical" aria-label="Groups">
+    <div class="gdock" class:col={collapsed} bind:offsetWidth={dockW} style:--gbar-a="{barAlpha}%" style:--tb-h={gb ? gb.h + 'px' : null} style:--tb-w={gb ? gb.w + 'px' : null} data-testid="groups-tools" role="toolbar" aria-orientation="vertical" aria-label="Groups">
       <button type="button" class="tb" data-testid="groups-collapse" aria-label={collapsed ? 'Open the Groups bar' : 'Fold the Groups bar'} onclick={foldClick}
         {@attach tooltip({ text: collapsed ? 'Open the Groups bar' : 'Fold the Groups bar', placement: 'right' })}><Icon name={collapsed ? 'chevron-down' : 'chevron-up'} size={14} /></button>
       {#if !collapsed}
@@ -1235,7 +1319,7 @@
   /* paw-q3ad: a stage shorter than the bar wraps it into a second (third) column, never a hidden scroll; the first-run hint
      sits right of it (onboard/NextStep.svelte) */
   .gdock { position: absolute; left: 0; top: 0; z-index: 4; pointer-events: auto; max-height: 100%; overflow: visible;
-    min-width: 36px; box-sizing: border-box; display: flex; flex-direction: column; flex-wrap: wrap; align-content: flex-start; align-items: center; gap: 1px 3px; padding: 3px 3px 4px;
+    min-width: calc(var(--tb-w, 30px) + 6px); box-sizing: border-box; display: flex; flex-direction: column; flex-wrap: wrap; align-content: flex-start; align-items: center; gap: 1px 3px; padding: 3px 3px 4px;
     user-select: none; -webkit-user-select: none; color: var(--tx); font-size: var(--fs-1);
     background: color-mix(in srgb, var(--bg) var(--gbar-a, 48%), transparent); backdrop-filter: blur(5px) saturate(1.2);
     border: 1px solid color-mix(in srgb, var(--line-2) 70%, transparent); border-width: 0 1px 1px 0; border-radius: 0 0 var(--radius) 0;
@@ -1243,7 +1327,7 @@
   .gdock > * { flex: none; }
   .gdock.col { padding-bottom: 3px; }
   .sep { width: 20px; height: 1px; margin: 2px 0; background: color-mix(in srgb, var(--line-2) 80%, transparent); }
-  .tb { all: unset; box-sizing: border-box; position: relative; display: grid; place-items: center; width: 30px; height: 28px; border-radius: var(--radius); color: var(--tx); cursor: pointer; }
+  .tb { all: unset; box-sizing: border-box; position: relative; display: grid; place-items: center; width: var(--tb-w, 30px); height: var(--tb-h, 28px); border-radius: var(--radius); color: var(--tx); cursor: pointer; }
   .tb:hover { background: color-mix(in srgb, var(--bg-hover) 85%, transparent); color: var(--tx-hi); }
   .tb:focus-visible { outline: 2px solid var(--focus); }
   .tb.on { color: var(--tx-hi); background: var(--sel-bg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tx-hi) 30%, transparent); }
@@ -1253,7 +1337,7 @@
   .tb.warn { color: var(--warn); }
   .tb.prim { color: var(--accent, var(--tx-hi)); }
   .tb.val { touch-action: none; cursor: ns-resize; }
-  .tb.val:has(.v) { grid-template-rows: 15px 9px; height: 30px; align-content: center; }
+  .tb.val:has(.v) { grid-template-rows: 15px 9px; height: calc(var(--tb-h, 28px) + 2px); align-content: center; }
   .tb .v { font-size: 9px; /* micro, below --fs-1: its box is fixed */ line-height: 9px; color: var(--tx); }
   .szw { display: grid; place-items: center; width: 16px; height: 15px; }
   .szdot { box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--tx-hi); box-shadow: 0 0 0 1px color-mix(in srgb, var(--media-bg) 50%, transparent); }

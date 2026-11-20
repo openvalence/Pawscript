@@ -31,7 +31,7 @@ def test_wrap_seeds_painted_groups_with_the_new_counts(monkeypatch):
     groups = cli.parse_groups(gs)
     P = {"axis": "vertical", "axis_x0": 0.5, "axis_y0": 0.3, "axis_x1": 0.5, "axis_y1": 0.7, "gap_ms": 1000, "primary": "auto",
          "box_seed": "grid", "box_points": 512, "group_points": 0, "reseed_every_ms": 0, "retire_ms": 2000, "max_points": 0,
-         "held_input": "off", "seed_frame": "first", "sem_groups": True, "group_labels": False, "groups": groups}
+         "held_input": "off", "seed_frame": "first", "sem_groups": True, "groups": groups}
     static = lambda fr, seed, reseed=None: ((t, seed.copy(), np.ones(len(seed), bool), np.ones(len(seed)), np.ones(len(seed))) for t, _ in fr)
     out = list(C.wrap(static, WHOLE, [(0, pic), (33, pic)], P, lambda vp, cf: 1.0, None, work_wh=(256, 256)))
     pts = out[0][2]["pts"]

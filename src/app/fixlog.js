@@ -209,10 +209,10 @@ const COMMIT = [
   [/^Autorange policy|^Autorange: (?!fill|apply|lock|leave|back|clear|S\d)\w+$/, () => F('fix:finish.policy', { scope: 'video' })],
   [/^Autorange: (S\d+ range|lock|leave|back to|clear)|^Range: /, (m) => F('fix:finish.range', { manual: { what: m[0].slice(0, 40) } })],
   [/^Add (\d+ )?spurts? \((proposed cumshots|balls contraction peaks)/, (m) => F('auto:spurts.place', { auto: { n: +(m[1] || 1), from: m[2].startsWith('balls') ? 'balls' : 'proposals' } })],
-  [/^Add (spurt|a single throb)( \(linked\))?$/, (m) => F('fix:spurts.hand', { key: m[1] === 'spurt' ? 'spurt' : 'throb', manual: { kind: m[1] === 'spurt' ? 'spurt' : 'throbbing' } })],
+  [/^Add (spurt|a single throb)( \((linked|orgasm grown)\))?$/, (m) => F('fix:spurts.hand', { key: m[1] === 'spurt' ? 'spurt' : 'throb', manual: { kind: m[1] === 'spurt' ? 'spurt' : 'throbbing' } })],
   // modifiers (paw-ef73.20): one object, every edit a doc.fx step
-  [/^(?:Mark|Add) (Orgasm|Knotting|Throbbing|Idle|Insertion|Pull-out|Reshape|Climax run-in)$|^Duplicate modifiers?$/, (m) => F('fix:fx.add', { key: m[1] || 'copy', manual: { kind: m[1] || 'copy' } })],
-  [/^(?:Remove|Delete) (?:modifiers?|Orgasm|Knotting|Throbbing|Idle|Insertion|Pull-out|Reshape|Climax run-in|Spurt)$/, () => F('fix:fx.remove')],
+  [/^(?:Mark|Add) (Orgasm|Knotting|Throbbing|Idle|push|pull|Reshape)$|^Duplicate modifiers?$/, (m) => F('fix:fx.add', { key: m[1] || 'copy', manual: { kind: m[1] || 'copy' } })],
+  [/^(?:Remove|Delete) (?:modifiers?|Orgasm|Knotting|Throbbing|Idle|Reshape|Spurt|spurt)$/, () => F('fix:fx.remove')],
   [/^(Move|Resize|Scale) modifiers?$|^Grow orgasm$/, () => F('fix:fx.retime')],
   [/^Modifier: (.+)$|^(?:Throbbing|Reshape|Knotting|Insertion|Pull-out): |^Modifier kind: /, (m) => F('fix:fx.params', { key: m[1] || '', manual: { kind: m[1] || m[0].replace(/:.*/, '') } })],
   [/^(Mute|Unmute|Un-bake) modifier$/, (m) => F('fix:fx.params', { manual: { what: m[1].toLowerCase() } })],

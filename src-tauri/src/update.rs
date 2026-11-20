@@ -1,10 +1,13 @@
-//! paw-cdot: Help > Check for updates (and Settings > Updates): tauri-plugin-updater against the GitHub release's
-//! latest.json, only when the user runs it (or turned on "Check for updates at start"). The other network connection
-//! besides models.rs; it sends nothing but the request (GitHub sees the address and the user agent).
+//! paw-cdot: Help > Check for updates (and Settings > Updates): tauri-plugin-updater against latest.json of the newest
+//! release on the public openvalence/Pawscript (tauri.conf.json plugins.updater.endpoints), only
+//! when the user runs it (or turned on "Check for updates at start"). The other network connection besides models.rs;
+//! it sends nothing but the request (GitHub sees the address and the user agent).
 //!
 //! Signed: the plugin checks the download against the public key in tauri.conf.json (plugins.updater.pubkey) before
-//! anything is written. A build whose key is still the placeholder says "updates are not configured in this build" and
-//! fetches nothing (docs/BUILDING.md: how the owner makes the key and signs a release).
+//! anything is written, and requireSignedVersion refuses a signature not bound to the announced version (no downgrade by
+//! an edited latest.json). A build whose key is still the placeholder says "updates are not configured in this build"
+//! and fetches nothing. The key is pawscript-updater-auto.key, without a password, so build-nas.ps1 -Release signs and
+//! publish-release.ps1 publishes with no step by the owner (docs/BUILDING.md, "Updates").
 //!
 //! Two kinds of build:
 //! - The shared (portable) build: a folder with Pawscript.exe, code.zip, python\ ... (no installer). Its release entry

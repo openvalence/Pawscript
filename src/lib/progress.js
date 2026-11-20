@@ -24,7 +24,8 @@ export function rateStep(prev, { done = 0, stage = '' } = {}, now = Date.now(), 
 const STAGE_TEXT = { scenes: 'finding cuts', 'model load': 'loading the model', inference: 'tracking the scene', groups: 'motion groups',
   frames: 'sending the tracked frames', points: 'making points', shaft: 'shaft pass', result: 'sending the result', read: 'reading the result',
   starting: 'starting the tracker', freeing: 'freeing GPU memory', levels: 'adjusting levels', reading: 'reading frames',
-  'model read': 'reading the model weights', 'model gpu': 'moving the model to the GPU', tagger: 'loading the tagger', labels: 'naming the groups' };
+  'model read': 'reading the model weights', 'model gpu': 'moving the model to the GPU', tagger: 'loading the tagger', labels: 'naming the groups',
+  warming: 'warming up the GPU' };   // paw-vdb3.1: the card's one-time probe (MIOpen's cold start: 9-11 s on AMD)
 /** paw-mhme: how long each label was on screen during a job. mark(stage) at every progress event (a stage change
  *  starts a new row; '' keeps the current one); text() at the end -> 'start 4.2 s, reading frames 3.1 s, ...' (summed
  *  per stage; 'start' = before the sidecar's first stage: the serve starting, the video opening). */

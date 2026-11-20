@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 const SAY = {
   checking: 'Setting up, one time: checking the files…',
   runtime: 'Setting up, one time: unpacking the runtime (Python, PyTorch, ffmpeg), about a minute.',
+  'runtime-rocm': 'Setting up, one time: unpacking the AMD runtime (Python, PyTorch ROCm, ffmpeg), about a minute.',
   code: 'Setting up, one time: unpacking the tracker code…',
 };
 

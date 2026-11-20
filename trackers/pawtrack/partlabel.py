@@ -1,14 +1,7 @@
-"""Semantic names for motion groups (bodies g1..g4 and their parts g1p1..) from the Hydra tagger's CAM heat maps.
-
-Per scene, K frames spread over it (a tap on the tracker's frame stream keeps an evenly decimated subset). Per frame,
-one Hydra pass (pawtrack.describe): for every vocabulary tag that passes its threshold at CONF, the CAM over the
-patch grid (3x3 blurred as describe.cam_box, divided by its frame max); a label's heat = max over its tags. A group's
-mass for a label = the mean heat (bilinear) at its visible members' positions. Over the K frames the masses are
-averaged (frames where the group has >= MIN_PTS visible members). Decision: label = argmax if its mass >= BODY (the
-"body" fallback: no part tag lights the group up) and beats the runner-up by >= MARGIN, else "body". Geometry: a
-SMALL label (penis, balls, ...) needs the group's spread < SMALL_FRAC x its parent's (a part's parent = its body, a
-body's = all visible points); otherwise "body" and `suspect` names the tag. Labels and masses go into a `group_labels`
-note and track result scenes[].groups (PROTOCOL); never into the frame events.
+"""The Hydra tagger's part maps (CAM heat over the patch grid, pawtrack.describe) for the pinned groups: the regions the
+points trackers seed (sem_regions, shape_regions), the groups suggested on a frame (suggest), SAM outlines and masks.
+The seeded groups' records go into a `group_labels` note and track result scenes[].groups (PROTOCOL); never into the
+frame events.
 """
 import sys
 from contextlib import contextmanager
@@ -30,114 +23,9 @@ VOCAB = {
     "butt": ("butt", "wide_hips", "thick_thighs"),
     "feet": ("feet", "hindpaw", "pawpads", "toes"),
 }
-SMALL = {"penis", "balls", "knot", "anus", "pussy"}
-K = 5             # frames per scene
 CONF = 0.25       # describe confidence slider for "tag present in the frame" (0 = F4 speculative, 0.5 = F1)
-BODY = 0.3        # a label needs this mean heat on the group (else "body")
-MARGIN = 0.1      # ... and this much over the runner-up
-SMALL_FRAC = 0.5  # spread ratio below which a SMALL label is plausible
-MIN_PTS = 3
-KEEP_W = 768      # tap: frames kept at this width (Hydra's input is ~672x384 at seqlen 1024)
+KEEP_W = 768      # tagger frames at this width (Hydra's input is ~672x384 at seqlen 1024)
 HYDRA_GB = 1.8    # measured peak 1.76 GiB reserved; added to the process's VRAM cap when the tagger loads next to a tracker (no PAWSCRIPT_GPU_FRACTION)
-
-
-class Tap:
-    """Wraps a frame iterator of unknown length; keeps an evenly spaced subset (<= 2 x cap frames, KEEP_W wide)."""
-    def __init__(self, cap=4 * K):
-        self.cap, self.step, self.buf = cap, 1, []
-
-    def __call__(self, frames):
-        import cv2
-        for i, (t, bgr) in enumerate(frames):
-            if i % self.step == 0:
-                h, w = bgr.shape[:2]
-                self.buf.append((t, cv2.resize(bgr, (KEEP_W, round(h * KEEP_W / w)), interpolation=cv2.INTER_AREA)
-                                 if w > KEEP_W else bgr.copy()))
-                if len(self.buf) > 2 * self.cap:
-                    self.buf, self.step = self.buf[::2], self.step * 2
-            yield t, bgr
-
-    def pick(self, k=K):
-        """k kept frames nearest the centres of k equal slices of the kept range (no repeats)."""
-        if not self.buf:
-            return []
-        t = np.array([f[0] for f in self.buf], float)
-        want = t[0] + (np.arange(k) + 0.5) * (t[-1] - t[0]) / k
-        return [self.buf[i] for i in sorted(set(np.abs(t[:, None] - want).argmin(0)))]
-
-
-def masks(g):
-    """group_tracks' dict -> {"g1": (T,N) bool, ..., "g1p1": ...}: bodies from labels, parts from `part` if present."""
-    lab, part = g["labels"], g.get("part")
-    out = {}
-    for b in range(1, 5):
-        m = lab == b
-        if not m.any():
-            continue
-        out[f"g{b}"] = m
-        if part is not None:
-            for j in range(1, int(part.max()) + 1):
-                if (m & (part == j)).any():
-                    out[f"g{b}p{j}"] = m & (part == j)
-    return out
-
-
-def parent(name):
-    return name.split("p")[0] if "p" in name else None
-
-
-def spread(x):
-    return float(np.sqrt(((x - x.mean(0)) ** 2).sum(1).mean())) if len(x) else 0.0
-
-
-def frame_masses(heat, xy, members):
-    """heat {label: (ph, pw) 0..1}, xy (N,2) normalized image coords, members (N,) bool -> {label: mean heat}."""
-    from scipy.ndimage import map_coordinates
-    p = xy[members]
-    out = {}
-    for lab, h in heat.items():
-        ph, pw = h.shape
-        out[lab] = float(map_coordinates(h, [p[:, 1] * ph - 0.5, p[:, 0] * pw - 0.5], order=1, mode="nearest").mean())
-    return out
-
-
-def decide(mass, ratio):
-    """mass {label: mean heat}, ratio = group spread / parent spread -> (label, score, suspect tag or None)."""
-    r = sorted(mass.items(), key=lambda a: -a[1]) + [("body", 0.0)] * 2
-    (best, m1), (_, m2) = r[0], r[1]
-    if m1 < BODY or m1 - m2 < MARGIN:
-        return "body", 0.0, None
-    if best in SMALL and ratio >= SMALL_FRAC:
-        return "body", 0.0, best
-    return best, round(m1 - max(m2, BODY), 3), None
-
-
-def label(heats, xys, viss, sets, aspect=1.0):
-    """heats: per sampled frame {label: (ph,pw)}; xys (K,N,2) / viss (K,N) the tracks at those frames; sets {name:
-    (K,N) bool members}. -> {name: {"label", "score", "tags": {label: mass}, "frames": n, "stable": share of frames
-    whose own decision equals the scene label, "suspect"?}}"""
-    out = {}
-    for name, S in sets.items():
-        acc, per, ratios = {}, [], []
-        for k, heat in enumerate(heats):
-            m = S[k] & viss[k]
-            if m.sum() < MIN_PTS:
-                continue
-            q = xys[k] * [aspect, 1.0]
-            pm = (sets[parent(name)][k] if parent(name) else np.ones(len(m), bool)) & viss[k]
-            ratio = spread(q[m]) / max(spread(q[pm]), 1e-9)
-            fm = frame_masses(heat, xys[k], m)
-            for lab, v in fm.items():
-                acc[lab] = acc.get(lab, 0.0) + v
-            per.append(decide(fm, ratio)[0])
-            ratios.append(ratio)
-        if not per:
-            continue
-        mean = {lab: v / len(per) for lab, v in acc.items()}
-        lab, score, sus = decide(mean, float(np.mean(ratios)))
-        out[name] = {"label": lab, "score": score, "tags": {k: round(v, 3) for k, v in sorted(mean.items(), key=lambda a: -a[1])},
-                     "frames": len(per), "stable": round(per.count(lab) / len(per), 3), **({"suspect": sus} if sus else {})}
-    return out
 
 
 # ------------------------------------------------------------------ GPU side (Hydra)
@@ -507,30 +395,12 @@ def track_masks(frames, masks0, step=None):
     return [got[i - i % step] for i in range(len(frames))]
 
 
-def scene_labels(tap, ts, xy, vis, g, aspect, extra=None):
-    """Wrap's hook: tap (Tap) or None (no motion-group names), ts (T,) row times, xy (T,N,2) / vis (T,N) rows, g
-    group_tracks' dict, aspect = W / H, extra {key: record} added as is (the pinned groups' sem_<name> records).
-    -> label()'s dict for the scene (also sent as note `group_labels`)."""
-    import time
+def scene_labels(groups):
+    """Wrap's hook: the pinned groups' records {sem_<name>: record}, sent as note `group_labels` (scenes[].groups)."""
     from pawtrack.trackers import note
-    t0 = time.perf_counter()
-    fr = tap.pick() if tap is not None else []
-    sets = masks(g) if tap is not None else {}
-    res = {}
-    if fr and sets:  # no moving group: no tagger pass, an empty note
-        k = np.clip(np.searchsorted(ts, [f[0] for f in fr]), 0, len(ts) - 1)
-        try:
-            heats = heat_maps(fr)
-        except Exception as e:  # optional: a tagger failure costs the names, never the track
-            note("group_labels", f"group labels skipped: {type(e).__name__}: {e}", {"groups": dict(extra or {})} if extra else None)
-            return dict(extra or {})
-        res = label(heats, xy[k], vis[k], {n: s[k] for n, s in sets.items()}, aspect)
-    res |= extra or {}
-    dt = time.perf_counter() - t0
-    msg = ", ".join(f"{n} = {r['label']}" + (f" ({r['suspect']}? too big)" if "suspect" in r else "")
-                    + (f" (seeded, {r['source']})" if "source" in r else "") for n, r in res.items())
-    note("group_labels", f"group labels ({len(fr)} frames, {dt:.1f} s): {msg or 'no groups'}", {"groups": res, "s": round(dt, 2)})
-    return res
+    msg = ", ".join(f"{n} = {r['label']}" + (f" (seeded, {r['source']})" if "source" in r else "") for n, r in groups.items())
+    note("group_labels", f"group labels: {msg or 'no groups'}", {"groups": groups})
+    return groups
 
 
 # ------------------------------------------------------------------ suggested groups (cli suggest_groups, PROTOCOL v4.11)

@@ -1,0 +1,52 @@
+runtime-rocm-2026-11-19.zip: the AMD runtime (paw-vdb3.2): Python 3.12 + the tracker's packages + ffmpeg like the CUDA runtime
+(runtime-2026-11-18.txt), with AMD's ROCm-on-Windows PyTorch. The app downloads it as runtime-rocm.zip on a PC with a
+discrete AMD card and unpacks it beside the CUDA runtime (paw-vdb3.3, src-tauri/src/portable.rs ZIPS). Git-ignored;
+this file is its record. Manifest entry: runtime-rocm in src/features/models/manifest.json.
+
+  size     3620971349 bytes (3.37 GiB; one file on R2, no parts)
+  sha256   8492bb446c92f47cf0cb703d8f904b7e98059dd31c69956d5cfe104a50fce99e
+  bucket   pawscript/v1/runtime/runtime-rocm-2026-11-19-8492bb44.zip
+
+Contents (zip root)
+  runtime-rocm.stamp   "runtime-rocm 2026-11-19 python3.12.16 torch2.15.0+rocm10.2.0 ffmpeg8.1.1"
+  python-rocm\         26854 files, 7740001830 bytes unpacked (_rocm_sdk_core, _rocm_sdk_libraries, the six device packages, torch)
+  python-rocm\gpu-archs.json   {"backend": "rocm", "torch": "2.15.0+rocm10.2.0", "hip": "7.17.26434", "archs": [...]}:
+                       the GPU architectures whose device libraries ship (from the installed amd-torch-device-gfx*
+                       packages). torch.cuda.get_arch_list() names more (every gfx torch was compiled for); only these
+                       have their kernels here. pawtrack reads it at sys.prefix (paw-vdb3.1).
+  ffmpeg.exe, ffprobe.exe   the CUDA runtime's files (454592000 bytes together, gyan.dev 8.1.1 full)
+
+GPUs (archs): gfx1201 / gfx1200 (RX 9070 XT / 9070 / 9060, RDNA 4), gfx1100 / gfx1101 / gfx1102 (RX 7900 / 7800 / 7700 /
+  7600, RDNA 3), gfx1103 (Radeon 780M / 760M integrated). Not: RDNA 2 (RX 6000) and older, Strix (gfx1150 to gfx1153).
+  Driver: Adrenalin 26.11.2 or newer (ROCm 10.2.0 release notes).
+
+Packages: trackers/requirements-rocm.txt (compiled from trackers/requirements-rocm.in: uv.lock's pins for everything but
+  torch / torchvision, which are AMD's torch 2.15.0+rocm10.2.0 and torchvision 0.29.2+rocm10.2.0 with the extras
+  device-gfx1201, 1200, 1100, 1101, 1102, 1103), then sam-2 (git 2b90b9f5) and tapnet (git ceedd60b) without their
+  declared dependencies. Against the CUDA runtime: torch / torchvision; plus rocm, rocm-bootstrap, rocm-sdk-core,
+  rocm-sdk-libraries, rocm-sdk-device-gfx1100..1103 / 1200 / 1201, amd-torch-device-gfx1100..1103 / 110x / 12-0 / 1200 /
+  1201, amd-torchvision-device-gfx1100..1103 / 1200 / 1201 (all 10.2.0 / 2.15.0 / 0.29.2); no NVIDIA packages. Every
+  other pin is the CUDA runtime's. Python 3.12.16 (python-build-standalone, the interpreter uv installs; the CUDA
+  runtime has 3.12.12), pip 26.3.
+
+How it was made (2026-11-19, on the AMD PC, 229 s with a warm uv cache)
+  powershell -NoProfile -ExecutionPolicy Bypass -File dev/share/make-runtime-rocm.ps1 -Python <cpython-3.12.16 folder>
+      -Ffmpeg <folder with the CUDA runtime's ffmpeg.exe / ffprobe.exe> -Date 2026-11-19
+  New pins: make-runtime-rocm.ps1 -Compile (uv pip compile, PyPI + https://stable.repo.amd.com/rocm/whl-next/).
+
+Checked (the AMD test PC: RX 9070 XT gfx1201 + Radeon iGPU gfx1036, Adrenalin 26.11.2, driver 32.0.32029.2010)
+  Unpacked with Windows tar.exe as portable.rs does (22 s; python-rocm\ 26854 files, the same as the build folder), trackers\
+  (pawtrack, tests) from HEAD + sitecustomize.py beside it:
+  torch.cuda.is_available() True, 2 devices (0: AMD Radeon RX 9070 XT gfx1201 15.9 GiB, 1: the iGPU gfx1036);
+  imports (torch, torchvision, sam2, tapnet, pawtrack, av, cv2, scipy) 15.7 s cold; fp16 matmul ok; first convolution
+  8.1 s (MIOpen start, as measured in the paw-vdb3 findings); pawtrack.gpu.state() ok; sitecustomize blocks example.com;
+  ffmpeg encodes a 2 s x264 clip, ffprobe counts 60 frames, PyAV decodes 60.
+  The sidecar's -m gpu tests on it (PAWTRACK_MODELS = the rig's weights): test_sam2 + test_points_tapnext + test_reseed
+  (run-gpu-tests.ps1's set) 10 passed in 385 s; the whole `-m gpu` selection 14 passed, 11 skipped (CoTracker3, VLM,
+  absent models), 1 failed: test_reseed's refill hit a 2.40 GiB per-process cap left by an earlier test in the same
+  process (vram.py set_per_process_memory_fraction); alone it passes (23 s).
+  MIOpen prints three warnings at the first convolution (gfx120140.HIP.fdb.txt, lgbm_model_meta.json, lgbm_pcfg.bin
+  missing): AMD's wheels do not ship those files (the paw-vdb3 probe venv lacks them too); it then picks kernels without
+  that database.
+
+Licences: dev/share/LICENSES-SUMMARY.txt ("AMD RUNTIME"), dev/share/LICENSES/AMD-ROCm-NOTE.txt.

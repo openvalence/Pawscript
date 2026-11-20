@@ -1,7 +1,7 @@
 // paw-9qm: the signal row under the run in the real store and lane (Playwright + Edge headless, dev/shell.html on the mock
 // backend): the source picker (Fused first, the old motion groups last), Pair by two clicks (one undo step), measured
 // against, a range override added (paw-hiq5: drawn by a drag in the row's band) drawn as a segment (an end dragged, Delete removes it, undo brings it back);
-// no g1..g4 chips left in the panel or the Shot popover. Own Vite server on a free port.
+// no g1..g4 chips anywhere (paw-57dw: the sidecar sends no motion-group channels). Own Vite server on a free port.
 // Skipped unless SIGNAL_E2E=1:  SIGNAL_E2E=1 node --test test/signal-row-e2e.test.mjs
 import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -34,9 +34,8 @@ describe('signal row e2e', { skip: !ON && 'set SIGNAL_E2E=1 to run the browser c
         const tr = T.trackingFor(window.app), c = fx.auto.channels;
         app.doc.media = { ...app.doc.media, width: 1920, height: 1080 };
         app.doc.scenes = [{ start_ms: 0, end_ms: 8000 }, { start_ms: 8000, end_ms: 14000 }];
-        for (const k of ['g3_n', 'g4_n']) c[k] = c.g1_n.map(([t]) => [t, 0]);
         // painted parts for two characters (from the fixture's bodies)
-        for (const [to, from, dy] of [['sem_c1_hips', 'g1', 0], ['sem_c2_hips', 'g2', 0], ['sem_c1_penis', 'g1', 0.03]]) {
+        for (const [to, from, dy] of [['sem_c1_hips', 'who_c1', 0], ['sem_c2_hips', 'who_c2', 0], ['sem_c1_penis', 'who_c1', 0.03]]) {
           c[to + '_x'] = c[from + '_x'].map(([t, v]) => [t, v == null ? null : v + 0.01]);
           c[to + '_y'] = c[from + '_y'].map(([t, v]) => [t, v == null ? null : v + dy]);
           c[to + '_n'] = c[from + '_n'];
@@ -107,7 +106,8 @@ describe('signal row e2e', { skip: !ON && 'set SIGNAL_E2E=1 to run the browser c
       // 5. g1..g4: none in the Tracker panel legend or the Shot popover
       res.gChips = await page.evaluate(() => [...document.querySelectorAll('button')].filter((b) => /^g[1-4]( \d+%)?$/.test(b.textContent.trim())).length);
       assert.deepEqual(errs, []);
-    assert.match(res.menu, /Fused[\s\S]*PARTS[\s\S]*OLD MOTION GROUPS\s*g1 proj/i, 'Fused first, the old groups last');
+    assert.match(res.menu, /Fused[\s\S]*PARTS/i, 'Fused first, then the parts');
+    assert.doesNotMatch(res.menu, /OLD MOTION GROUPS/i, 'no old motion groups submenu');
     assert.deepEqual(res.fused, { derive: { source: 'fused' }, entries: 1, btn: 'Fused ▾', state: 'fused', weights: res.fused.weights });
     assert.ok(res.fused.weights > 0, 'the fusion weights at t (signalState)');
     assert.deepEqual(res.pair.derive, { source: 'rel:sem_c1_penis:sem_c2_hips' });

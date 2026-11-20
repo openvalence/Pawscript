@@ -5,7 +5,7 @@
 // relative rows have no absolute zero and bodies settle), and each row is divided by its own spread, so a stretch of small
 // strokes at depth comes out centred and as big as the rest. Here, per run scene, with a shot's derive.fuse.depth:
 //   reference  'pick' = the sidecar pick's channel (what it chose for the scene), 'pair' = the two bodies' distance along the
-//              stroke (who_pair_proj, else the motion groups' pair_proj), 'shaft' = the SAM shaft's visible share
+//              stroke (who_pair_proj), 'shaft' = the SAM shaft's visible share
 //              (lib/shaft.js shaftDepth, only where confident over SHARE_MIN of the scene)
 //   slow stats over a few strokes (DEPTH.STROKES x the stroke period, DEPTH.WIN): level = the running median, size = the
 //              running p90 - p10, of the reference and of the fused signal; robust, so the reference's spikes, clipped
@@ -149,7 +149,7 @@ export function bodyScale(run, idx, T, aspect = 16 / 9) {
  */
 export function depthRef(run, k, idx, T, from, { pick = null, calib = null, aspect = 16 / 9, scale = null, motion = null } = {}) {
   const ch = run?.channels || {};
-  if (from === 'pair' && (scale?.s || !(ch.who_pair_proj || ch.pair_proj))) {
+  if (from === 'pair' && (scale?.s || !ch.who_pair_proj)) {
     // under a zoom (or with no stored pair channel): the two characters' centres (who_c1 / who_c2, else the mean of each one's
     // core groups), their difference along its own main direction, in body units (bodyScale: a zoom cancels). The stored
     // who_pair_proj (the sidecar's stroke axis) reads better on the owner's shots, but it is normalised per scene: a zoom
@@ -181,8 +181,8 @@ export function depthRef(run, k, idx, T, from, { pick = null, calib = null, aspe
     if (sd.share < SHARE_MIN) return { why: `the ${part ? partWord(part) : 'shaft'} is confident on ${Math.round(100 * sd.share)} % of the scene only` };
     return { x: sd.depth, name: `sem_${sd.name}_len` };
   }
-  const name = from === 'pick' ? (pick && pick !== 'fused' && ch[pick] ? pick : null) : from === 'pair' ? ['who_pair_proj', 'pair_proj'].find((c) => ch[c]) : null;
-  if (!name) return { why: from === 'pick' ? 'no sidecar pick channel for this scene' : from === 'pair' ? 'no pair tracked (two characters, or the motion groups)' : `unknown reference ${from}` };
+  const name = from === 'pick' ? (pick && pick !== 'fused' && ch[pick] ? pick : null) : from === 'pair' ? (ch.who_pair_proj ? 'who_pair_proj' : null) : null;
+  if (!name) return { why: from === 'pick' ? 'no sidecar pick channel for this scene' : from === 'pair' ? 'no pair tracked (two characters)' : `unknown reference ${from}` };
   const c = ch[name], x = new Float64Array(idx.length).fill(NaN);
   let p = 0;
   idx.forEach((j, q) => {

@@ -105,8 +105,8 @@ export const TAG_CATEGORIES = [  { id: 'view', label: 'View', one: true, tags: [
     { id: 'knotting', label: 'knotting', kind: 'knotting', implies: ['penetration'], needsWhere: true, tip: 'Knotting modifier, implies penetration', names: ['*knotting', 'knot_sitting'], icon: 'M1 8H4.5M11.5 8H15M8 4.5A3.5 3.5 0 1 1 7.99 4.5Z' },
     { id: 'throbbing', label: 'throbbing', kind: 'climax', tip: 'Throbbing modifier', names: [], icon: 'M8 2L12 8L8 14L4 8Z' },
     { id: 'orgasm', label: 'orgasm', kind: 'orgasm', tip: 'Orgasm modifier: where the cumshots happen', names: CUM_TAGS, from: 'tags', icon: 'M8 1.5C8 1.5 3.5 7.5 3.5 10.5A4.5 4.5 0 0 0 12.5 10.5C12.5 7.5 8 1.5 8 1.5Z' },
-    { id: 'insertion', label: 'insertion', kind: 'penetration', tip: 'Insertion modifier: one slow push', names: [] },
-    { id: 'pullout', label: 'pull-out', kind: 'penetration', tip: 'Pull-out modifier: one slow pull out', names: [] },
+    { id: 'insertion', label: 'insertion', kind: 'penetration', tip: 'A knotting push: one slow push, no pop', names: [] },
+    { id: 'pullout', label: 'pull-out', kind: 'penetration', tip: 'A knotting pull: one slow pull out, no pop', names: [] },
   ] },
   // camera: icon = the lane glyph at the scene's left end (none for static)
   { id: 'camera', label: 'Camera', one: true, tags: [

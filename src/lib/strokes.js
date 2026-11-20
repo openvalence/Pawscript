@@ -5,11 +5,12 @@
 //  3. turns: local maxima / minima whose prominence is at least minStroke x the LOCAL amplitude (p5..p95 over a 3 s
 //     window, the sidecar's local range): jitter never becomes a stroke, a real small stroke between small strokes
 //     still does. Forced to alternate (the more extreme of a same-kind run wins); a stroke shorter than minMs (turn to
-//     turn) goes with its smaller neighbour.
+//     turn) or smaller than minAmp x the piece's median stroke (strokeAmp; paw-dnrv: a hold's jitter) where the signal
+//     holds on one side of it (paw-d323: under stillRange x that median over 1.5 s) goes with its smaller neighbour.
 //  4. timing: each turn refined to sub-frame (parabola through the three samples); with a `timing` series (fusion.js:
 //     the best-timed contributors) the turn takes that series' same-kind extremum within a quarter stroke.
-//  5. depth (pos 0 = deepest, 100 = out; larger value = out): range 'scene' = the piece's robust p2..p98 after its drift
-//     over two strokes is taken out (default),
+//  5. depth (pos 0 = deepest, 100 = out; larger value = out): range 'scene' = the piece's robust p2..p98 (default; with
+//     `undrift` after its drift over two strokes is taken out: off here, runs-channel.js turns it on for a raw channel, paw-d323),
 //     'follow' = a slow envelope (p5..p95 over followMs, 8 s), 'local' = the sidecar's 3 s window (every stroke full
 //     size: kept for comparison). Never renormalised per stroke: a shallow stroke stays shallow.
 //     'abs' (paw-4c48.10, an absolute channel: the shaft source) = 100 x the smoothed signal, as it reads.
@@ -41,7 +42,7 @@
 
 import { shapeFit, shapeAt, exactMids, RENDER_DEBUG } from './stroke-shape.js';
 
-export const STROKES = { smoothMs: 150, minStroke: 0.04, minMs: 120, range: 'scene', followMs: 8000, detail: 0, shape: 'hold', sens: 50, maxSpeed: 600, minIntervalMs: 60, maxGapMs: 500, lowConf: 0.35, lowMs: 1000 };
+export const STROKES = { smoothMs: 150, minStroke: 0.04, minMs: 120, range: 'scene', followMs: 8000, detail: 0, shape: 'hold', sens: 50, maxSpeed: 600, minIntervalMs: 60, maxGapMs: 500, lowConf: 0.35, lowMs: 1000, undrift: false, minAmp: 0.1, stillRange: 0.25 };
 export const RANGES = ['scene', 'follow', 'local', 'shaft', 'compress'];
 /** paw-woz5 range 'compress': amount 0..0.9 (slope above the knee = 1 - amount, log domain: 0.6 = 2.5:1), centreMs = a
  *  move of the stroke centre shorter than this is drift (taken out), longer is depth (kept), threshold = the knee in
@@ -164,6 +165,24 @@ function anchor(pos, turns, depth, reach, sign) {
   return true;
 }
 
+/** Marks [[i, +1 / -1]] (any order) -> turns forced to alternate: the more extreme in y of a same-kind run wins. */
+function alternate(y, marks) {
+  const turns = [];
+  for (const [i, k] of marks.sort((a, b) => a[0] - b[0])) {
+    const last = turns[turns.length - 1];
+    if (last && last[1] === k) { if (k * y[i] > k * y[last[0]]) turns[turns.length - 1] = [i, k]; }
+    else turns.push([i, k]);
+  }
+  return turns;
+}
+/** Median stroke size of y (units of y): turns at prom x the whole piece's p5..p95, so a hold's jitter is no stroke; 0
+ *  with under two strokes. */
+export function strokeAmp(y, prom) {
+  const q = prom * Math.max(pct(y, 0.95) - pct(y, 0.05), 1e-9);
+  const tr = alternate(y, [...peaks(y, q).map((i) => [i, 1]), ...peaks(Float64Array.from(y, (x) => -x), q).map((i) => [i, -1])]);
+  const d = []; for (let k = 1; k < tr.length; k++) d.push(Math.abs(y[tr[k][0]] - y[tr[k - 1][0]]));
+  return d.length >= 2 ? pct(d, 0.5) : 0;
+}
 /** Steps 2-3 on one gap-free piece (t ms, v finite): the smoothed signal y and the turns [[sample index, +1 top / -1
  *  bottom of v]], alternating. Shared with fusion's HOW (lib/fusion-how.js), so both see the same turns. */
 export function findTurns(t, v, o = STROKES) {
@@ -175,23 +194,19 @@ export function findTurns(t, v, o = STROKES) {
   const w = Math.max(3, Math.round(NORM_MS / dt));
   const [lo, hi] = n > w ? rolling(y, w, 0.05, 0.95) : [new Float64Array(n).fill(pct(y, 0.05)), new Float64Array(n).fill(pct(y, 0.95))];
   const u = Float64Array.from(y, (x, i) => Math.min(1, Math.max(0, 0.5 + (x - (hi[i] + lo[i]) / 2) / Math.max(hi[i] - lo[i], 1e-9))));
-  // turns, alternating
-  const marks = [...peaks(u, o.minStroke).map((i) => [i, 1]), ...peaks(u.map((x) => -x), o.minStroke).map((i) => [i, -1])].sort((a, b) => a[0] - b[0]);
-  let turns = [];
-  for (const [i, k] of marks) {
-    const last = turns[turns.length - 1];
-    if (last && last[1] === k) { if (k * y[i] > k * y[last[0]]) turns[turns.length - 1] = [i, k]; }
-    else turns.push([i, k]);
-  }
-  // minimum stroke duration: the shortest too-short stroke goes with its smaller neighbour, until none is left
+  let turns = alternate(y, [...peaks(u, o.minStroke).map((i) => [i, 1]), ...peaks(u.map((x) => -x), o.minStroke).map((i) => [i, -1])]);
+  const med = o.minAmp > 0 ? strokeAmp(y, o.minStroke) : 0, amin = o.minAmp * med, rmax = (o.stillRange ?? Infinity) * med;
+  // paw-d323: minAmp only where the signal holds on one side of the stroke (its range over NORM_MS / 2 from either turn
+  // under stillRange x the median stroke): a small stroke among full ones stays
+  const span = (i, k) => { const e = t[i] + (k * NORM_MS) / 2; let mn = y[i], mx = y[i]; for (let j = i; j >= 0 && j < n && (k > 0 ? t[j] <= e : t[j] >= e); j += k) { mn = Math.min(mn, y[j]); mx = Math.max(mx, y[j]); } return mx - mn; };
+  const still = (a, b) => span(b, -1) < rmax || span(a, 1) < rmax;
+  // too short or too small: the smallest such stroke goes with its smaller neighbour, until none is left
   for (let guard = 0; guard < n && turns.length > 2; guard++) {
     let bi = -1, bd = Infinity;
-    for (let q = 1; q < turns.length; q++) { const d = t[turns[q][0]] - t[turns[q - 1][0]]; if (d < o.minMs && Math.abs(y[turns[q][0]] - y[turns[q - 1][0]]) < bd) { bd = Math.abs(y[turns[q][0]] - y[turns[q - 1][0]]); bi = q; } }
+    for (let q = 1; q < turns.length; q++) { const d = t[turns[q][0]] - t[turns[q - 1][0]], dy = Math.abs(y[turns[q][0]] - y[turns[q - 1][0]]); if ((d < o.minMs || (dy < amin && still(turns[q - 1][0], turns[q][0]))) && dy < bd) { bd = dy; bi = q; } }
     if (bi < 0) break;
     turns.splice(bi - 1, 2);   // a turn pair out: the alternation stays
-    const merged = [];
-    for (const tq of turns) { const last = merged[merged.length - 1]; if (last && last[1] === tq[1]) { if (tq[1] * y[tq[0]] > tq[1] * y[last[0]]) merged[merged.length - 1] = tq; } else merged.push(tq); }
-    turns = merged;
+    turns = alternate(y, turns);
   }
   return { y, u, turns, dt };
 }
@@ -213,11 +228,12 @@ export function signalTurns(t, v, opts = {}) {
   return { y, turns };
 }
 
-/** Range 'scene''s depth signal: y minus its drift over two strokes (a body settling, camera residue), plus the piece's mean
- *  (centred: without it, so pieces calibrated together sit alike); y as it is with under 3 turns or keepLevel. */
+/** Range 'scene''s depth signal: y as it is, unless o.undrift (opt-in): y minus its drift over two strokes (a body
+ *  settling, camera residue), plus the piece's mean (centred: without it, so pieces calibrated together sit alike); y
+ *  as it is with under 3 turns or keepLevel. */
 function undrift(t, y, turns, dt, o, centred = false) {
   const n = y.length;
-  if (o.keepLevel) return y;   // (a seated level is the depth: kept, centred or not)
+  if (o.keepLevel || !o.undrift) return y;   // (a seated level is the depth: kept, centred or not)
   if (turns.length < 3) { if (!centred) return y; let m = 0; for (const x of y) m += x; m /= n || 1; return Float64Array.from(y, (x) => x - m); }
   const iv = []; for (let q = 1; q < turns.length; q++) iv.push(t[turns[q][0]] - t[turns[q - 1][0]]);
   iv.sort((x1, x2) => x1 - x2);

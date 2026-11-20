@@ -158,7 +158,7 @@ The matrix says which brain may answer each decision. "–" means never asked. T
 | story | ✓ draft RULES + structure rules + trace-2 rules | ✓ KIND a–j, CONT, VIS, INT per second, as evidence added to the rules before Viterbi | ✓ | ✓ top-3 kinds sheet | rules+vlm → agent → user (0.75) |
 | roi | ✓ `motion.propose` + tag boxes + reference tile | – | ✓ (custom axis, clicks; may ask for tracks) | ✓ draw a box / click points | rules → agent → user (0.70) |
 | track | ✓ compare gates and score | – | ✓ (may ask for overlays) | ✓ two overlay frames | rules → agent → user (0.75) |
-| direction | ✓ `dist01` geometry; energy_sign as a prior; an existing assist fact | **–** (measured worse than flow) | ✓ blind A/B pairs | ✓ blind A/B pair | rules → agent → user (0.90) |
+| direction | ✓ `dist01` geometry; an existing assist fact | **–** (measured worse than flow) | ✓ blind A/B pairs | ✓ blind A/B pair | rules → agent → user (0.90) |
 | depth | ✓ excursion ratio × kind defaults | – | – | – (edited in the inspector) | rules (0.60, always applies) |
 | verify | ✓ independent numeric checks | **–** | ✓ blind pairs at extremes | ✓ blind pair | rules → agent → user (0.80) |
 
@@ -233,8 +233,7 @@ them leave-one-clip-out.
 - **direction**:
   - With a `dist01` channel the sign is +1 by geometry, since the smallest two-body distance is pos 0. It is shown
     as uncalibrated until the eval measures it.
-  - With `proj` on a proposed axis: the axis prior combined with `energy_sign` (0.69 on 29 scenes). This usually
-    falls through to the agent or user.
+  - With `proj` on a proposed axis: the axis prior. This usually falls through to the agent or user.
   - An existing `assist.direction` fact that covers the span is answered through `agrees()` at 0.98.
   - With no kept run there is no request.
 - **depth**: the kind defaults (`lo`/`hi` from the recipe), with `intensity` = the median 2 s excursion relative

@@ -20,11 +20,9 @@ export const AXIS_COLOR = 'var(--series-orange)';   // the stroke axis arrow
 /** Point-tracker motion groups (overlay pts[i][3]): g1..g4, then static (0); unassigned (-1) draws faint grey. */
 export const GROUP_COLORS = ['var(--series-sky)', 'var(--series-orange)', 'var(--series-green)', 'var(--series-pink)'];
 export const STATIC_COLOR = 'var(--series-grey)';
-export const PAIR_COLOR = 'var(--tx-mut)';   // pair_proj trace in the lane (dashed)
+export const PAIR_COLOR = 'var(--tx-mut)';   // a pair's trace in the lane (dashed)
 export const INK_COLOR = 'var(--tx-hi)';    // blobs view: labels, readouts, hovered point
 export const GRID_COLOR = 'var(--tx)';      // blobs view: the camera reference grid
-/** A part of body g (1..4; PROTOCOL v3.4 parts g{k}p{j}): its body's colour, lighter. CSS form (chips). */
-export const partColor = (g) => `color-mix(in srgb, ${GROUP_COLORS[g - 1]} 55%, white)`;
 /** The canvas twin: a resolved '#rrggbb' mixed 45 % toward white; anything else unchanged. */
 export function lighter(hex, f = 0.45) {
   const m = /^#([0-9a-f]{6})$/i.exec(hex || '');

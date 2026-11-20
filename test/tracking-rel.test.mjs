@@ -4,7 +4,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { makeRun, newFrames } from '../src/lib/runs.js';
-import { relChannel, relParse, relSources, relLabel, relSuggestions, relPairOf, pairBodies, channelPatch, keepOf, runFromGhost, pickerChannels, pointsFromChannel } from '../src/lib/runs-channel.js';
+import { relChannel, relParse, relSources, relLabel, relSuggestions, channelPatch, keepOf, runFromGhost, pickerChannels, pointsFromChannel } from '../src/lib/runs-channel.js';
 import { serialize, parse } from '../src/lib/io/project.js';
 import { groupCentroid } from '../src/features/tracking/blobs.js';
 
@@ -60,21 +60,14 @@ test('relChannel axis: custom (opts or run params) > sidecar axis.deg > PCA of t
 
 test('ids, labels, suggestions, pair, picker', () => {
   assert.deepEqual(relParse(REL), { a: 'sem_penis', b: 'sem_hips' });
-  assert.deepEqual(relParse('rel:g1p2:g2'), { a: 'g1p2', b: 'g2' });
-  for (const bad of ['rel:g1:g1', 'rel:g5:g1', 'rel:g1', 'g1_proj', 'rel:sem_:g1', 'rel:sem_C1:g1', null]) assert.equal(relParse(bad), null);
+  for (const bad of ['rel:g1p2:g2', 'rel:g1:g1', 'rel:g5:g1', 'rel:g1', 'g1_proj', 'rel:sem_:g1', 'rel:sem_C1:g1', null]) assert.equal(relParse(bad), null);
   assert.deepEqual(relParse('rel:sem_c1_penis:sem_c2_hips'), { a: 'sem_c1_penis', b: 'sem_c2_hips' }, 'v4.12: any pinned group, a character\'s too');
   assert.equal(relLabel({}, 'rel:sem_c1_penis:sem_c2_hips'), 'Bottom penis ↔ Top hips (seeded)');
   assert.deepEqual(relSources(REL), ['sem_penis_x', 'sem_penis_y', 'sem_hips_x', 'sem_hips_y']);
   assert.equal(relLabel({}, REL), 'penis ↔ hips (seeded)');
-  assert.equal(relLabel({ g1p2: { label: 'penis' }, g2: { label: 'body' } }, 'rel:g1p2:g2'), 'penis ↔ g2');
   const run = fixture();
   assert.deepEqual(relSuggestions(run), [REL]);
-  const noSem = { channels: { g1p2_x: {}, sem_hips_x: {} } };
-  assert.deepEqual(relSuggestions(noSem, { g1p2: { label: 'penis' } }), ['rel:g1p2:sem_hips']);   // a part named penis stands in
-  assert.deepEqual(relSuggestions(noSem, {}), []);
-  assert.deepEqual(pairBodies(run), ['g1', 'g2']);
-  assert.equal(relPairOf(run, 'rel:g2:g1'), 'pair_proj');
-  assert.equal(relPairOf(run, REL), '');
+  assert.deepEqual(relSuggestions({ channels: { g1p2_x: {}, sem_hips_x: {} } }), [], 'no seeded penis: none (a motion-group part never stands in)');
   // a materialised rel channel never becomes a picker chip of its own
   assert.deepEqual(pickerChannels({ channels: { [REL]: {}, foo: {} } }), ['primary', 'foo']);
 });
@@ -107,12 +100,10 @@ test('channelPatch resolves a rel: link (the sidecar sign is not applied; a flip
   assert.deepEqual(channelPatch({ ...run, channels: { g1_n: run.channels.g1_n } }, 'primary', {}, links).sceneChannels, ['primary']);
 });
 
-test('blobs groupCentroid: body, part, pinned group', () => {
+test('blobs groupCentroid: a pinned group (a motion group is no chip group any more)', () => {
   const F = { G: [{ c: [0.1, 0.2], parts: [null, { c: [0.3, 0.4] }] }, null, null, null], S: [{ c: [0.5, 0.6] }, null, { c: [0.7, 0.8] }] };
-  assert.deepEqual(groupCentroid(F, 'g1'), [0.1, 0.2]);
-  assert.deepEqual(groupCentroid(F, 'g1p2'), [0.3, 0.4]);
-  assert.equal(groupCentroid(F, 'g1p1'), null);
-  assert.equal(groupCentroid(F, 'g2'), null);
+  assert.equal(groupCentroid(F, 'g1'), null);
+  assert.equal(groupCentroid(F, 'g1p2'), null);
   assert.deepEqual(groupCentroid(F, 'sem_penis'), [0.5, 0.6]);
   assert.deepEqual(groupCentroid(F, 'sem_hips'), [0.7, 0.8]);
 });

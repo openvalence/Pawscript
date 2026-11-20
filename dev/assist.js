@@ -56,7 +56,7 @@ const app = createMockApp({ doc: freshDoc(), commands, video: v });
 const A = assistFor(app), tr = trackingFor(app);
 
 function injectRuns() {
-  const scenes = Array.from({ length: 6 }, (_, k) => ({ start_ms: k * 10000, end_ms: (k + 1) * 10000, sign: k === 1 || k === 4 ? -1 : 1, auto_sign: k === 1 || k === 4 ? -1 : 1 }));
+  const scenes = Array.from({ length: 6 }, (_, k) => ({ start_ms: k * 10000, end_ms: (k + 1) * 10000, sign: k === 1 || k === 4 ? -1 : 1 }));
   const fr = newFrames();
   for (let k = 0; k < 1800; k++) {
     const t = Math.round((k * 1000) / 30), y = tipY(t);
@@ -67,7 +67,7 @@ function injectRuns() {
     result: { points: app.doc.axes.stroke, samples: [], scenes, events: [{ t_ms: 54000, end_ms: 58000, kind: 'still', label: 'still 4.0 s' }] }, frames: fr, runs: [] });
   const flow = makeScript([], 8, 11).filter((a) => a.at < 30000 || a.at >= 40000);
   const run2 = makeRun({ n: 2, tracker: { id: 'flow', name: 'Optical flow' }, params: {}, range: { start: 0, end: 60000 }, roi: null,
-    result: { points: flow, samples: [], scenes: scenes.map((s) => ({ ...s, sign: 1, auto_sign: null })), events: [] }, frames: newFrames(), runs: [run1] });
+    result: { points: flow, samples: [], scenes: scenes.map((s) => ({ ...s, sign: 1 })), events: [] }, frames: newFrames(), runs: [run1] });
   tr.runs = [run1, run2];
   app.doc.ghosts = [tr.ghostOf(run1), tr.ghostOf(run2)];
   tr.selectedId = 'run1';

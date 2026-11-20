@@ -145,8 +145,11 @@ export const modelsCancel = (id) => invoke('models_cancel', { id });
 export const modelsRemove = (dir, paths) => invoke('models_remove', { dir, paths }); // -> files deleted
 export const modelsChanged = () => invoke('models_changed');
 export const openUrl = (url) => invoke('open_url', { url });
-export const runtimeStatus = () => invoke('runtime_status'); // {portable, dir, installed, python, zip}
+export const runtimeStatus = () => invoke('runtime_status'); // {portable, dir, runtimes: [{id, installed, python, zip}]}
 export const runtimeUnpack = () => invoke('runtime_unpack');
+export const portableStatus = () => invoke('portable_status'); // {state: ready | unpacking | refused | failed, what?, message?}
+export const runtimeRemove = (id) => invoke('runtime_remove', { id }); // a runtime's folder (python\ or python-rocm\)
+export const gpuProbe = () => invoke('gpu_probe'); // {adapters: [{vendor, name, vram, software}], runtime, name, vram}
 export const updateCheck = () => invoke('update_check'); // {configured, current, version, notes, date, portable}
 export const updateDownload = (onProgress) => invoke('update_download', { onEvent: progressed(onProgress) }); // {done, total}
 export const updateRestart = () => invoke('update_restart');

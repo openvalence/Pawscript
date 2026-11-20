@@ -21,11 +21,11 @@ test('LICENSE is the GPLv3 text, the same as the one shipped for ffmpeg', () => 
   assert.doesNotMatch(read('README.md'), /not chosen yet/);
 });
 
-test('the public texts: 18+, terms, the source offer, one placeholder of each kind', async () => {
+test('the public texts: legal age, terms, the source offer, one placeholder of each kind', async () => {
   const terms = read('dev/share/TERMS.txt'), readme = read('dev/share/README.txt');
   const rel = await import('../src/app/release.js');   // the public source export fills the placeholders with these
   const fill = (t) => t.replaceAll(rel.CONTACT, PH.CONTACT).replaceAll(rel.SOURCE_URL, PH.SOURCE_URL);
-  for (const h of ['ADULTS ONLY (18+)', 'NO WARRANTY', 'DEVICES: AT YOUR OWN RISK', 'YOUR MEDIA', 'WHAT YOU MAKE IS YOURS',
+  for (const h of ['EXPLICIT CONTENT, LEGAL AGE ONLY', 'NO WARRANTY', 'DEVICES: AT YOUR OWN RISK', 'YOUR MEDIA', 'WHAT YOU MAKE IS YOURS',
     'NOTHING LEAVES YOUR PC', 'LICENCE', 'SOURCE CODE (WRITTEN OFFER)']) assert.ok(terms.includes(h), h);
   assert.match(terms, /Shift\+Esc or the Pause key/);
   assert.match(terms, /8\.1\.1-full_build-www\.gyan\.dev/);
@@ -34,9 +34,9 @@ test('the public texts: 18+, terms, the source offer, one placeholder of each ki
     assert.deepEqual(t.match(/\{\{[A-Z_]+\}\}/g).filter((x) => x !== PH.SOURCE_URL && x !== PH.CONTACT), []);
   }
   assert.doesNotMatch(readme, /pass it on|friends/i);
-  assert.match(readme, /18\+/);
-  assert.match(read('src/app/core-commands.js'), /For adults \(18\+\) only\./);
-  assert.match(read('src/app/ProjectPage.svelte'), /For adults \(18\+\) only/);
+  assert.match(readme, /legal age/);
+  assert.match(read('src/app/core-commands.js'), /Made for explicit content: for users of legal age only\./);
+  assert.match(read('src/app/ProjectPage.svelte'), /Explicit content, legal age only/);
   assert.doesNotMatch(read('dev/share/sitecustomize.py'), /Get-Pawscript/);
 });
 

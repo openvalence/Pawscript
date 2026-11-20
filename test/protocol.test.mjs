@@ -35,9 +35,9 @@ const gp = groupParams(['primary', 'pipe_smooth_ms', 'cut_enabled', 'loop_fold',
 assert.deepEqual(gp.map((g) => [g.id, g.open, g.params.map((p) => p.key)]), [['motion', true, ['held_input', 'chunk_frames']], ['reseed', false, ['retire_ms']], ['signal', false, ['primary', 'gap_ms']],
   ['shape', false, ['pipe_smooth_ms', 'loop_fold', 'held_retime', 'loop_min_confidence']], ['parts', false, ['sem_groups', 'group_labels']], ['cut', false, ['cut_enabled']]]);
 assert.deepEqual(groupParams([{ key: 'a' }]).map((g) => g.id), ['motion']);
-// paw-t8z: the script-shaping pipe_* (shown under Runs > Adjust > Strokes > Advanced): not the gate, climax, sign, invert
-assert.deepEqual(['pipe_smooth_ms', 'pipe_cadence_fill', 'pipe_max_speed', 'pipe_gate', 'pipe_gate_motion', 'pipe_climax_rate', 'pipe_sign', 'pipe_invert', 'loop_fold', 'held_retime'].filter(isShapePipe),
-  ['pipe_smooth_ms', 'pipe_cadence_fill', 'pipe_max_speed']);
+// paw-t8z: the script-shaping pipe_* (shown under Runs > Adjust > Strokes > Advanced): not the gate or invert
+assert.deepEqual(['pipe_smooth_ms', 'pipe_cadence_fill', 'pipe_max_speed', 'pipe_norm_floor', 'pipe_gate', 'pipe_gate_motion', 'pipe_invert', 'loop_fold', 'held_retime'].filter(isShapePipe),
+  ['pipe_smooth_ms', 'pipe_cadence_fill', 'pipe_max_speed', 'pipe_norm_floor']);
 assert.deepEqual(groupParams([]), []);
 assert.ok(!groupParams([{ key: 'loop_min_confidence' }, { key: 'loop_fold' }], ['loop_min_confidence']).flatMap((g) => g.params).some((p) => p.key === 'loop_min_confidence'), 'excluded keys are left out');
 // v3 request shapes: spans only when present; score needs no video
@@ -64,10 +64,10 @@ assert.equal(trackCuts('detect', SC, 0, 4000), undefined);
 assert.deepEqual(trackCuts('one', SC, 0, 4000), []);
 assert.deepEqual(scoreRequest({ candidate: [{ at: 0, pos: 1 }], reference: [], start_ms: 0.4, end_ms: 99.6, scenes: [], fps: 24 }), { cmd: 'score', candidate: [{ at: 0, pos: 1 }], reference: [], start_ms: 0, end_ms: 100, fps: 24 });
 assert.deepEqual(Object.keys(scoreRequest({ candidate: [], reference: [], start_ms: 0, end_ms: 1, scenes: [{ start_ms: 0, end_ms: 1 }] })), ['cmd', 'candidate', 'reference', 'start_ms', 'end_ms', 'scenes']);
-// pipe_*: sign / invert are the picked signal, gate its own section, climax a part input, the rest shaping (carry too)
-const g3 = groupParams(['pipe_sign', 'pipe_invert', 'pipe_gate', 'pipe_gate_min_ms', 'pipe_carry_gaps', 'pipe_climax_hi', 'pipe_hold_ms', 'pipe_norm_window_ms', 'x', 'axis_x0', 'min_points'].map((key) => ({ key })));
-assert.deepEqual(g3.map((g) => [g.id, g.params.map((q) => q.key)]), [['motion', ['x']], ['reseed', ['min_points']], ['signal', ['pipe_sign', 'pipe_invert', 'axis_x0']],
-  ['shape', ['pipe_carry_gaps', 'pipe_hold_ms', 'pipe_norm_window_ms']], ['gate', ['pipe_gate', 'pipe_gate_min_ms']], ['parts', ['pipe_climax_hi']]]);
+// pipe_*: invert is the picked signal, gate its own section, the rest shaping
+const g3 = groupParams(['pipe_invert', 'pipe_gate', 'pipe_gate_min_ms', 'pipe_hold_ms', 'pipe_norm_window_ms', 'x', 'axis_x0', 'min_points'].map((key) => ({ key })));
+assert.deepEqual(g3.map((g) => [g.id, g.params.map((q) => q.key)]), [['motion', ['x']], ['reseed', ['min_points']], ['signal', ['pipe_invert', 'axis_x0']],
+  ['shape', ['pipe_hold_ms', 'pipe_norm_window_ms']], ['gate', ['pipe_gate', 'pipe_gate_min_ms']]]);
 // null min/max/choices (v2 schema) mean unset
 assert.equal(coerceParam({ type: 'int', default: 3, min: null, max: null }, '42'), 42);
 

@@ -86,7 +86,7 @@ def test_wrap_auto_choice():
     assert set(out[0][1]["channels"]) == set(CHANNELS) and out[0][1]["channels"]["primary_used"] == 0
     pts = out[5][2]["pts"]  # v3.1: every point, seed order, [x, y, visible, group]
     assert len(pts) == 2 and pts[1][0] == 0.5 and pts[0][2] == 1
-    assert pts[0][3] == -1 and out[5][1]["channels"]["n_groups"] == 0  # 2 points: too few to group
+    assert pts[0][3] == -1  # 2 points: too few to group
     assert np.corrcoef([o[1]["value"] for o in out], [-np.sin(k / 5) for k in range(60)])[0, 1] > 0.99
     from pawtrack.trackers import NOTES
     rec = [n for n in NOTES if n["code"] == "primary"][-1]["data"]  # the decision record (PROTOCOL notes)
@@ -127,7 +127,7 @@ def test_wrap_auto_hips(monkeypatch, on, chosen):
     frames = [(i * 33, np.zeros((120, 160, 3), np.uint8)) for i in range(T)]
     box = {"kind": "box", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
     p = {**PARAMS, "primary": "auto", "box_seed": "grid", "box_points": 64, "axis": "vertical", "sem_groups": True,
-         "group_labels": False, "seed_frame": "first", "held_input": "off", "reseed_every_ms": 0}
+         "seed_frame": "first", "held_input": "off", "reseed_every_ms": 0}
     NOTES.clear()
     out = list(wrap(run, box, frames, p, lambda vp, cf: 1.0, None, work_wh=(160, 120)))
     rec = [n for n in NOTES if n["code"] == "primary"][-1]["data"]
@@ -146,9 +146,9 @@ def test_wrap_auto_hips(monkeypatch, on, chosen):
     assert [n for n in NOTES if n["code"] == "primary"][-1]["data"]["chosen"] == "proj"  # explicit wins
 
 
-def test_group_proj():
-    """Grid over two bodies bobbing vertically in anti-phase + static background: g*_proj follows each body with
-    proj's sign (axis vertical: up = higher) at the input period, and works as the primary."""
+def test_group_pass_labels():
+    """Grid over two bodies bobbing vertically in anti-phase + static background: the group pass puts each body's points
+    in one moving group of its own (overlay pts[3]); only its camera estimate becomes channels."""
     T, per = 240, 24
     s = np.sin(np.arange(T) * 2 * np.pi / per)
     frames = [(round(i * 1000 / 24), np.zeros((36, 64, 3), np.uint8)) for i in range(T)]
@@ -162,21 +162,13 @@ def test_group_proj():
             xy[b, 1] -= 0.05 * s[k]
             yield t, xy, np.ones(len(xy), bool), np.ones(len(xy)), np.ones(len(xy))
     roi = {"kind": "box", "x": 0.0, "y": 0.2, "w": 1.0, "h": 0.6}
-    p = {**PARAMS, "primary": "g1_proj", "box_seed": "grid", "box_points": 64, "axis": "vertical"}
+    p = {**PARAMS, "primary": "proj", "box_seed": "grid", "box_points": 64, "axis": "vertical"}
     out = list(wrap(run, roi, frames, p, lambda vp, cf: 1.0, None))
     pts = out[0][2]["pts"]
     ga = {q[3] for q in pts if q[0] < 0.4}
     gb = {q[3] for q in pts if q[0] > 0.7}
-    assert len(ga) == 1 and len(gb) == 1 and min(ga | gb) >= 1, (ga, gb)
-    ch = lambda name: np.array([o[1]["channels"][name] for o in out], float)
-    for g, sign in ((ga.pop(), -1), (gb.pop(), 1)):  # A moving down = deeper = lower, like proj
-        gp = ch(f"g{g}_proj")
-        assert np.isfinite(gp).all() and gp.min() == 0 and gp.max() == 1
-        assert np.corrcoef(gp, sign * s)[0, 1] > 0.95
-        assert np.argmax(np.abs(np.fft.rfft(gp - gp.mean()))) == T // per
-    pp = ch("pair_proj")
-    assert np.nanmin(pp) == 0 and np.nanmax(pp) == 1 and np.argmax(np.abs(np.fft.rfft(pp - pp.mean()))) == T // per
-    assert np.allclose([o[1]["value"] for o in out], ch("g1_proj"))  # primary: g1_proj
+    assert len(ga) == 1 and len(gb) == 1 and min(ga | gb) >= 1 and ga != gb, (ga, gb)
+    assert not [k for k in out[0][1]["channels"] if k.startswith(("g1", "g2", "g3", "g4", "pair_", "n_groups"))]
 
 
 def test_proj_cam():
@@ -209,7 +201,7 @@ def test_proj_cam():
     rec = [n for n in NOTES if n["code"] == "primary"][-1]["data"]
     assert rec["rule"] == "explicit: proj_cam" and rec["candidates"]["proj_cam"]["cam_conf"] > 0.5
     assert rec["candidates"]["proj"]["travel"] > rec["candidates"]["proj_cam"]["travel"]  # the pan rides on proj
-    assert "g1_proj" in rec["candidates"] and rec["candidates"]["g1_proj"]["share"] > 0 and rec["camera"]["std"] > 0
+    assert not [k for k in rec["candidates"] if k.startswith(("g1", "g2", "pair_"))] and rec["camera"]["std"] > 0
 
 
 def track(tracker, video, roi, end_ms, **params):

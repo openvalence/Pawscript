@@ -86,9 +86,9 @@ test('names, scene storage, and the track request (on, painted inside its scene 
 });
 
 test('any user group name flows through the channel helpers', () => {
-  assert.deepEqual(groupOfChannel('sem_tail2_proj'), { key: 'sem_tail2', body: 0, part: 0, sem: 'tail2', kind: 'proj' });
+  assert.deepEqual(groupOfChannel('sem_tail2_proj'), { key: 'sem_tail2', sem: 'tail2', kind: 'proj' });
   const run = { channels: { sem_tail_proj: {}, sem_tail_rel: {}, sem_hips_proj: {}, g1_proj: {} } };
-  assert.deepEqual(pickerChannels(run), ['primary', 'g1_proj', 'sem_hips_proj', 'sem_tail_proj']);
+  assert.deepEqual(pickerChannels(run), ['primary', 'sem_hips_proj', 'sem_tail_proj']);
   assert.equal(labelOf({ sem_tail: { label: 'tail', source: 'user' } }, 'sem_tail_proj'), 'tail (drawn)');
 });
 
@@ -125,12 +125,12 @@ test('characters: colour families (Bottom and Top apart, parts within a family a
 });
 
 test('characters: channels in the picker, labels, variants', () => {
-  assert.deepEqual(groupOfChannel('sem_c2_hand_l_proj'), { key: 'sem_c2_hand_l', body: 0, part: 0, sem: 'c2_hand_l', kind: 'proj' });
-  assert.deepEqual(groupOfChannel('sem_c1_balls_area'), { key: 'sem_c1_balls', body: 0, part: 0, sem: 'c1_balls', kind: 'area' });
+  assert.deepEqual(groupOfChannel('sem_c2_hand_l_proj'), { key: 'sem_c2_hand_l', sem: 'c2_hand_l', kind: 'proj' });
+  assert.deepEqual(groupOfChannel('sem_c1_balls_area'), { key: 'sem_c1_balls', sem: 'c1_balls', kind: 'area' });
   const ch = Object.fromEntries(['g1_proj', 'sem_hips_proj', 'sem_c2_hips_proj', 'sem_c1_penis_proj', 'sem_c1_balls_scale', 'sem_c1_balls_proj', 'pair_proj',
     'who_c1_proj', 'who_c2_proj', 'who_pair_proj', 'who_pair_dist', 'who_p1h2_proj', 'who_c1_x'].map((k) => [k, { t: [0], v: [0] }]));
   const run = { channels: ch };
-  assert.deepEqual(pickerChannels(run), ['primary', 'g1_proj', 'sem_hips_proj', 'sem_c1_balls_scale', 'sem_c1_penis_proj', 'sem_c2_hips_proj', 'pair_proj', 'who_c1_proj', 'who_c2_proj', 'who_pair_proj', 'who_p1h2_proj']);
+  assert.deepEqual(pickerChannels(run), ['primary', 'sem_hips_proj', 'sem_c1_balls_scale', 'sem_c1_penis_proj', 'sem_c2_hips_proj', 'who_c1_proj', 'who_c2_proj', 'who_pair_proj', 'who_p1h2_proj']);
   assert.deepEqual(chipVariants(run, 'sem_c1_balls_scale'), ['sem_c1_balls_scale', 'sem_c1_balls_proj'], 'a character\'s balls default to _scale like the seeded ones');
   assert.deepEqual([whoLabel('who_c1_proj'), whoLabel('who_pair_proj'), whoLabel('who_p1h2_proj'), whoLabel('who_p2h1_dist'), whoLabel('pair_proj')], ['Bottom center', 'Bottom ↔ Top', 'Bottom penis ↔ Top hips', 'Top penis ↔ Bottom hips dist', '']);
   assert.equal(labelOf({ sem_c2_hand_l: { label: 'c2_hand_l', source: 'user' } }, 'sem_c2_hand_l_proj'), 'Top L hand (drawn)');

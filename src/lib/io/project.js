@@ -1,6 +1,6 @@
 // .pawproj: versioned JSON for the whole `app.doc` (see ARCHITECTURE.md). Pure: text <-> doc.
 //
-// File shape (version 3; 2 kept effects (`fx`) and modifier spans apart, 1 differs in what plan kind 'climax' means), every section but `format`, `version`, `axes` optional on read:
+// File shape (version 4; 3 has the Insertion / Pull-out / Climax run-in modifier kinds, 2 kept effects (`fx`) and modifier spans apart, 1 differs in what plan kind 'climax' means), every section but `format`, `version`, `axes` optional on read:
 //   { format:'pawproj', version:1, app:{name,version}, createdAt, savedAt,
 //     media:{ path, relativePath?, name, size, hash:{algo,value}|null, durationMs, fps, isVfr, width, height },
 //     axes:{ stroke:[[at,pos],...], roll:[...] }, activeAxis, playheadMs,
@@ -13,7 +13,7 @@ import { normalize } from '../core/script.js';
 import { axisName } from './axes.js';
 
 export const FORMAT = 'pawproj';
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 export class ProjectError extends Error {
   /** errors: [{path, message}] */
@@ -65,6 +65,10 @@ export const MIGRATIONS = {
   /** v3 (paw-ef73.20): modifiers are one object (the `modifiers` block); the old `fx` effects and the scenes' modifier
    *  spans are converted once by the app (app/project-logic.js modsFromV2, from doc.meta.migratedFrom). */
   2(o) { return { ...o, version: 3 }; },
+  /** v4 (paw-ajvq): an Insertion / Pull-out modifier is a knotting push / pull, a Climax run-in is gone; converted by the
+   *  app on every load (app/project-logic.js foldKinds), so a v3 Pawscript refuses a v4 file instead of playing a push as
+   *  knot cycles. */
+  3(o) { return { ...o, version: 4 }; },
 };
 
 /** Apply migrations until `target`. Returns {obj, from}. Throws ProjectError for unknown or newer versions. */

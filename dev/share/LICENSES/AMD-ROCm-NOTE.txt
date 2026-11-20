@@ -1,0 +1,11 @@
+AMD ROCm 10.2.0 libraries in the AMD runtime (runtime-rocm.zip: python-rocm\Lib\site-packages\_rocm_sdk_core,
+_rocm_sdk_libraries, _rocm_sdk_device_gfx*, and the amd_torch_device_* / amd_torchvision_device_* kernels)
+These come from AMD's own PyTorch-for-Windows wheels (https://stable.repo.amd.com/rocm/whl-next/, built by AMD's TheRock
+project, MIT). The wheels rocm, rocm-sdk-core, rocm-sdk-libraries, rocm-sdk-device-gfx* and the amd-torch(vision)-device
+kernels carry no licence field and no licence files, except two: amd_comgr (Apache-2.0 with LLVM exceptions,
+_rocm_sdk_core\share\doc\amd_comgr\LICENSE.txt) and hipcc (MIT, _rocm_sdk_core\share\doc\hipcc\LICENSE.txt).
+rocm-bootstrap declares MIT. AMD's ROCm licensing page lists the components these DLLs are built from as open source:
+CLR / HIP runtime (amdhip64), OpenCL runtime, rocBLAS, hipBLAS, hipBLASLt, MIOpen, rocFFT, rocRAND, rocSPARSE: MIT;
+rocSOLVER: BSD-2-Clause; Comgr: NCSA / Apache-2.0 with LLVM exceptions; proprietary ROCm parts (ROCprof Trace Decoder)
+are not in these wheels. On that basis they may be passed on with their notices, as PyTorch for ROCm itself is; the
+missing notice files are the gap. https://rocm.docs.amd.com/en/latest/about/license.html. Not legal advice.

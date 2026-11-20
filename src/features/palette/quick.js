@@ -51,6 +51,8 @@ export function openQuick(app, at = pointer) {
   return showContextMenu(last, [{ section: `${LABEL} · ${NAMES[listKey(app)] || listKey(app)}` }, ...items], { label: LABEL, source: document.activeElement });
 }
 
+const CUSTOM_TRACK = new Set(['track.gridFrame', 'track.run']);
+
 /** The right-click entries for the [data-command] element el is in (none when it is in none, or its command is unknown). */
 export function commandEntries(app, el) {
   const id = el.closest?.('[data-command]')?.dataset.command;
@@ -66,6 +68,8 @@ export function commandEntries(app, el) {
     { label: 'Move up', disabled: i === 0, run: () => { edit(app, (l) => quickMove(l, id, -1)); again(); } },
     { label: 'Move down', disabled: i === ids.length - 1, run: () => { edit(app, (l) => quickMove(l, id, 1)); again(); } });
   if (!settingOf(id)) out.push({ label: k ? `Change shortcut (currently ${fmtKeys(k)})…` : 'Assign shortcut…', run: () => app.commands.run('palette.keys', { focus: id, slot: k ? 0 : -1 }) });
+  if (CUSTOM_TRACK.has(id)) out.push({ separator: true },   // paw-bunr: the rarely used trackers, out of the way
+    { label: 'Custom box track…', run: () => app.commands.run('track.customBox') }, { label: 'Custom point track…', run: () => app.commands.run('track.customPoints') });
   return out;
 }
 

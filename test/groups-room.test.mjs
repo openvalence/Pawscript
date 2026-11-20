@@ -1,7 +1,7 @@
 // paw-8ehz: the Groups tool's chrome keeps off the picture (groups-room.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupsRoom } from '../src/features/tracking/groups-room.js';
+import { groupsBar, groupsRoom } from '../src/features/tracking/groups-room.js';
 
 const A = 16 / 9;
 test('a wide stage: the picture keeps its place, its margins hold the bar and the right column', () => {
@@ -23,4 +23,11 @@ test('a stage too narrow even so: fold the side docks (and keep off the picture 
 test('a portrait picture in a wide stage: wide margins, nothing moves', () => {
   const r = groupsRoom(800, 400, 9 / 16, 40);
   assert.equal(r.inset, null); assert.equal(r.right, 287);
+});
+
+test('paw-gj8y: the bar keeps one column at every stage that holds the least button size, sized from the stage', () => {
+  assert.deepEqual(groupsBar(438), { h: 24, w: 26, cols: 1, barW: 33 });   // 1600 x 1000 Track stage
+  assert.equal(groupsBar(2000).h, 28);
+  for (let H = 391; H < 600; H++) assert.equal(groupsBar(H).cols, 1, 'H ' + H);
+  assert.ok(groupsBar(300).cols >= 2 && groupsBar(300).h === 22, 'a stage too short: two columns at the least size');
 });

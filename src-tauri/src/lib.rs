@@ -12,6 +12,7 @@ mod datasets;
 mod error;
 mod ffmpeg;
 mod files;
+mod gpu;
 mod ident;
 mod media;
 #[cfg(test)]
@@ -152,6 +153,8 @@ pub fn run() {
       models::models_changed,
       portable::runtime_status,
       portable::runtime_unpack,
+      portable::runtime_remove,
+      gpu::gpu_probe,
       models::open_url,
       update::update_check,
       update::update_download,

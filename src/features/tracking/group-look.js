@@ -90,6 +90,42 @@ export function busyCells(n = 8, cell = 4) {
   return out;
 }
 
+// An unassigned part's dither shimmers (slow soft swells) and a part just named fills in (the grow): both move the dither's
+// coverage per cell, so dots switch on and off (binary, the part's own colour and alpha) on their anchored grid. Never under
+// prefers-reduced-motion (GroupsOverlay checks).
+export const CAUSTIC = { period: 9000, amp: 0.18, hyst: 0.012 };   // ms per cycle; coverage added at a swell's top; the per-cell hysteresis
+/** The swells over cells i0..i0+nw-1 x j0..j0+nh-1 (indices from the part's grid anchor) at t ms, into out (row-major, -1..1,
+ *  averaging 0): two broad warped sine fields (60 to 100 cells a wave) drifting against each other, each warp a function of
+ *  one axis only (two sines per cell). Changes at most about 0.0009 per ms: keep CAUSTIC.hyst above amp x that x a frame / 2. -> out. */
+export function causticField(i0, j0, nw, nh, t, out = new Float32Array(nw * nh)) {
+  const w = (2 * Math.PI * t) / CAUSTIC.period, col = new Float32Array(nw);
+  for (let i = 0; i < nw; i++) col[i] = 0.9 * Math.sin(0.07 * (i0 + i) - 0.4 * w) - 0.8 * w;
+  for (let j = 0, k = 0; j < nh; j++) {
+    const J = j0 + j, row = 0.9 * Math.sin(0.06 * J + 0.5 * w) + w;
+    for (let i = 0; i < nw; i++, k++) out[k] = (Math.sin(0.09 * (i0 + i) + row) + Math.sin(0.08 * J + col[i])) / 2;
+  }
+  return out;
+}
+export const GROW = { ms: 750, amp: 0.75, fill: 0.55 };   // total ms; coverage added inside the disc; share of ms the disc takes to reach the edge
+/** The fill-in when a part is named, at d cells from its middle, t ms after, rmax its farthest cell -> 0..1: a disc from the middle
+ *  grows to past the edge (soft front, at least 2 cells, 12 % of rmax; easing out) over GROW.fill of the time, everything behind
+ *  the front held at 1, then the whole of it fades back to 0. Never falls at a cell while the disc grows; 0 before and after. */
+export function growAt(d, t, rmax) {
+  const u = t / GROW.ms;
+  if (!(u >= 0 && u < 1)) return 0;
+  const soft = Math.max(2, 0.12 * rmax), g = Math.min(1, u / GROW.fill), R = (1 - (1 - g) ** 2) * (rmax + soft);
+  const front = Math.min(1, Math.max(0, (R - d) / soft)), fade = u <= GROW.fill ? 1 : 1 - (u - GROW.fill) / (1 - GROW.fill);
+  return front * front * (3 - 2 * front) * fade * fade * (3 - 2 * fade);
+}
+/** Is cell (i, j) on at static coverage c with the swell f there (0: none) and the grow s (0..1)? ditherOn on the moved coverage; was
+ *  (the cell's last state, null: none) holds it within CAUSTIC.hyst of its threshold, so a slow field never blinks a cell for a frame. */
+export function shimmerOn(i, j, c, f, s = 0, mirror = false, was = null) {
+  const v = c + CAUSTIC.amp * f + GROW.amp * s;
+  if (was == null) return ditherOn(i, j, v, mirror);
+  if (ditherOn(i, j, v - CAUSTIC.hyst, mirror)) return true;
+  return ditherOn(i, j, v + CAUSTIC.hyst, mirror) ? !!was : false;
+}
+
 /** One pass over a mask ({w, h, a}): weighted centroid, principal axis, the box, and the label spot. Mask px. -> {n (px >= 0.5),
  *  cx, cy, ax, ay (unit long axis), elong (sqrt of the eigenvalue ratio), x0, y0, x1, y1, spot: {x, y, r (inscribed radius),
  *  along (room along the axis through the spot)}} or {n: 0}. */

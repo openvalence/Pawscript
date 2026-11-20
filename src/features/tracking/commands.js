@@ -11,9 +11,10 @@ import { nextLabelMode, LABEL_MODE_NAMES } from './group-labels.js';
 import { nextFill, FILL_NAMES } from './group-look.js';
 import { modTrackKey, trackMod } from './mod-track.js';
 import { REACTS } from '../timeline/mods-tracked.js';
+import { markerNear, removeMarker } from '../timeline/commands-fx.js';
 import { deriveCommand, addLanesCommand, flipAxisCommand, hasAxesGhosts } from './axes-derive.js';   // paw-2pcf
 import { shaftNames } from '../../lib/shaft.js';
-import { pickOrder } from './roi-part.js';
+import { pickOrder, GRID } from './roi-part.js';
 import { guard, whyOf } from '../../app/commands.js';
 
 const T = trackingFor, P = peekTracking;
@@ -107,8 +108,28 @@ function trackRoi(app, a) {
   if (s.canTrack && s.trackRoi) return s.track();   // a box set by code / an internal view's
   const sel = s.selected, box = sel?.roi?.kind === 'box' && !wholeFrame(sel.roi) ? sel.roi : null, tk = box && s.trackers.find((t) => t.id === (sel.tracker?.id ?? sel.tracker));
   if (tk) { s.selectTracker(tk.id, false); s.roi = { ...box }; app.toast(`No part painted here: ${sel.name || 'the selected run'} re-tracked with its stored box`, 'quiet'); return s.track(); }
-  app.toast(`Track ROI tracks a painted part: paint it with Groups (${app.commands?.keysFor?.('tracking.groups')?.[0] || 'Tab'}) first`, 'info',
-    { action: { label: 'Open Groups', run: () => app.commands.run('tracking.groups') } });
+  paintHint(app);
+}
+// paw-bunr: nothing painted: the paint tool opens on the video (the Groups tool) and a line says what to paint
+function paintHint(app) {
+  if (!peekGroups(app)?.on) app.commands.run('tracking.groups');
+  app.toast('Paint the part to track on the video', 'info');
+}
+// paw-bunr: the rarely used custom tracks (right-click on Track / Track ROI): the Tracker panel's pick runs, as a box on the painted
+// parts or as a point grid over the frame
+const PICK = 'Pick the tracker in the Tracker panel';
+const pickHint = (app, what) => app.toast(`Custom ${what} track: ${PICK}`, 'info', { action: { label: 'Open panel', run: () => app.showPanel?.('tracking') } });
+function customBox(app) {
+  const s = T(app), t = s.tracker;
+  if (!t || GRID.has(t.id) || !(t.roi === 'box' || t.roi === 'box_or_points')) return pickHint(app, 'box');
+  if (!s.canTrack) return paintHint(app);
+  return trackRoi(app, { all: true });
+}
+function customPoints(app) {
+  const s = T(app), t = s.tracker;
+  if (!t || !GRID.has(t.id) || s.gpuOff(t)) return pickHint(app, 'point');
+  own(app);
+  return s.gridFrame({ tracker: t });
 }
 async function pickPart(app, s, parts, under) {
   const { showContextMenu } = await import('../../ui/kit/contextmenu.js');
@@ -136,6 +157,8 @@ export default [
   { id: 'track.run', title: 'Track ROI: one painted part', tip: 'Paint the part (Tab); several painted: a menu asks which', keys: ['Ctrl+T'], menu: 'Track', group: 'track', keyWhen: track,
     when: guard((app) => tracks(app) && (modKey(app) || shotsOnly(app) || !!P(app)?.canTrack || !!P(app)?.canPart || (!!P(app)?.stopping && P(app)?.busy === 'track')), (app) => whyOf(app, tracks) || trackWhy(app)),
     run: (app, a) => modTrackKey(app) || modSelTrack(app) || actWhy(app) || trackRoi(app, a) },
+  { id: 'track.customBox', title: 'Custom box track', hidden: true, group: 'track', when: guard((app) => tracks(app) && !!P(app)?.videoPath, (app) => whyOf(app, tracks) || 'Open a video first'), run: (app) => actWhy(app) || customBox(app) },
+  { id: 'track.customPoints', title: 'Custom point track', hidden: true, group: 'track', when: guard((app) => tracks(app) && !!P(app)?.videoPath, (app) => whyOf(app, tracks) || 'Open a video first'), run: (app) => actWhy(app) || customPoints(app) },
   // paw-o74b: a Track of every painted part on a tracked shot with groups painted since adds only those to its run; this tracks everything again (a new run)
   { id: 'track.full', title: 'Track every painted part again (a new run)', menu: 'Track', group: 'track', when: guard((app) => track(app) && !!P(app)?.canTrack, (app) => whyOf(app, track) || trackWhy(app)), run: (app) => T(app).track({}, { full: true }) },
   // paw-l3ec: a Track over a run of the same tracker replaces it; paw-1ysd: this one takes no range (the earlier run keeps
@@ -146,6 +169,8 @@ export default [
   { id: 'track.cancel', title: 'Cancel tracker job', keys: ['Escape'], menu: 'Track', group: 'track', when: guard((app) => { const s = P(app); return !!s && ((!!s.busy && s.owner !== 'api') || !!s.batch || !!s.planBusy); }, 'No tracker job running'), run: (app) => T(app).cancel() },
   // the Groups tool's X / Delete (before the axis tool's X: while the tool is open with a group picked, X deletes it)
   { id: 'tracking.groupsDelete', title: 'Groups: delete the active group', keys: ['X', 'Delete', 'Backspace'], hidden: true, when: (app) => groupsOn(app) && !!peekGroups(app)?.activeGroup && !peekGroups(app)?.draft, run: (app) => groupsFor(app).remove() },
+  // paw-d1g7: X on the stroke lane with an orgasm under the playhead deletes its spurt there (U adds one: fx.spurtAtPlayhead)
+  { id: 'tracking.markerDelete', title: 'Delete the orgasm spurt at the playhead', keys: ['X'], hidden: true, when: (app) => app.mode === 'track' && !!P(app)?.laneFocused && !!markerNear(app), run: (app) => removeMarker(app) },
   // stroke axis (axis.js). X is also graph.swapAB while the graph has focus: tracking registers first, so it yields there
   { id: 'tracking.axisDraw', title: 'Draw stroke axis', keys: ['X'], menu: 'Track', group: 'track', when: guard((app) => track(app) && !!app.doc.media && !graphFocused(app), (app) => whyOf(app, track, vid) || 'Not while the graph has focus'), run: (app) => T(app).toggleAxisTool() },
   // the Groups tool (groups.svelte.js): paint the groups the tracker pins, on the scene's seed frame; its keys only while open

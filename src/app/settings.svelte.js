@@ -200,14 +200,13 @@ export const SCHEMA = {
   'tracking.blobs.camera': ONOFF_BLOB('camera', 'The camera’s motion as an arrow and a grid'),
   'tracking.blobs.cameraOpacity': { ...OPACITY_BLOB('camera opacity', 80), valid: (v) => v >= 0 && v <= 100 },
   'tracking.blobs.primary': ONOFF_BLOB('primary', 'What the tracker picked as primary, outlined'),
-  // custom axis, else the reported direction, else a PCA estimate; the two largest groups joined with pair_dist
+  // custom axis, else the reported direction, else a PCA estimate
   'tracking.blobs.axis': ONOFF_BLOB('axis', 'The run’s stroke axis through the frame'),
   // off: only the hovered, soloed, lane-selected or primary thing keeps one; hold Alt to see every label in full
   'tracking.blobs.labels': { default: 'short', valid: (v) => ['off', 'short', 'full'].includes(v), group: 'Tracking', internal: true, label: 'Tracker view: labels', doc: 'Labels over the video: off, short or full', choices: [['off', 'Off'], ['short', 'Short'], ['full', 'Full']] },
   'tracking.blobs.trails': ONOFF_BLOB('center paths', 'Each group’s center path, 2 s back and ahead'),
   'tracking.blobs.hulls': ONOFF_BLOB('hulls', 'A filled hull per moving group', false),
   'tracking.blobs.hullsOpacity': { ...OPACITY_BLOB('hulls opacity', 40), valid: (v) => v >= 0 && v <= 100 },
-  'tracking.blobs.affine': ONOFF_BLOB('3D trackers', 'Per-group scale and rotation as a ring'),
   'tracking.blobs.occluded': ONOFF_BLOB('occluded points', 'Every occluded point as a small square', false),
   'tracking.blobs.extra': ONOFF_BLOB('extra flags', 'A ring per extra point flag, colored by value'),
   'tracking.blobs.decimate': { default: 'all', valid: (v) => ['all', '1 in 4', '1 in 9'].includes(v), group: 'Tracking', internal: true, label: 'Tracker view: points shown', doc: 'Every point, or 1 in 4 or 9 on a coarse lattice', choices: [['all', 'All'], ['1 in 4', '1 in 4'], ['1 in 9', '1 in 9']] },
@@ -377,6 +376,9 @@ export const SCHEMA = {
   // the models server (features/models/logic.js MODELS_BASE_URL when empty); PAWSCRIPT_MODELS_URL wins over both. Another
   // folder on https://dl.openvalence.org/, or this PC (dev/models-window-check.mjs): the hosts the shell allows (models.rs)
   'models.baseUrl':      { default: '', type: 'string', internal: true, valid: (v) => typeof v === 'string' && (v === '' || /^(https:\/\/dl\.openvalence\.org|https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?)\/(\S*\/)?$/.test(v)), group: 'Models', label: 'Models server', doc: 'Empty: the Pawscript models server' },
+  // paw-vdb3.3: which runtime the shared build runs (the shell reads it from settings.json at every tracker start, gpu.rs):
+  // empty = the one for the GPU found (gpu_probe), else the user's pick. Set in Settings > Models.
+  'models.runtime':      { default: '', internal: true, valid: (v) => v === '' || v === 'runtime' || v === 'runtime-rocm', group: 'Models', label: 'Runtime', doc: 'Auto picks by your GPU', choices: [['', 'Auto'], ['runtime', 'NVIDIA (CUDA)'], ['runtime-rocm', 'AMD (ROCm)']] },
   // the first-start screen was answered (Download or Not now): it does not come back by itself (Settings > Models does)
   'models.setupDone':    { default: false, auto: true, internal: true, group: 'Models', label: 'First-start download asked', doc: 'Settings > Models downloads later' },
   // update.rs: GitHub's latest.json, once per start, only when on

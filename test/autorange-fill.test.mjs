@@ -35,7 +35,7 @@ test('an off-screen shot with a bridge\'s points (no fill) is ranged the same wa
 test('blank shots and insertion pushes keep their own behaviour', () => {
   const blank = rangePlan(shots({}, [...PEN, 'blank']), filled);
   assert.equal(blank[1].rule, 'inherit'); assert.equal(blank[1].source, 'none');
-  const ins = rangePlan(withMods(shots({}, []), [{ id: 'i', kind: 'insertion', t0: 10000, t1: 20000 }]), filled);
+  const ins = rangePlan(withMods(shots({}, []), [{ id: 'i', kind: 'knotting', t0: 10000, t1: 20000, params: { mode: 'none', to: 0 } }]), filled);
   assert.equal(ins[1].rule, 'insertion'); assert.equal(ins[1].source, 'none');
   assert.ok(RULES.findIndex((r) => r.id === 'unseen') < RULES.findIndex((r) => r.id === 'inherit'));
 });

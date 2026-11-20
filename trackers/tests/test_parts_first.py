@@ -62,7 +62,7 @@ def test_box_seeds_group_seed_corners_uses_the_fine_grey():
 WHOLE = {"kind": "box", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
 P = {"axis": "vertical", "axis_x0": 0.5, "axis_y0": 0.3, "axis_x1": 0.5, "axis_y1": 0.7, "gap_ms": 1000,
      "primary": "auto", "box_seed": "grid", "box_points": 16, "reseed_every_ms": 1000, "retire_ms": 2000,
-     "max_points": 0, "held_input": "off", "seed_frame": "first", "sem_groups": True, "group_labels": False}
+     "max_points": 0, "held_input": "off", "seed_frame": "first", "sem_groups": True}
 SQ = lambda x0, y0, x1, y1: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
 
 

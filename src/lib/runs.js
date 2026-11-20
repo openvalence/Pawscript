@@ -256,7 +256,7 @@ export function flipPatch(run, i) {
 }
 
 // ---- user span labels (state sent as track `spans`) ----
-export const SPAN_STATES = ['active', 'idle', 'carry', 'climax', 'orgasm'];   // climax = the fast run-in, orgasm = the pulses (sidecar v3.1)
+export const SPAN_STATES = ['active', 'idle', 'carry', 'climax', 'orgasm'];   // climax = the fast run-in; orgasm a flag like it (sidecar v4.62)
 /** Adds s, replacing whatever it overlaps (partly covered spans are trimmed). Sorted by start. */
 export function addSpan(spans, s) {
   const out = [];

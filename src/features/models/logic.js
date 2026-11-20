@@ -41,7 +41,7 @@ export function parseManifest(m) {
     for (const f of x.files) {
       if (!safePath(f?.path)) why(`unsafe path ${JSON.stringify(f?.path)}`);
       if (!(Number.isSafeInteger(f.bytes) && f.bytes > 0)) why(`${f.path}: no size`);
-      if (!manual && (!hex64(f.sha256) || typeof f.url !== 'string' || !f.url)) why(`${f.path}: no SHA-256 or url`);
+      if (!manual && x.hosted !== false && (!hex64(f.sha256) || typeof f.url !== 'string' || !f.url)) why(`${f.path}: no SHA-256 or url`);
     }
   }
   return o;
@@ -96,11 +96,37 @@ export function toFetch(m, facts = {}, verified = {}) {
   return { files, bytes: files.reduce((n, f) => n + Math.max(0, f.bytes - (facts[f.path]?.exists ? 0 : facts[f.path]?.part || 0)), 0) };
 }
 
-/** The runtime: needed when this is the shared build and no runtime archive waits beside the exe, and the unpacked runtime
- *  is missing or another version than the compiled manifest pins. rt: the shell's runtime_status. */
+/** The runtimes (one zip each, one folder beside the exe): CUDA is 'runtime', AMD's ROCm build 'runtime-rocm'. An entry with
+ *  hosted: false is not on the server yet (a placeholder): it cannot be downloaded. */
+export const RUNTIME_IDS = ['runtime', 'runtime-rocm'];
+export const RUNTIME_WORDS = { runtime: 'NVIDIA (CUDA)', 'runtime-rocm': 'AMD (ROCm)' };
+export const isHosted = (m) => m?.hosted !== false;
+const info = (rt, id) => rt?.runtimes?.find((r) => r.id === id) || null;
+/** On the disk, or its zip waits beside the exe: usable without a download. */
+export const runtimeThere = (rt, id) => { const i = info(rt, id); return !!(i && (i.python || i.zip)); };
+
+/** The runtime this PC uses and why. setting: models.runtime ('' = auto); probe: the shell's gpu_probe ({runtime, name});
+ *  rt: runtime_status; entries: the manifest's runtime entries. -> {id, auto (the pick for the GPU), why, note, other} */
+export function chooseRuntime({ setting = '', probe = null, rt = null, entries = [] }) {
+  const ids = entries.map((e) => e.id);
+  const ok = (id) => ids.includes(id) && (isHosted(entries.find((e) => e.id === id)) || runtimeThere(rt, id));
+  const want = probe?.runtime && ids.includes(probe.runtime) ? probe.runtime : RUNTIME_IDS[0];
+  const auto = ok(want) ? want : RUNTIME_IDS[0];
+  const picked = ids.includes(setting) ? setting : '';
+  const id = picked || auto;
+  const found = probe?.name ? `${probe.name} found` : 'No discrete GPU found';
+  const why = picked ? 'Your choice' : found;
+  const note = picked ? found : auto !== want ? `${RUNTIME_WORDS[want]} runtime not published yet` : probe?.name ? '' : 'Trackers run on the CPU';
+  return { id, auto, why, note, other: ids.find((x) => x !== id) || null };
+}
+
+/** A runtime is needed when this is the shared build and no runtime archive waits beside the exe, and its unpacked folder
+ *  is missing or another version than the compiled manifest pins; an unpublished one is never needed. rt: the shell's
+ *  runtime_status; entry: that runtime's manifest entry. */
 export function runtimeNeeded(rt, entry) {
-  if (!rt?.portable || !entry || rt.zip) return false;
-  return !rt.python || (entry.version || '').trim() !== (rt.installed || '').trim();
+  const i = info(rt, entry?.id);
+  if (!rt?.portable || !entry || !isHosted(entry) || !i || i.zip) return false;
+  return !i.python || (entry.version || '').trim() !== (i.installed || '').trim();
 }
 
 /** Every required model (not the runtime) usable: installed, or installed in its compiled version ('update'). */

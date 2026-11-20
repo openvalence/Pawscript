@@ -1,24 +1,27 @@
 // fx.js -- modifiers (paw-ef73.20): ONE object per event on the timeline, laid over the motion, live until Shift+A /
 // Flatten. A modifier is { id, kind, t0, t1, params?, muted?, baked?, link?, label? } (doc.fx; the .pawproj `modifiers`).
-// The EVENT kinds (`event`: orgasm, knotting, throbbing, idle, insertion, pull-out) are marked in any tab (the Scenes tab
-// is where they are made) and are also what the scene-level consumers read (timeline/mods.js withMods: Autorange's
-// bands, the sidecar's climax / idle labels, Detect cumshots). The other kinds only modify strokes that exist (Reshape,
-// Climax run-in, Spurt): offered in the Refine tab only. applyFx(base, fx, ctx) re-shapes the base inside each
+// The EVENT kinds (`event`: orgasm, knotting, throbbing, idle) are marked in any tab (the Scenes tab is where they are
+// made) and are also what the scene-level consumers read (timeline/mods.js withMods: Autorange's bands, the sidecar's
+// climax / idle labels, Detect cumshots; a push / pull reads as 'insertion' / 'pullout', tagIdOf). The other kinds only
+// modify strokes that exist (Reshape, Spurt): offered in the Refine tab only. applyFx(base, fx, ctx) re-shapes the base inside each
 // modifier's span from the base's OWN turning points, so the cadence stays the video's:
-//   knotting  knot-stroke (timing 'auto') fitted onto the base's turns: one knot cycle per tracked bottom-top-bottom
-//             (mode 'cycles'); mode 'single' = ONE slow insertion over the span: a push, the pop, a settle, the tie
-//             (held deep); mode 'unknot' = the knot coming OUT: held at the tie, a slow pull toward the knot-out level
-//             (tugs: small slips back in), the pop out, a settle at `to`. Auto (mode unset): one knot when the span holds
-//             fewer than 2 base turns: 'unknot' when the trace is deeper before the span than after it, else 'single'.
-//             fitKnotIn() / fitKnotOut() read the push / pull and pop timing off the tracked samples
-//   insertion ONE slow push over the span, no strokes and no pop: from `from` (null = the level the trace is at when the
-//   pullout    span starts) eased onto `to` (arriving at `arrive`, after `push` of the span), held there to the end. The
-//             knot-in machinery with no pop (knotInKeys); a pull-out is the same curve out (`to` 100). An insertion
-//             yields to a live knotting modifier overlapping it (the knot's One knot is the knotted insertion).
-//             insertionScript() is the same push for an untracked scene (the bridges); fitInsertion() reads the timing
+//   knotting  paw-afoe: ONE set of levels for every mode, the knot-stroke recipe's (lo full depth, knotIn the catch,
+//             press the knot depth, knotOut the tie, popTo where a pop out lands, hi the top). Mode 'cycles': the recipe
+//             (timing 'auto') fitted onto the base's turns, one knot cycle per tracked bottom-top-bottom; 'single' = ONE
+//             knot in over the span: from the tracked level to the catch, a slower press to the knot depth, the pop to
+//             full depth in one frame, a drift up to the tie, then held there or (pullOut) pulled out through popTo back
+//             onto the trace; 'unknot' = the knot coming OUT: held at the tie, a slow pull to the catch (tugs: small
+//             slips back in), the pop out onto popTo, a settle at `to`. The mode is stored when the modifier is made
+//             (autoKnotMode); one stored without it resolves it from the strokes when applied.
+//             fitKnotIn() / fitKnotOut() read the push / pull and pop timing off the tracked samples.
+//             paw-ajvq, mode 'none' (made as one: KNOT_PUSH / KNOT_PULL; no auto rule picks it): ONE slow push or pull,
+//             no pop: from `from` (null = the level the trace is at when the span starts) eased onto `to` (null = the
+//             trace at the span end), arriving at popAt after `push` of the span, held there (pushKeys).
+//             insertionScript() is the same push (or One knot's knot-in) for an untracked scene (the bridges);
+//             fitInsertion() reads the push timing
 //   idle      a hold: the level the trace is at when the span starts, held to its end
 //   orgasm    the base's turn times kept: depth pulled toward [lo, hi], a flutter between turns only where the base
-//   climax    is fast, scaled by an envelope over the span (rampIn / peak / rampOut), eased at both edges
+//             is fast, eased in and out over half a stroke (edgeMsOf)
 //   shape     "Reshape": the path between every two base turns re-drawn from a stroke profile (ease at departure and
 //             arrival, dwell at top / bottom, depth lo / hi; inFrac, set by hand only, moves the tops). fitProfile()
 //             reads the profile off the tracked samples, so the fit is just a param preset.
@@ -27,65 +30,86 @@
 //             `count` half-swings, back on the trace; several spurts a few hundred ms apart are the burst train
 //   throbbing a heartbeat on the trace over the span: every `period` ms a fast dip of `amount` (attack), a slower return
 //             (release), held until the next beat; one-sided (dir 'dip' = deeper, 'swell' = shallower), relative to the
-//             trace like a spurt; `double` adds the lub-dub's second dip at +120 ms; envelope build / fade; seeded
-//             jitter. A single throb is a throbbing range one beat long (singleThrob)
+//             trace like a spurt; `double` adds the lub-dub's second dip at +120 ms; seeded
+//             jitter (its build / fade is the strength envelope). A single throb is a throbbing range one beat long (singleThrob)
+// paw-xu4v, the kinds that ride on the trace (orgasm, throbbing, spurt):
+//   base mix  `mix` (0..100 %): the trace under the span first pulled toward its center line (its mean over one stroke),
+//             100 = the strokes as tracked, 0 = held at the center line (the strokes may be the orgasm shaking the
+//             tracking); eased back to the trace at the span's edges (baseMix). Spurt and throbbing are offsets ADDED
+//             onto that trace, sampled at the union of its points and the offset's keys, so no stroke is dropped
 // Linked modifiers (`link`: a group id, same kind) share their params (fx-edit setFxParams writes them to every member);
 // spans stay their own. applyFx does not care: each member carries its own copy.
 // paw-r9nh, every span kind:
-//   edges     the kinds that REPLACE the trace (knotting, insertion, pull-out, idle, Reshape) ease in from the trace and
-//             back onto it over the base's half-stroke at each edge (150..800 ms, longer when the cap needs it, at most a
-//             third of the span): continuous in position, the trace's own speed at the edge (blendFx). The kinds that ride
-//             on the trace (orgasm / climax: edgeMs; throbbing, spurt: offsets from the trace) were continuous already.
-//   strength  one envelope per modifier (ENV params: envFrom -> envPeak over envIn of the span, envPeak -> envTo over
-//             envOut) and `follow` (0..1: the strength follows the base's stroke travel there, so it breathes with the
-//             motion): out = trace + strength x (modifier - trace). Flat (the default) = the modifier as before.
-//   timing    throbbing's dips stay on their nominal frames under a speed cap (the approach starts earlier, as a
-//             spurt's); with ctx.grid (the player's clock) a knot's pop and each throb dip land on a frame start.
-// Composition order (stable): live modifiers by t0 (ties: list order), each on the result of the ones before it;
-// an insertion under a live knotting is skipped (the knot's One knot is the knotted insertion).
+//   edges     the kinds that REPLACE the trace (knotting, idle, Reshape) ease in from the trace and back onto it over
+//             the base's half-stroke at each edge (150..800 ms, longer when the cap needs it, at most a third of the
+//             span): continuous in position, the trace's own speed at the edge (blendFx). The kinds that ride on the
+//             trace (orgasm: its own half-stroke ease; throbbing, spurt: offsets from the trace) were continuous already.
+//   strength  paw-ajvq: the ONE envelope per modifier (ENV params: envFrom -> envPeak over envIn of the span, envPeak ->
+//             envTo over envOut) and `follow` (0..1: the strength follows the base's stroke travel there, so it breathes
+//             with the motion): out = trace + strength x (modifier - trace). Flat (the default) = the modifier as before.
+//             No kind has a build / fade of its own (an older rampIn / rampOut is read as envIn / envOut, fxParams)
+//   timing    with ctx.grid (the player's clock) a knot's pop and each throb dip land on a frame start.
+// Composition order (stable): live modifiers by t0 (ties: list order), each on the result of the ones before it.
+// paw-xu4v: ONE limiter runs last (limitSpans) with the device's limits (ctx.maxSpeed, ctx.minGapMs: lib/finish.js
+// fxCtxOf passes the active profile's): times stay, amplitude gives way. No kind does its own speed math.
 // Outside every span the base comes back byte-identical (the same action objects). Pure and deterministic.
 // pos 0 = deepest, 100 = out.
 
 import { lowerBound, posAt } from './core/script.js';
-import { frameStartOf } from './lane.js';
+import { frameStartOf, frameLen } from './lane.js';
 import { applyPlan } from './gen/plan.js';
 import { resolveSegment, recipeSchema, KINDS } from './gen/recipes.js';
-import { DEFAULTS, clamp, hashSeed, mulberry32, median, joinPlan } from './gen/util.js';
+import { TREMOR_FIT } from './gen/generators.js';
+import { DEFAULTS, clamp, hashSeed, mulberry32, median, joinPlan, limitSpeed } from './gen/util.js';
 
 const N = (key, label, dflt, min, max, step, unit, extra) => ({ key, label, type: 'number', default: dflt, min, max, step, ...(unit ? { unit } : {}), ...extra });
 const ASIS = { optional: true };   // null = as tracked
-const pulseSchema = (lo, hi, pulse) => [
-  N('lo', 'Deep end', lo, 0, 100, 1, 'pos'), N('hi', 'Depth ceiling', hi, 0, 100, 1, 'pos'),
-  N('pulse', 'Flutter at the peak', pulse, 0, 2, 0.05, 'x'),
-  N('rampIn', 'Flutter builds over', 0.3, 0, 0.5, 0.01, 'span'), N('rampOut', 'Flutter fades over', 0.3, 0, 0.5, 0.01, 'span'),
-  N('fastMs', 'Full flutter on half-strokes under', 250, 50, 2000, 10, 'ms'),   // none above 1.5 x this
-  N('flutterMs', 'Flutter step', 50, 20, 300, 1, 'ms'),
-  N('edgeMs', 'Ease in / out', 1000, 0, 10000, 50, 'ms'),
+/** paw-xu4v: the base mix (dry / wet) of the kinds that ride on the trace; defaults per kind (see BASE_MIX). */
+const MIX = (dflt) => N('mix', 'Base', dflt, 0, 100, 1, '%');
+export const BASE_MIX = Object.freeze({ orgasm: 50, throbbing: 0, spurt: 100 });
+// a spurt: a ringing about the trace (spurtKeys); `vel` scales its swing (a marker's own, Detect cumshots: its score)
+const SPURT = [
+  N('amount', 'Swing about the trace', 25, 0, 100, 1, 'pos'), N('rise', 'Each swing deeper in', 50, 20, 500, 1, 'ms'),
+  N('fall', 'Each swing shallower in', 50, 20, 500, 1, 'ms'), N('hold', 'Hold at each swing', 0, 0, 1000, 1, 'ms'),
+  { key: 'count', label: 'Half-swings (deep, out, deep, ...)', type: 'int', default: 3, min: 1, max: 12, step: 1 },
+  N('decay', 'Each swing of the one before', 0.75, 0.1, 1, 0.01, 'x'), N('vel', 'Velocity (scales the swing)', 1, 0, 2, 0.05, 'x'), MIX(BASE_MIX.spurt),
 ];
-const FLUTTER = 10;   // flutter depth in pos at pulse 1 (the reference tremor zig-zags by ~5-10 around its line)
+/** paw-d1g7: the spurt params an orgasm holds for its markers (the spurts inside its span): one shape per orgasm. */
+export const MARKER_KEYS = Object.freeze(['amount', 'rise', 'fall', 'count', 'decay']);
+// paw-d1g7, the orgasm container: a depth band, the reference tremor anchored deep (TREMOR_FIT), the markers' spurt shape
+const ORGASM = [
+  N('lo', 'Deep end', 0, 0, 100, 1, 'pos'), N('hi', 'Depth ceiling', 40, 0, 100, 1, 'pos'),
+  N('tremor', 'Tremor depth', TREMOR_FIT.peak, 0, 40, 1, 'pos'),
+];
 const KNOT_RECIPE = 'knot-pop-stroke';
-const KNOT_MODES = ['cycles', 'single', 'unknot'];
-// knotting mode 'single': one insertion over the span (time shares of the span; levels in pos). Defaults: experiments/knotin
-// (on the gold set's big knots a straight push over the span beat every signal-driven fit, so the push fills the span)
+const KNOT_MODES = ['cycles', 'single', 'unknot', 'none'];
+// the knot recipe's own keys the knotting reads (the plan's timing, fade and jitter keys stay at the recipe's defaults)
+const KNOT_KEEP = new Set(['lo', 'hi', 'knotOut', 'popTo', 'knotIn', 'press', 'fPull', 'fPopOut', 'fTop', 'fDown', 'fPress', 'fPopIn', 'popScale', 'variation']);
+// knotting modes 'single' and 'unknot': timing as shares of the span; the levels are the recipe's (KNOT_RECIPE). Defaults:
+// the owner's reference knot cycle (paw-afoe, 10 cycles of mean 1129 ms): push 550 ms = 0.49 of it (the press 188 ms =
+// 0.17), the pop at its end, the drift to the tie 308 ms = 0.27, the pull-out 229 ms = 0.20
 const KNOT_IN = [
   { key: 'mode', label: 'Knot mode', type: 'choice', default: null, choices: KNOT_MODES, optional: true },
-  N('push', 'Push takes', 0.75, 0.05, 1, 0.01, 'span'), N('popAt', 'The knot pops at', 0.8, 0.05, 1, 0.01, 'span'),
-  N('from', 'Starts from', 100, 0, 100, 1, 'pos', ASIS), N('popDepth', 'The pop drops by (to the full depth, lo)', 15, 0, 60, 1, 'pos'),
-  N('settle', 'Settles over', 0.08, 0, 0.5, 0.01, 'span'), N('hold', 'Held at (the tie)', 5, 0, 100, 1, 'pos'),
-  N('easeIn', 'Ease into the push', 0, -1, 1, 0.01), N('easeOut', 'Ease onto the knot', 0, -1, 1, 0.01),
-  // mode 'unknot' (also: hold = the tie it starts from, knotOut = where the knot gives, popAt, popTo = where the pop lands, settle)
-  N('pull', 'Pull takes', 0.6, 0.05, 1, 0.01, 'span'),
+  N('from', 'Starts from', null, 0, 100, 1, 'pos', ASIS),
+  N('push', 'Push takes', 0.49, 0.05, 1, 0.01, 'span'), N('pressTakes', 'Press takes', 0.17, 0, 1, 0.01, 'span'),
+  N('popAt', 'The knot pops at', 0.49, 0.05, 1, 0.01, 'span'), N('settle', 'Settles over', 0.27, 0, 0.5, 0.01, 'span'),
+  N('pullOut', 'Pull-out takes (0: held at the tie)', 0.2, 0, 0.5, 0.01, 'span'),
+  // mode 'unknot' (also popAt, settle; the tie = knotOut, it gives at the catch = knotIn, the pop lands on popTo)
+  N('pull', 'Pull takes', 0.35, 0.05, 1, 0.01, 'span'),
   { key: 'tugs', label: 'Tugs before it gives', type: 'int', default: 2, min: 0, max: 6, step: 1 },
   N('tugAmp', 'Each tug slips back in by', 4, 0, 30, 1, 'pos'),
   N('to', 'Ends at (pulled out)', 100, 0, 100, 1, 'pos', ASIS),
 ];
 const KNOT_IN_KEYS = new Set(KNOT_IN.map((s) => s.key));
-// insertion: one slow push (the knot-in without a pop); defaults per experiments/knotin: the push fills the span
-const INSERT = [
-  N('from', 'Starts from (null = where the script is)', null, 0, 100, 1, 'pos', ASIS), N('to', 'Ends at (deep; above the start = a pull-out)', 10, 0, 100, 1, 'pos'),
-  N('push', 'Push takes', 0.85, 0.05, 1, 0.01, 'span'), N('arrive', 'Arrives at', 0.9, 0.05, 1, 0.01, 'span'),
-  N('easeIn', 'Ease into the push (slow start)', 0.5, -1, 1, 0.01), N('easeOut', 'Ease onto the depth (settle)', 0.5, -1, 1, 0.01),
-];
+/** paw-ajvq: mode 'none' (one push or pull, no pop; was the Insertion / Pull-out kinds) as made: a push ends at the level
+ *  set's full depth, a pull out at 100. Its timing defaults are its own (NONE_TIMING: the move fills the span). */
+export const KNOT_PUSH = Object.freeze({ mode: 'none', to: 0 });
+export const KNOT_PULL = Object.freeze({ mode: 'none', to: 100 });
+const NONE_TIMING = { push: 0.85, popAt: 0.9 };   // experiments/knotin
+/** A knotting in mode 'none' (one push / pull): its own params say it (no auto rule picks it). */
+export const isPushFx = (e) => e?.kind === 'knotting' && e.params?.mode === 'none';
+/** The scene-level tag a modifier reads as (timeline/mods.js withMods): a push 'insertion', a pull 'pullout', else its kind. */
+export const tagIdOf = (e) => (isPushFx(e) ? ((e.params.to ?? 100) > 50 ? 'pullout' : 'insertion') : e.kind);
 
 /** The strength envelope every span kind has (paw-r9nh): levels 0..1 (1 = the modifier in full), shares of the span. */
 export const ENV = [
@@ -116,32 +140,23 @@ export const envFlat = (p) => !(p.envIn > 0) && !(p.envOut > 0) && (p.envPeak ??
 /** kind -> { label, color, schema, event?, point?, tip }. event = marked in any tab (prep for tracking, and what the scene
  *  consumers read); the rest only modify strokes that exist (Refine). Order = menu order. knotting is its plan recipe's
  *  schema (timing forced auto). Params with `optional` may be null: "as tracked". Every span kind ends with ENV. */
-const PULL = INSERT.map((s) => (s.key === 'to' ? { ...s, label: 'Ends at (out)', default: 100 } : s));
 export const FX_KINDS = {
-  orgasm: { label: 'Orgasm', color: KINDS.orgasm.color, event: true, schema: pulseSchema(0, 40, 1),
+  orgasm: { label: 'Orgasm', color: KINDS.orgasm.color, event: true, schema: [...ORGASM, MIX(BASE_MIX.orgasm), ...SPURT.filter((s) => MARKER_KEYS.includes(s.key))],
     tip: 'Orgasm: where the cumshots happen, one spurt each (U)' },
-  knotting: { label: 'Knotting', color: KINDS.knotting.color, event: true, get schema() { return [...recipeSchema(KNOT_RECIPE).filter((p) => p.key !== 'timing'), ...KNOT_IN]; },
-    tip: 'Knotting: knot cycles, one knot in, or the knot out' },
+  knotting: { label: 'Knotting', color: KINDS.knotting.color, event: true, get schema() { return [...recipeSchema(KNOT_RECIPE).filter((p) => KNOT_KEEP.has(p.key)), ...KNOT_IN]; },
+    tip: 'Knotting: knot cycles, one knot, the knot out, or a push' },
   // a heartbeat over the span (the owner's reference: 100 -> 90 in ~42 ms, back in ~290 ms, every 667 ms = 90 bpm)
   throbbing: { label: 'Throbbing', color: '#e0607e', event: true, schema: [
     N('period', 'Beat every (ms; 60000 / bpm)', 667, 250, 2000, 1, 'ms'), N('amount', 'Each beat dips by', 10, 0, 40, 1, 'pos'),
-    N('attack', 'The dip takes at least', 40, 10, 500, 1, 'ms'), N('release', 'The return takes at least', 290, 20, 1500, 1, 'ms'),
+    N('attack', 'The dip takes', 40, 10, 500, 1, 'ms'), N('release', 'The return takes', 290, 20, 1500, 1, 'ms'),
     N('double', 'Second beat (lub-dub) of the first', 0, 0, 1, 0.05, 'x'),
-    N('rampIn', 'Builds over', 0, 0, 0.5, 0.01, 'span'), N('rampOut', 'Fades over', 0, 0, 0.5, 0.01, 'span'),
     N('jitter', 'Period varies by up to', 0, 0, 0.2, 0.01, 'x'),
-    { key: 'dir', label: 'Direction', type: 'choice', default: 'dip', choices: ['dip', 'swell'] },
+    { key: 'dir', label: 'Direction', type: 'choice', default: 'dip', choices: ['dip', 'swell'] }, MIX(BASE_MIX.throbbing),
   ], tip: 'Throbbing: a heartbeat on the strokes' },
   idle: { label: 'Idle', color: '#A0A3A8', event: true, schema: [],
     tip: 'Idle: nothing happening, held at its starting level' },
-  insertion: { label: 'Insertion', color: KINDS.penetration.color, event: true, schema: INSERT, tip: 'Insertion: one slow push to deep, held there' },
-  pullout: { label: 'Pull-out', color: '#9fb0c8', event: true, schema: PULL, tip: 'Pull-out: one slow pull to out, held there' },
   // a point (t1 === t0): one cumshot, timed to the frame; several in a row are the burst train
-  spurt: { label: 'Spurt', color: '#ff7ac8', point: true, schema: [
-    N('amount', 'Swing about the trace', 25, 0, 100, 1, 'pos'), N('rise', 'Each swing deeper in at least', 50, 20, 500, 1, 'ms'),
-    N('fall', 'Each swing shallower in at least', 50, 20, 500, 1, 'ms'), N('hold', 'Hold at each swing', 0, 0, 1000, 1, 'ms'),
-    { key: 'count', label: 'Half-swings (deep, out, deep, ...)', type: 'int', default: 3, min: 1, max: 12, step: 1 },
-    N('decay', 'Each swing of the one before', 0.75, 0.1, 1, 0.01, 'x'),
-  ], tip: 'Spurt: one cumshot on its frame (U)' },
+  spurt: { label: 'Spurt', color: '#ff7ac8', point: true, schema: SPURT, tip: 'Spurt: one cumshot on its frame (U)' },
   shape: { label: 'Reshape', color: '#5fb3a8', schema: [
     N('inFrac', 'Share of each stroke spent going in', null, 0.1, 0.9, 0.01, '', ASIS),
     N('accelIn', 'Ease leaving a turn', 0, -1, 1, 0.01),
@@ -152,7 +167,6 @@ export const FX_KINDS = {
     // the band at the span's end (null = lo / hi): the depth band slides linearly over the span (Autorange's build-up, ease to rest)
     N('loEnd', 'Deep end at the span end', null, 0, 100, 1, 'pos', ASIS), N('hiEnd', 'Out end at the span end', null, 0, 100, 1, 'pos', ASIS),
   ], tip: 'Reshape: ease, dwell and depth between the turns' },
-  climax: { label: 'Climax run-in', color: KINDS.climax.color, schema: pulseSchema(10, 90, 0), tip: 'Climax run-in: the fast strokes before the orgasm' },
 };
 export const FX_KIND_IDS = Object.keys(FX_KINDS);
 export const fxSchema = (kind) => (!FX_KINDS[kind] ? [] : FX_KINDS[kind].point ? FX_KINDS[kind].schema : [...FX_KINDS[kind].schema, ...ENV]);
@@ -167,8 +181,14 @@ export function fxParams(e) {
   const p = {};
   for (const s of fxSchema(e.kind)) p[s.key] = s.default;
   for (const [k, v] of Object.entries(e.params || {})) if (v !== undefined) p[k] = v;
+  // paw-ajvq: one envelope per modifier: an older orgasm's / throbbing's own build / fade (rampIn / rampOut) is the
+  // strength's build / fade unless that is set; edgeMs is gone (the edges ease over the base mix's half-stroke)
+  if (e.params?.rampIn > 0 && e.params.envIn == null) p.envIn = e.params.rampIn;
+  if (e.params?.rampOut > 0 && e.params.envOut == null) p.envOut = e.params.rampOut;
+  delete p.rampIn; delete p.rampOut; delete p.edgeMs;
   if (e.kind === 'spurt') delete p.depth;   // old absolute depth: a spurt is relative to the trace now (amount; default 25)
   if (e.kind === 'knotting' && !KNOT_MODES.includes(p.mode)) p.mode = null;   // null = auto
+  if (e.kind === 'knotting' && p.mode === 'none') for (const k in NONE_TIMING) if (e.params?.[k] == null) p[k] = NONE_TIMING[k];
   if (e.kind === 'throbbing' && p.dir !== 'swell') p.dir = 'dip';
   for (const s of fxSchema(e.kind)) {
     if (s.type !== 'number' && s.type !== 'int') continue;
@@ -208,38 +228,65 @@ export function baseTurns(script, a, b) {
 
 const smooth = (u) => { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); };
 
-/** The flutter envelope over a span, u = 0..1: builds over rampIn, holds at 1, fades over rampOut. */
-export const envelope = (u, rampIn, rampOut) => Math.min(rampIn > 0 ? smooth(u / rampIn) : 1, rampOut > 0 ? smooth((1 - u) / rampOut) : 1);
+/** paw-ajvq: the edge ease of the kinds that ride on the trace (orgasm, the base mix): half a stroke of the trace around
+ *  [S, E] (no strokes: 300 ms), at most a third of the span. -> ms. */
+function edgeMsOf(cur, S, E) {
+  const T = baseTurns(cur, S - 2000, E + 2000);
+  const W = T.length >= 2 ? clamp(2 * median(T.slice(1).map((x, i) => x.at - T[i].at)), 200, 4000) : 600;
+  return Math.max(1, Math.min((E - S) / 3, W / 2));
+}
 
-/** orgasm / climax: base times kept, depth pulled toward [lo, hi], flutter between fast turns, eased at both edges. */
-function pulseFx(pts, t0, t1, p, ctx) {
-  const maxSpeed = ctx.maxSpeed ?? DEFAULTS.maxSpeed, minGap = Math.max(1, ctx.minGapMs ?? DEFAULTS.minGapMs);
-  const lo = Math.min(p.lo, p.hi), hi = Math.max(p.lo, p.hi), span = t1 - t0, E = Math.min(Math.max(0, p.edgeMs), span / 4);
-  let mn = Infinity, mx = -Infinity;
-  for (const a of pts) { mn = Math.min(mn, a.pos); mx = Math.max(mx, a.pos); }
-  const w = (t) => (E > 0 ? smooth(Math.min(t - t0, t1 - t) / E) : 1);
-  const env = (t) => envelope((t - t0) / span, p.rampIn, p.rampOut);
-  const remap = (pos) => (mx > mn ? lo + ((pos - mn) * (hi - lo)) / (mx - mn) : lo);
-  const moved = pts.map((a) => ({ at: a.at, pos: clamp(Math.round(a.pos + (remap(a.pos) - a.pos) * w(a.at)), 0, 100) }));
-  const keys = new Set(stops(moved)), out = [];
-  for (let i = 0; i < moved.length; i++) {
-    const a = moved[i], b = moved[i + 1];
-    out.push(a);
-    if (!b || !keys.has(i) || !keys.has(i + 1)) continue;   // flutter only on a whole half-stroke between two turns
-    const h = b.at - a.at, mid = (a.at + b.at) / 2;
-    let amp = p.pulse * FLUTTER * clamp((1.5 * p.fastMs - h) / (0.5 * p.fastMs), 0, 1) * env(mid) * w(mid);
-    const step = Math.max(p.flutterMs, minGap + 1), n = Math.min(16, Math.floor(h / step) - 1);
-    if (n < 1 || amp < 1) continue;
-    const s = h / (n + 1), slope = (b.pos - a.pos) / h;
-    if (maxSpeed > 0) amp = Math.min(amp, 0.95 * (maxSpeed * s) / 1000 - Math.abs(slope) * s);
-    if (amp < 1) continue;
-    for (let k = 1; k <= n; k++) {
-      const at = Math.round(a.at + k * s);
-      if (at - out[out.length - 1].at < minGap || b.at - at < minGap) continue;
-      out.push({ at, pos: clamp(Math.round(a.pos + slope * k * s + (k % 2 ? -amp / 2 : amp / 2)), 0, 100) });
-    }
-  }
+/** The reference tremor as offsets from the deep end over [t0, t1]: TREMOR_FIT's zig-zag (0, 10, 5, 15, 10, 20, ...,
+ *  0, peak 20) every periodMs (333), its last 67 ms held at 0, scaled so its peak is `depth`. -> [{at, pos}] ([] at 0). */
+export function tremorKeys(t0, t1, depth) {
+  const { pattern: pat, periodMs, holdMs, peak } = TREMOR_FIT, step = (periodMs - holdMs) / (pat.length - 1), k = depth / peak, out = [];
+  if (!(k > 0)) return out;
+  for (let c = t0; c < t1 + periodMs; c += periodMs) pat.forEach((v, i) => { const at = Math.round(c + i * step); if (!out.length || at > out[out.length - 1].at) out.push({ at, pos: v * k }); });
   return out;
+}
+
+/** paw-d1g7, the orgasm container's bed over [t0, t1]: the trace after its base mix (mix), its depth pulled from the
+ *  tracked strokes' own min..max onto [lo, hi], plus the reference tremor (tremorKeys) anchored deep: added shallower,
+ *  squeezed to the room under hi, so it plays at the bottoms and on a deep hold. Both eased in and out over edgeMsOf
+ *  (continuous at the edges). Sampled at the union of the trace's points, the tremor's keys and the eases' samples, so
+ *  no stroke is dropped. Its markers (the spurts inside it) are applied after it (applyFx, markerParams). */
+function orgasmFx(cur, e, p, ctx) {
+  const t0 = Math.max(Math.round(e.t0), cur[0].at), t1 = Math.min(Math.round(e.t1), cur[cur.length - 1].at);
+  if (t1 <= t0) return cur;
+  const R = edgeMsOf(cur, t0, t1), dry = baseMix(cur, t0, t1, p.mix / 100), at = dry ? dry.at : (t) => posAt(cur, t);
+  const minGap = Math.max(1, ctx.minGapMs ?? DEFAULTS.minGapMs), trem = thinGaps(tremorKeys(t0, t1, p.tremor), minGap);   // its extremes kept on a slow device
+  const lo = Math.min(p.lo, p.hi), hi = Math.max(p.lo, p.hi), i0 = lowerBound(cur, t0), i1 = lowerBound(cur, t1 + 1);
+  const own = new Set([t0, t1, ...cur.slice(i0, i1).map((a) => a.at)]), ts = new Set([...trem.map((q) => q.at), ...(dry ? dry.ts : [])]);
+  for (let k = 1; k < 4; k++) { ts.add(Math.round(t0 + (R * k) / 4)); ts.add(Math.round(t1 - (R * k) / 4)); }
+  // the trace's own points always; a tremor / ease sample only minGap clear of the points kept around it (the limiter, last,
+  // then never drops a tracked turn for a tremor step)
+  const O = [...own].sort((a, b) => a - b), T = [];
+  let oi = 0;
+  for (const t of [...new Set([...own, ...ts])].filter((x) => x >= t0 && x <= t1).sort((a, b) => a - b)) {
+    if (own.has(t)) { while (T.length && !own.has(T[T.length - 1]) && t - T[T.length - 1] < minGap) T.pop(); T.push(t); continue; }
+    if (T.length && t - T[T.length - 1] < minGap) continue;
+    while (oi < O.length && O[oi] < t) oi++;
+    if (oi < O.length && O[oi] - t < minGap) continue;
+    T.push(t);
+  }
+  const V = T.map(at);
+  let mn = Infinity, mx = -Infinity;
+  for (const q of cur.slice(i0, i1)) { mn = Math.min(mn, q.pos); mx = Math.max(mx, q.pos); }
+  if (!(mx >= mn)) { mn = Math.min(...V); mx = Math.max(...V); }
+  const piece = T.map((t, j) => {
+    const v = V[j], w = smooth((t - t0) / R) * smooth((t1 - t) / R), d = v + ((mx > mn ? lo + ((v - mn) * (hi - lo)) / (mx - mn) : lo) - v) * w;
+    const o = trem.length ? posAt(trem, t) * w : 0;
+    return { at: t, pos: clamp(Math.round(d + Math.min(o, Math.max(0, hi - d))), 0, 100) };
+  });
+  return [...cur.slice(0, i0), ...piece, ...cur.slice(i1)];
+}
+
+/** paw-d1g7: the orgasm a spurt is a marker of (its instant inside the span; the latest-starting one), or null. */
+export const orgasmOf = (list, e) => (isPointFx(e) ? liveFx(list).filter((o) => o.kind === 'orgasm' && e.t0 >= o.t0 && e.t0 <= o.t1).pop() ?? null : null);
+/** A marker's params: its orgasm's spurt shape (MARKER_KEYS) with its own velocity and base mix. */
+export function markerParams(e, o) {
+  const op = fxParams(o), own = fxParams(e);
+  return { ...own, ...Object.fromEntries(MARKER_KEYS.map((k) => [k, op[k]])) };
 }
 
 // ---- Reshape: the stroke profile ----
@@ -359,23 +406,18 @@ const CONTEXT_MS = 3000;   // turns this far outside a span still time the knot'
 /**
  * Spurt keys relative to t0: [[ms, offset from the trace]]. A ringing about the trace: from the trace (offset 0) to
  * -amount (deeper) at 0 = the frame of the shot, then +amount x decay (shallower), -amount x decay^2, ... for `count`
- * half-swings, each held `hold` ms, then back to the trace. A swing deeper takes at least `rise` ms, one shallower at
- * least `fall` ms; with a speed cap (cap > 0) a swing takes at least what the cap needs, so every swing is reached in
- * full and the first stays on the frame (the approach starts earlier, the rest ends later). fit(t, offset) -> offset
- * squeezes a swing that would leave 0..100 at time t (spurtFx passes the trace's room there).
+ * half-swings, each held `hold` ms, then back to the trace. A swing deeper takes `rise` ms, one shallower `fall` ms
+ * (the limiter, last, gives way in amplitude on a slower device; the times stay).
  */
-export function spurtKeys(p, cap = 0, fit = (_t, o) => o) {
-  const need = (d) => (cap > 0 ? Math.ceil((Math.abs(d) * 1000) / (0.97 * cap)) : 0);
-  const dur = (from, to) => Math.max(to < from ? p.rise : p.fall, need(to - from));
+export function spurtKeys(p) {
+  const dur = (from, to) => (to < from ? p.rise : p.fall);
   const n = Math.max(1, Math.round(p.count)), keys = [];
-  let o = fit(0, -p.amount);
+  let o = -p.amount;
   keys.push([-dur(0, o), 0], [0, o]);
   let t = 0;
   if (p.hold > 0) keys.push([(t += p.hold), o]);
   for (let k = 1; k < n; k++) {
-    const want = (k % 2 ? 1 : -1) * p.amount * Math.pow(p.decay, k);
-    let q = fit(t + dur(o, want), want);
-    q = fit(t + dur(o, q), want);   // the swing's time depends on its size: settle once
+    const q = (k % 2 ? 1 : -1) * p.amount * Math.pow(p.decay, k);
     keys.push([(t += dur(o, q)), q]);
     if (p.hold > 0) keys.push([(t += p.hold), q]);
     o = q;
@@ -384,61 +426,80 @@ export function spurtKeys(p, cap = 0, fit = (_t, o) => o) {
   return keys;
 }
 
-/** Spurt: the ringing spliced into the trace at t0 (trace points inside its window replaced, every key = the trace at
- *  its time + its offset, so the ends sit on the trace and position stays continuous). A swing that would leave 0..100
- *  is squeezed to fit (never clipped); a swing too fast for the cap is lengthened, never shrunk. */
-function spurtFx(cur, e, p, ctx) {
-  const t0 = Math.round(e.t0), maxSpeed = ctx.maxSpeed ?? DEFAULTS.maxSpeed, minGap = Math.max(1, ctx.minGapMs ?? DEFAULTS.minGapMs);
-  const fit = (t, o) => { const b = posAt(cur, t0 + t); return o < 0 ? Math.max(o, -b) : Math.min(o, 100 - b); };
-  return spliceOffsets(cur, spurtKeys(p, maxSpeed, fit).map(([dt, o]) => [t0 + dt, o]), minGap);
+/** Spurt: the ringing (its swing x vel) added onto the trace at t0 (modulate: every trace point inside its window kept). */
+function spurtFx(cur, e, p) {
+  const t0 = Math.round(e.t0), K = spurtKeys({ ...p, amount: p.amount * p.vel }).map(([dt, o]) => [t0 + dt, o]);
+  return modulate(cur, K, K[0][0], K[K.length - 1][0], p.mix / 100);
 }
 
-/** Keys [[at, offset from the trace]] spliced into cur: the trace points inside [first at, last at] replaced by trace + offset
- *  at each key (the join points yield to base points closer than minGap). cur itself when the keys leave the base. */
-function spliceOffsets(cur, K, minGap) {
-  const S = K[0][0], E0 = K[K.length - 1][0];
-  if (S < cur[0].at || E0 > cur[cur.length - 1].at) return cur;   // only where the base has motion
-  const pts = K.map(([at, o]) => ({ at, pos: clamp(Math.round(posAt(cur, at) + o), 0, 100) }));
-  const i0 = lowerBound(cur, S), i1 = lowerBound(cur, E0 + 1), left = cur.slice(0, i0), right = cur.slice(i1);
-  const piece = pts.filter((k, i) => !i || k.at - pts[i - 1].at >= 1);
-  while (piece.length && left.length && piece[0].at - left[left.length - 1].at < minGap) piece.shift();   // the join point yields to a base point
-  while (piece.length && right.length && right[0].at - piece[piece.length - 1].at < minGap) piece.pop();
-  return [...left, ...piece, ...right];
+/** The trace's center line over [S, E]: its mean over one stroke (twice the median half-stroke between its turns,
+ *  200..4000 ms) at t. null when the trace has fewer than 2 turns there (no strokes: nothing to flatten). */
+function centerLine(cur, S, E) {
+  const T = baseTurns(cur, S - 2000, E + 2000);
+  if (T.length < 2) return null;
+  const W = clamp(2 * median(T.slice(1).map((x, i) => x.at - T[i].at)), 200, 4000);
+  const sl = cur.slice(Math.max(0, lowerBound(cur, S - W) - 1), lowerBound(cur, E + W) + 1), n = sl.length, I = new Float64Array(n);
+  for (let i = 1; i < n; i++) I[i] = I[i - 1] + ((sl[i].pos + sl[i - 1].pos) * (sl[i].at - sl[i - 1].at)) / 2;
+  const area = (t) => {   // the trace's integral from sl[0] to t (held flat past either end)
+    if (t <= sl[0].at) return sl[0].pos * (t - sl[0].at);
+    if (t >= sl[n - 1].at) return I[n - 1] + sl[n - 1].pos * (t - sl[n - 1].at);
+    const i = lowerBound(sl, t), a = sl[i - 1], v = posAt(sl, t);
+    return I[i - 1] + ((a.pos + v) * (t - a.at)) / 2;
+  };
+  return { W, at: (t) => (area(t + W / 2) - area(t - W / 2)) / W };
+}
+
+/** The base mix over [S, E] (mix 0..1): the trace pulled toward its center line by 1 - mix inside, eased back onto
+ *  the trace over half a stroke at each edge (at most a third of the span), so the span's ends sit on the trace.
+ *  -> {at(t), ts: sample times of the edge eases} | null when it changes nothing (mix 1, no strokes). */
+function baseMix(cur, S, E, mix) {
+  const c = mix < 1 && E > S ? centerLine(cur, S, E) : null;
+  if (!c) return null;
+  const R = Math.max(1, Math.min((E - S) / 3, c.W / 2)), ts = [];
+  for (let k = 0; k <= 4; k++) ts.push(Math.round(S + (R * k) / 4), Math.round(E - (R * k) / 4));
+  const g = (t) => 1 - (1 - mix) * smooth((t - S) / R) * smooth((E - t) / R);
+  return { at: (t) => { const c0 = c.at(t); return c0 + g(t) * (posAt(cur, t) - c0); }, ts };
+}
+
+/** Modulate: offsets [[at, o]] (0 at both ends) added onto the trace, after its base mix over [S, E] (S <= the first
+ *  key, E >= the last), sampled at the union of the trace's points, the keys and the base mix's samples there, clamped
+ *  to 0..100 (a swing past an end is squeezed to the room). cur itself when the window leaves the base. */
+function modulate(cur, K, S, E, mix) {
+  if (S < cur[0].at || E > cur[cur.length - 1].at) return cur;   // only where the base has motion
+  const dry = baseMix(cur, S, E, mix), i0 = lowerBound(cur, S), i1 = lowerBound(cur, E + 1);
+  if (!dry && !K.length) return cur;
+  const off = K.length ? K.map(([at, o]) => ({ at, pos: o })) : [{ at: S, pos: 0 }], ts = new Set(cur.slice(i0, i1).map((a) => a.at));
+  for (const [at] of K) ts.add(Math.round(at));
+  if (dry) for (const t of dry.ts) ts.add(t);
+  const piece = [...ts].sort((a, b) => a - b).map((at) => ({ at, pos: clamp(Math.round((dry ? dry.at(at) : posAt(cur, at)) + posAt(off, at)), 0, 100) }));
+  return [...cur.slice(0, i0), ...piece, ...cur.slice(i1)];
 }
 
 // ---- Throb: a heartbeat on the trace ----
 
 /** One beat relative to its start: [[ms, offset]]. From the trace (0) to -amp (dir 'dip'; +amp for 'swell') in attack ms,
- *  back in release ms; with `double` the first return is cut to +120 ms and a second dip of double x amp follows (lub-dub).
- *  With a speed cap (cap > 0) a move takes at least what the cap needs: the amount is kept, the move is lengthened. */
-export function throbBeat(p, cap = 0, amp = p.amount) {
-  const need = (d) => (cap > 0 ? Math.ceil((Math.abs(d) * 1000) / (0.97 * cap)) : 0);
-  const A = (p.dir === 'swell' ? 1 : -1) * amp, atk = Math.max(p.attack, need(A)), rel = Math.max(p.release, need(A)), keys = [[0, 0], [atk, A]];
-  if (!(p.double > 0)) return [...keys, [atk + rel, 0]];
-  const D = A * p.double, t2 = Math.max(120, atk + need(A), atk + 20), atk2 = Math.max(p.attack, need(D));
-  return [...keys, [t2, 0], [t2 + atk2, D], [t2 + atk2 + Math.max(p.release, need(D)), 0]];
+ *  back in release ms; with `double` the first return is cut to +120 ms and a second dip of double x amp follows (lub-dub). */
+export function throbBeat(p, amp = p.amount) {
+  const A = (p.dir === 'swell' ? 1 : -1) * amp, keys = [[0, 0], [p.attack, A]];
+  if (!(p.double > 0)) return [...keys, [p.attack + p.release, 0]];
+  const t2 = Math.max(120, p.attack + 20);
+  return [...keys, [t2, 0], [t2 + p.attack, A * p.double], [t2 + p.attack + p.release, 0]];
 }
 
 /** Throbbing over the span: beats from t0 every period (x 1 +- jitter, seeded per modifier; a beat longer than the period
- *  finishes first), each scaled by the envelope at its start, spliced into the trace like a spurt (squeezed near 0 / 100).
- *  A beat belongs to the span when its nominal (uncapped) beat fits; its dip stays on the nominal time (ctx.grid: that
- *  frame's start) and a cap that lengthens the dip starts it earlier (paw-r9nh: a single throb used to vanish). */
+ *  finishes first; the strength envelope scales them, blendFx), added onto the trace (modulate, squeezed near 0 / 100,
+ *  the base mix over the whole span). A beat belongs to the span when it fits; with ctx.grid its dip on that frame's start. */
 function throbFx(cur, e, p, ctx) {
   const t0 = Math.max(Math.round(e.t0), cur[0].at), t1 = Math.min(Math.round(e.t1), cur[cur.length - 1].at);
   if (t1 <= t0) return cur;
-  const cap = ctx.maxSpeed ?? DEFAULTS.maxSpeed, minGap = Math.max(1, ctx.minGapMs ?? DEFAULTS.minGapMs), span = t1 - t0;
   const rnd = mulberry32(hashSeed(ctx.seed ?? 0, e.id ?? `throb@${e.t0}`)), N = throbBeat(p), nAtk = N[1][0], nEnd = N[N.length - 1][0];
-  let out = cur;
+  const K = [];
   for (let tb = t0; tb + nEnd <= t1;) {
-    const amp = p.amount * envelope((tb - t0) / span, p.rampIn, p.rampOut), K = throbBeat(p, cap, amp);
-    const dip = ctx.grid ? frameStartOf(tb + nAtk, ctx.grid) : tb + nAtk, s = dip - K[1][0], end = s + K[K.length - 1][0];
-    if (amp >= 0.5) {
-      const base = out;
-      out = spliceOffsets(out, K.map(([dt, o]) => { const b = posAt(base, s + dt); return [s + dt, o < 0 ? Math.max(o, -b) : Math.min(o, 100 - b)]; }), minGap);
-    }
-    tb = Math.max(end + K[1][0] - nAtk, tb + nEnd, Math.round(tb + p.period * (1 + p.jitter * (2 * rnd() - 1))));
+    const s = (ctx.grid ? frameStartOf(tb + nAtk, ctx.grid) : tb + nAtk) - nAtk;
+    if (p.amount >= 0.5) for (const [dt, o] of N) { const at = Math.round(s + dt); if (!K.length || at > K[K.length - 1][0]) K.push([at, o]); }
+    tb = Math.max(s + nEnd, tb + nEnd, Math.round(tb + p.period * (1 + p.jitter * (2 * rnd() - 1))));
   }
-  return out;
+  return modulate(cur, K, Math.min(t0, K[0]?.[0] ?? t0), Math.max(t1, K[K.length - 1]?.[0] ?? t1), p.mix / 100);
 }
 
 /** A single throb with its dip on frame t: a throbbing range one beat long (it starts `attack` before t), its period
@@ -456,41 +517,52 @@ export function throbPeriod(times) {
   return d.length >= 2 ? Math.round(clamp(median(d), 250, 2000)) : null;
 }
 
-// ---- Knotting, mode 'single': one slow insertion ----
+// ---- Knotting, modes 'single' and 'unknot': one knot in, one knot out ----
 
-/** Knot-in keys over the span: [[u (share of the span), pos]]. From `from` (p.from, else the base at the span start), the push
- *  starts at popAt - push and arrives on the knot (lo + popDepth) at popAt (moveCurve ease in / out), the pop drops to lo
- *  in popU (share), then it settles to `hold` over settle and holds to the end (the tie). */
-export function knotInKeys(p, from, popU = 0.02) {
-  const a = clamp(p.popAt, 0.05, 1), u0 = Math.max(0, a - clamp(p.push, 0.05, 1)), knot = clamp(p.lo + p.popDepth, 0, 100);
+/** Where the pull-out's first leg (tie -> popTo) ends, share of the pull-out: the reference's 83 of 229 ms. */
+const PULL_LEG = 0.36;
+/** Knot-in keys over the span: [[u (share of the span), pos]]. From `from` (the tracked level at the span start), the
+ *  push starts at popAt - push: the approach to the catch (knotIn), then the press to the knot depth (press) over the
+ *  push's last pressTakes, the pop to full depth (lo) in popU (share), the drift up to the tie (knotOut) over settle;
+ *  then held at the tie, or with pullOut the pull-out over the span's last pullOut: tie -> popTo -> `end` (the trace at
+ *  the span's end). */
+export function knotInKeys(p, from, popU = 0.04, end = from) {
+  const a = clamp(p.popAt, 0.05, 1), u0 = Math.max(0, a - clamp(p.push, 0.05, 1)), uP = Math.max(u0, a - clamp(p.pressTakes, 0, 1));
   const keys = [[0, from], [u0, from]];
-  if (p.easeIn || p.easeOut) for (const u of MOVE_SAMPLES) keys.push([u0 + u * (a - u0), from + moveCurve(u, p.easeIn, p.easeOut) * (knot - from)]);
-  keys.push([a, knot]);
+  if (uP > u0 && uP < a) keys.push([uP, Math.min(p.knotIn, from)]);
   const b = Math.min(1, a + popU), c = Math.min(1, b + Math.max(0, p.settle));
-  keys.push([b, p.lo], [c, p.hold], [1, p.hold]);
+  keys.push([a, p.press], [b, p.lo], [c, p.knotOut]);
+  if (p.pullOut > 0 && c < 1) {
+    const q = Math.max(c, 1 - p.pullOut);
+    keys.push([q, p.knotOut], [q + PULL_LEG * (1 - q), Math.min(p.popTo, Math.max(end, p.knotOut))], [1, end]);
+  } else keys.push([1, p.knotOut]);
   return keys;
 }
 
-/** Insertion params -> the knot-in params with no pop that draw it (knotInKeys / knotInFx): push onto `to`, held there. */
-const insertKnot = (p, from) => ({ popAt: p.arrive, push: p.push, lo: p.to, popDepth: 0, settle: 0, hold: p.to, easeIn: p.easeIn, easeOut: p.easeOut, from });
-/** Insertion keys over the span: [[u, pos]] (knotInKeys with no pop): monotone from `from` to p.to, flat after `arrive`. */
-export const insertionKeys = (p, from) => knotInKeys(insertKnot(p, from), from, 0).filter(([u], i, a) => !i || u > a[i - 1][0]);
+/** Knotting mode 'none' (one push or pull, no pop) over the span: [[u, pos]]: from `from`, the move starts at popAt - push
+ *  and arrives on `to` at popAt (eased out of the start and onto the end), held there to the end; monotone. */
+export function pushKeys(p, from, to) {
+  const a = clamp(p.popAt, 0.05, 1), u0 = Math.max(0, a - clamp(p.push, 0.05, 1)), keys = [[0, from], [u0, from]];
+  for (const u of MOVE_SAMPLES) keys.push([u0 + u * (a - u0), from + moveCurve(u, 0.5, 0.5) * (to - from)]);
+  keys.push([a, to], [1, to]);
+  return keys.filter(([u], i, k) => !i || u > k[i - 1][0]);
+}
 /** The level the trace is at when t starts: its value at t (paw-r9nh: it was its last point at or before t, so an edge
  *  mid-stroke cut the stroke at its last turn: the hold / push started up to a half-stroke early). */
 const levelAt = (cur, t) => Math.round(posAt(cur, t));
 
 /**
- * The push for an untracked scene [a, b] with an insertion / pull-out modifier (tracking's bridges): over [t0, t1] (its
- * span, inside the scene) ONE insertion (kind 'pullout': one pull) from `from` (params.from wins: the level the script is at before the scene) to its
- * depth, or with `knot` (knotting params: the scene is knotted too) one knot-in (knotting mode single: push, pop,
- * settle, the tie) instead; held at the start before t0 and at the end after t1. -> Script strictly inside (a, b).
+ * The push for an untracked scene [a, b] with a knotting in mode 'none' or 'single' over it (tracking's bridges): over
+ * [t0, t1] (its span, inside the scene) ONE push / pull (mode 'none') from `from` (params.from wins: the level the script
+ * is at before the scene) to its `to`, or one knot-in (mode 'single': push, pop, settle, held at the tie: no pull-out);
+ * held at the start before t0 and at the end after t1. -> Script strictly inside (a, b).
  */
-export function insertionScript(a, b, t0, t1, { params = {}, knot = null, from = 100, maxSpeed, minGapMs, kind = 'insertion' } = {}) {
+export function insertionScript(a, b, t0, t1, { params = {}, from = 100, maxSpeed, minGapMs } = {}) {
   t0 = Math.max(a, t0); t1 = Math.min(b, t1);
   if (!(t1 - t0 >= 3 * Math.max(1, minGapMs ?? DEFAULTS.minGapMs))) return [];
   const ctx = { maxSpeed, minGapMs };
-  const p = fxParams(knot ? { kind: 'knotting', params: knot } : { kind, params });
-  const piece = knotInFx([], t0, t1, knot ? { ...p, from: p.from ?? from } : insertKnot(p, p.from ?? from), ctx);
+  const p = fxParams({ kind: 'knotting', params }), f = p.from ?? from;
+  const piece = p.mode === 'none' ? keysFx(pushKeys(p, f, p.to ?? f), t0, t1, ctx) : knotInFx([], t0, t1, { ...p, from: f, pullOut: 0 }, ctx);
   const out = [], put = (at, pos) => { at = Math.round(at); if (at > a && at < b && (!out.length || at > out[out.length - 1].at)) out.push({ at, pos }); };
   if (t0 > a + 1) put(a + 1, piece[0].pos);
   for (const q of piece) put(q.at === a ? a + 1 : q.at === b ? b - 1 : q.at, q.pos);
@@ -498,54 +570,63 @@ export function insertionScript(a, b, t0, t1, { params = {}, knot = null, from =
   return out;
 }
 
-/** The effect's mode: its own, else auto: with fewer than 2 turns of base in the span [t0, t1] one knot, 'unknot' when the
- *  trace is deeper at t0 than at t1 (coming out), else 'single'; 'cycles' otherwise. */
-export const knotMode = (p, base, t0, t1) => p.mode ?? (baseTurns(base, t0, t1).length >= 2 ? 'cycles'
-  : base.length && posAt(base, t0) < posAt(base, t1) ? 'unknot' : 'single');
+/** The auto rule (paw-afoe: one rule; a new knotting stores it, knotModeParams): knot cycles over 6 base turns (3 strokes)
+ *  or more in [t0, t1], or 2 or more over a span past 8 s; else one knot: 'unknot' when the span holds no turn and the
+ *  trace is deeper at t0 than at t1 (coming out), else 'single'. */
+export function autoKnotMode(base, t0, t1) {
+  const n = baseTurns(base, t0, t1).length;
+  return n >= 6 || (n >= 2 && t1 - t0 > 8000) ? 'cycles' : !n && base.length && posAt(base, t0) < posAt(base, t1) ? 'unknot' : 'single';
+}
+/** The params a new knotting over [t0, t1] stores: {mode} from autoKnotMode on the stroke's points `base`, or {} (auto,
+ *  resolved when applied) over a span past 8 s with no point under it yet (marked before tracking). */
+export function knotModeParams(base, t0, t1) {
+  const b = base || [], known = lowerBound(b, t1 + 1) > lowerBound(b, t0);
+  return t1 - t0 > 8000 && !known ? {} : { mode: autoKnotMode(b, t0, t1) };
+}
+/** The effect's mode: its own, else autoKnotMode on the base it is applied to (never 'none': a push is made as one). */
+export const knotMode = (p, base, t0, t1) => p.mode ?? autoKnotMode(base, t0, t1);
 
+/** A pop takes one frame (ctx.grid's; no grid: the 30 fps clock), at least minGap: the limiter (last) slows it to what
+ *  the device can follow. */
+const popMs = (ctx) => Math.max(Math.max(1, ctx.minGapMs ?? DEFAULTS.minGapMs), frameLen(ctx.grid) || 1000 / 30);
 /** ctx.grid: the pop (popAt, a share of [t0, t1]) on the start of its frame. */
 const popOnFrame = (p, t0, t1, ctx) => (ctx.grid && t1 > t0 ? { ...p, popAt: (frameStartOf(t0 + clamp(p.popAt, 0.05, 1) * (t1 - t0), ctx.grid) - t0) / (t1 - t0) } : p);
-/** The knot-in piece over [t0, t1] (ms): knotInKeys from p.from (null = the base at t0); the pop takes what the speed cap needs (>= 80 ms). */
-function knotInFx(cur, t0, t1, p, ctx) {
-  p = popOnFrame(p, t0, t1, ctx);
-  const span = t1 - t0, cap = ctx.maxSpeed ?? DEFAULTS.maxSpeed, minGap = Math.max(1, ctx.minGapMs ?? DEFAULTS.minGapMs);
-  const popMs = Math.max(80, cap > 0 ? Math.ceil((Math.abs(p.popDepth) * 1000) / (0.97 * cap)) : 0), piece = [];
-  for (const [u, pos] of knotInKeys(p, p.from ?? posAt(cur, t0), popMs / span)) {
-    const q = { at: Math.round(t0 + u * span), pos: clamp(Math.round(pos), 0, 100) };
-    if (!piece.length || q.at - piece[piece.length - 1].at >= minGap) piece.push(q);
-    else if (q.at === Math.round(t1)) piece[piece.length - 1] = q;   // the span's end always carries the hold
-  }
-  return piece;
-}
-
-// ---- Knotting, mode 'unknot': the knot coming out ----
-
-/** Unknot keys over the span: [[u, pos]]. Held at the tie (hold) until popAt - pull, the pull toward knotOut (each of
- *  `tugs` tugs slips back in by tugAmp, over the pull's last 60 %), at popAt the pop out onto popTo in popU (share),
- *  the settle onto `to` over settle, held there to the end. */
-export function unknotKeys(p, to, popU = 0.02) {
-  const a = clamp(p.popAt, 0.05, 1), u0 = Math.max(0, a - clamp(p.pull, 0.05, 1)), n = Math.round(p.tugs), line = (w) => p.hold + w * (p.knotOut - p.hold);
-  const keys = [[0, p.hold], [u0, p.hold]];
-  for (let k = 0; k < n; k++) {   // a tug: pulled out along the line, then it slips back in
-    const w0 = 0.4 + (0.6 * k) / n, w1 = 0.4 + (0.6 * (k + 1)) / n, wm = (w0 + w1) / 2;
-    keys.push([u0 + w0 * (a - u0), line(w0)], [u0 + wm * (a - u0), Math.max(0, line(wm) - p.tugAmp)]);
-  }
-  const b = Math.min(1, a + popU), c = Math.min(1, b + Math.max(0, p.settle));
-  keys.push([a, p.knotOut], [b, p.popTo], [c, to], [1, to]);
-  return keys;
-}
-
-/** The unknot piece over [t0, t1] (ms): unknotKeys onto p.to (null = the trace at t1); the pop takes what the speed cap needs (>= 80 ms). */
-function unknotFx(cur, t0, t1, p, ctx) {
-  p = popOnFrame(p, t0, t1, ctx);
-  const span = t1 - t0, cap = ctx.maxSpeed ?? DEFAULTS.maxSpeed, minGap = Math.max(1, ctx.minGapMs ?? DEFAULTS.minGapMs);
-  const popMs = Math.max(80, cap > 0 ? Math.ceil((Math.abs(p.popTo - p.knotOut) * 1000) / (0.97 * cap)) : 0), piece = [];
-  for (const [u, pos] of unknotKeys(p, p.to ?? posAt(cur, t1), popMs / span)) {
+/** Keys [[u, pos]] -> points over [t0, t1] (ms), none closer than minGap (the span's end always carries the last level). */
+function keysFx(keys, t0, t1, ctx) {
+  const span = t1 - t0, minGap = Math.max(1, ctx.minGapMs ?? DEFAULTS.minGapMs), piece = [];
+  for (const [u, pos] of keys) {
     const q = { at: Math.round(t0 + u * span), pos: clamp(Math.round(pos), 0, 100) };
     if (!piece.length || q.at - piece[piece.length - 1].at >= minGap) piece.push(q);
     else if (q.at === Math.round(t1)) piece[piece.length - 1] = q;
   }
   return piece;
+}
+/** The knot-in piece over [t0, t1] (ms): knotInKeys from p.from (null = the base at t0), pulled out onto the base at t1. */
+function knotInFx(cur, t0, t1, p, ctx) {
+  p = popOnFrame(p, t0, t1, ctx);
+  const from = p.from ?? posAt(cur, t0);
+  return keysFx(knotInKeys(p, from, popMs(ctx) / (t1 - t0), cur.length ? posAt(cur, t1) : from), t0, t1, ctx);
+}
+
+/** Unknot keys over the span: [[u, pos]]. Held at the tie (knotOut) until popAt - pull, the pull to the catch (knotIn;
+ *  each of `tugs` tugs slips back in by tugAmp, over the pull's last 60 %), at popAt the pop out onto popTo in popU
+ *  (share), the settle onto `to` over settle, held there to the end. */
+export function unknotKeys(p, to, popU = 0.04) {
+  const a = clamp(p.popAt, 0.05, 1), u0 = Math.max(0, a - clamp(p.pull, 0.05, 1)), n = Math.round(p.tugs), line = (w) => p.knotOut + w * (p.knotIn - p.knotOut);
+  const keys = [[0, p.knotOut], [u0, p.knotOut]];
+  for (let k = 0; k < n; k++) {   // a tug: pulled out along the line, then it slips back in
+    const w0 = 0.4 + (0.6 * k) / n, w1 = 0.4 + (0.6 * (k + 1)) / n, wm = (w0 + w1) / 2;
+    keys.push([u0 + w0 * (a - u0), line(w0)], [u0 + wm * (a - u0), Math.max(0, line(wm) - p.tugAmp)]);
+  }
+  const b = Math.min(1, a + popU), c = Math.min(1, b + Math.max(0, p.settle));
+  keys.push([a, p.knotIn], [b, p.popTo], [c, to], [1, to]);
+  return keys;
+}
+
+/** The unknot piece over [t0, t1] (ms): unknotKeys onto p.to (null = the trace at t1). */
+function unknotFx(cur, t0, t1, p, ctx) {
+  p = popOnFrame(p, t0, t1, ctx);
+  return keysFx(unknotKeys(p, p.to ?? posAt(cur, t1), popMs(ctx) / (t1 - t0)), t0, t1, ctx);
 }
 
 /** Pool-adjacent-violators: the least-squares non-increasing fit of y. */
@@ -563,13 +644,13 @@ const pctl = (a, q) => { const s = [...a].sort((x, y) => x - y); return s[Math.r
  * "Fit" for a single knot-in over [t0, t1]: the push / pop timing read off the tracked samples {t, v} (any scale or sign:
  * the direction is the trend's own, whichever monotone fit is closer). The span's samples get a monotone (isotonic) fit;
  * the push = where it moves from 5 % to 95 % of its travel, the pop = the largest drop over ~100 ms in the push's last third
- * when it is >= 15 % of the travel (else the arrival), settle = from there to 98 %. Depth is not read (pos levels stay):
- * the track has no depth. -> {mode: 'single', push, popAt, settle, popDepth?} | null when the samples do not show the push
- * (travel < 15 % of the samples' p5..p95 over the span +-3 s, or < 5 samples).
+ * when it is >= 15 % of the travel (else the arrival), settle = from there to 98 %. Levels are not read (the knot's one
+ * level set stays): the track has no depth. -> {mode: 'single', push, popAt, settle} | null when the samples do not show
+ * the push (travel < 15 % of the samples' p5..p95 over the span +-3 s, or < 5 samples).
  */
 export function fitKnotIn(samples, t0, t1) {
   const r = monoFit(samples, t0, t1, 2 / 3);
-  return r && { mode: 'single', popAt: r.popAt, push: r.move, settle: r.settle, ...(r.popDepth != null ? { popDepth: r.popDepth } : {}) };
+  return r && { mode: 'single', popAt: r.popAt, push: r.move, settle: r.settle };
 }
 
 /**
@@ -582,11 +663,11 @@ export function fitKnotOut(samples, t0, t1) {
   return r && { mode: 'unknot', popAt: r.popAt, pull: r.move, settle: r.settle };
 }
 
-/** "Fit" for an insertion over [t0, t1]: the push timing off the samples, the same monotone fit with no pop (arrive = 95 %
- *  of the travel). -> {push, arrive} | null. Levels are not read (the track has no depth). */
+/** "Fit" for a push / pull (knotting mode 'none') over [t0, t1]: the timing off the samples, the same monotone fit with no
+ *  pop (popAt = the arrival, 95 % of the travel). -> {mode: 'none', push, popAt} | null. Levels are not read. */
 export function fitInsertion(samples, t0, t1) {
   const r = monoFit(samples, t0, t1, null);
-  return r && { push: r.move, arrive: r.popAt };
+  return r && { mode: 'none', push: r.move, popAt: r.popAt };
 }
 
 /** fitKnotIn / fitKnotOut: the monotone move over the span, its pop searched from `from` (share of the travel's time;
@@ -624,15 +705,14 @@ function monoFit(samples, t0, t1, from) {
   return {
     popAt: r2(popAt), move: r2(clamp(popAt - uOf(ts[iStart]), 0.05, 1)),
     settle: r2(clamp(uOf(ts[Math.max(iRest, hasPop ? pop + k : iArrive)]) - popAt, 0, 0.5)),
-    popDepth: hasPop ? Math.round(clamp((100 * best) / travel, 0, 60)) : null,
   };
 }
 
 // ---- paw-r9nh: edges eased onto the trace, the strength envelope ----
 /** The kinds whose strokes replace the trace's strokes on the same turns: eased in and out (crossfaded) over a half-stroke.
- *  The slow single moves (insertion, pull-out, idle, One knot, Unknot) start from the trace's level AT the edge (posAt)
+ *  The slow single moves (idle, One knot, Unknot, a push / pull) start from the trace's level AT the edge (posAt)
  *  instead and hand back through the plan join (a crossfade would mix strokes into a monotone push); the rest ride on
- *  the trace (offsets, orgasm's edgeMs) and are continuous at their edges already. An Autorange band (auto Reshape: its
+ *  the trace (offsets, the orgasm's own edge ease) and are continuous at their edges already. An Autorange band (auto Reshape: its
  *  edges are the scene's, its band the contract) is not eased. */
 const easesEdges = (e, p, cur, t0, t1) => (e.kind === 'shape' && !e.auto) || (e.kind === 'knotting' && knotMode(p, cur, t0, t1) === 'cycles');
 /** The ease at edge te: the base's half-stroke around te (no turns near: 300 ms) held to 150..800 ms, long enough that
@@ -701,7 +781,7 @@ function applyOne(cur, e, ctx) {
 /** A slow move's piece over [t0, t1] in place of cur's points there. A piece that starts ON the trace joins it on the
  *  trace's own line (its first point yields to a closer base point; no cap test: the step is the trace's own -- the plan
  *  join dropped it on fast tracked strokes, so an idle became a 10 s ramp from the last turn); one that starts off it
- *  (One knot from 100) and the end join go through the plan join (the piece's side yields to the cap). */
+ *  (an Unknot at its tie, a set `from`) and the end join go through the plan join (the piece's side yields to the cap). */
 function spliceOn(cur, piece, t0, t1, ctx) {
   const jo = { maxSpeed: ctx.maxSpeed ?? DEFAULTS.maxSpeed, minGapMs: Math.max(1, ctx.minGapMs ?? DEFAULTS.minGapMs), windowMs: ctx.blendMs ?? DEFAULTS.blendMs };
   const left = cur.slice(0, lowerBound(cur, t0)), right = cur.slice(lowerBound(cur, t1 + 1));
@@ -714,8 +794,9 @@ function spliceOn(cur, piece, t0, t1, ctx) {
 
 function applyRaw(cur, e, ctx) {
   if (cur.length < 2) return cur;
-  if (e.kind === 'spurt') return spurtFx(cur, e, fxParams(e), ctx);
+  if (e.kind === 'spurt') return spurtFx(cur, e, e.marker ?? fxParams(e));
   if (e.kind === 'throbbing') return throbFx(cur, e, fxParams(e), ctx);
+  if (e.kind === 'orgasm') return orgasmFx(cur, e, fxParams(e), ctx);
   // only where the base has motion: the span clipped to the base's own extent
   const t0 = Math.max(Math.round(e.t0), cur[0].at), t1 = Math.min(Math.round(e.t1), cur[cur.length - 1].at);
   const i0 = lowerBound(cur, t0), i1 = lowerBound(cur, t1 + 1);
@@ -723,31 +804,79 @@ function applyRaw(cur, e, ctx) {
   const p = fxParams(e);
   // one knot: a slow push may leave no base point inside the span
   const mode = e.kind === 'knotting' ? knotMode(p, cur, t0, t1) : null;
-  if (e.kind === 'insertion' || e.kind === 'pullout') return spliceOn(cur, knotInFx(cur, t0, t1, insertKnot(p, p.from ?? levelAt(cur, t0)), ctx), t0, t1, ctx);
+  if (mode === 'none') { const f = p.from ?? levelAt(cur, t0); return spliceOn(cur, keysFx(pushKeys(p, f, p.to ?? levelAt(cur, t1)), t0, t1, ctx), t0, t1, ctx); }
   if (e.kind === 'idle') { const v = levelAt(cur, t0); return spliceOn(cur, [{ at: t0, pos: v }, { at: t1, pos: v }], t0, t1, ctx); }
   if (mode === 'single' || mode === 'unknot') return spliceOn(cur, (mode === 'single' ? knotInFx : unknotFx)(cur, t0, t1, p, ctx), t0, t1, ctx);
   if (i1 - i0 < 2) return cur;
   if (e.kind === 'knotting') {
-    const cp = Object.fromEntries(Object.entries(p).filter(([k]) => !KNOT_IN_KEYS.has(k) && !ENV_KEYS.has(k)));   // the cycles exactly as before
-    const r = resolveSegment({ kind: 'knotting', recipe: KNOT_RECIPE, params: { ...cp, timing: 'auto' } });
+    const cp = Object.fromEntries(Object.entries(p).filter(([k]) => !KNOT_IN_KEYS.has(k) && !ENV_KEYS.has(k)));
+    // popSpeed 0: no pop allowance above the device's cap (paw-xu4v; the limiter holds it there anyway)
+    const r = resolveSegment({ kind: 'knotting', recipe: KNOT_RECIPE, params: { ...cp, timing: 'auto', popSpeed: 0 } });
     const turns = baseTurns(cur, t0 - CONTEXT_MS, t1 + CONTEXT_MS);
     const piece = r.gen(t0, t1, r.params, { ...ctx, seed: hashSeed(ctx.seed ?? 0, e.id ?? `${e.kind}@${e.t0}`), turns });
     return applyPlan(cur, { segments: [{ id: e.id, t0, t1 }], script: piece }, ctx);
   }
-  const pts = cur.slice(i0, i1);
-  const piece = e.kind === 'shape' ? shapeFx(pts, p, ctx, t0, t1) : pulseFx(pts, t0, t1, p, ctx);
+  const pts = cur.slice(i0, i1), piece = shapeFx(pts, p, ctx, t0, t1);
   return piece === pts ? cur : [...cur.slice(0, i0), ...piece, ...cur.slice(i1)];
+}
+
+/** Points of reg (its ends kept) at least minGap apart: in a cluster the point reaching furthest from the one kept before
+ *  it wins (a turn survives, lib/edit thinMinGap 'extreme'); the end of a hold too close to the next point moves back
+ *  along the hold instead (a throb's dip or a spurt's swing stays on its time, its approach starts earlier). */
+function thinGaps(reg, minGap) {
+  if (reg.length < 3) return reg;
+  const kept = [reg[0]], last = reg[reg.length - 1];
+  for (let k = 1; k < reg.length - 1; k++) {
+    const a = reg[k], l = kept[kept.length - 1], pp = kept[kept.length - 2];
+    if (a.at - l.at >= minGap) kept.push(a);
+    else if (pp && l.pos === pp.pos && a.pos !== l.pos && a.at - pp.at >= 2 * minGap) kept.splice(-1, 1, { at: a.at - minGap, pos: l.pos }, a);
+    else if (pp && Math.sign(a.pos - pp.pos) === Math.sign(l.pos - pp.pos) && Math.abs(a.pos - pp.pos) > Math.abs(l.pos - pp.pos)) kept[kept.length - 1] = a;
+  }
+  while (kept.length > 1 && last.at - kept[kept.length - 1].at < minGap) kept.pop();
+  kept.push(last);
+  return kept;
+}
+/** The script backward in time (negated times): lib/gen limitSpeed run on it pulls toward the point after. */
+const mirror = (s) => s.map((a) => ({ at: -a.at, pos: a.pos })).reverse();
+
+/**
+ * The one limiter, last (paw-xu4v): over every run of points the modifiers changed (the base's own points either side
+ * are its anchors and never move), points closer than ctx.minGapMs thinned (thinGaps), then every step held to
+ * ctx.maxSpeed by pulling positions toward the point before (lib/gen limitSpeed, the pull Review's Limit speed uses;
+ * forward up to the right anchor) and then toward the point after (backward from it). Times stay; amplitude gives way
+ * (inside the run the base's own too-fast strokes too).
+ */
+function limitSpans(base, out, ctx) {
+  const cap = ctx.maxSpeed ?? DEFAULTS.maxSpeed, minGap = Math.max(1, ctx.minGapMs ?? DEFAULTS.minGapMs), orig = new Set(base), res = [];
+  for (let i = 0; i < out.length;) {
+    if (orig.has(out[i])) { res.push(out[i++]); continue; }
+    let j = i;
+    while (j < out.length && !orig.has(out[j])) j++;
+    const l = i > 0 ? 1 : 0, r = j < out.length ? 1 : 0;
+    let reg = thinGaps(out.slice(i - l, j + r), minGap);
+    if (cap > 0) {   // forward up to (not onto) the right anchor, then backward from it
+      const f = limitSpeed(r ? reg.slice(0, -1) : reg, cap);
+      reg = mirror(limitSpeed(mirror(r ? [...f, reg[reg.length - 1]] : f), cap));
+    }
+    res.push(...reg.slice(l, reg.length - r));
+    i = j;
+  }
+  return res;
 }
 
 /**
  * base (a Script: the tracked points) + effects -> Script. Each live effect (liveFx order) works on the result of the
- * ones before it, inside its own span only. ctx: { seed, maxSpeed, minGapMs, blendMs } as in lib/gen.
+ * ones before it, inside its own span only; then the one limiter (limitSpans). ctx: { seed, maxSpeed, minGapMs, blendMs }
+ * as in lib/gen (lib/finish.js fxCtxOf: the device's).
  */
 export function applyFx(base, fx, ctx = {}) {
   let out = base;
-  const L = liveFx(fx), knots = L.filter((e) => e.kind === 'knotting');
-  for (const e of L) if (e.kind !== 'insertion' || !knots.some((k) => k.t0 < e.t1 && k.t1 > e.t0)) out = applyOne(out, e, ctx);   // a knot over it is the knotted insertion
-  return out;
+  const L = liveFx(fx);
+  for (const e of L) {   // a spurt inside an orgasm is its marker: the orgasm's spurt shape, its own velocity (paw-d1g7)
+    const o = isPointFx(e) ? orgasmOf(L, e) : null;
+    out = applyOne(out, o ? { ...e, marker: markerParams(e, o) } : e, ctx);
+  }
+  return out === base ? base : limitSpans(base, out, ctx);
 }
 
 // ---- cached views for the UI: a tracker ghost seen through the effects layer (lanes draw it, Accept takes it) ----
@@ -779,7 +908,7 @@ export function fxGhost(g, fx, ctx = {}) {
 
 // ---- the axis's own points through the layer: a live ghost until Flatten bakes it (paw-x7w7: no Shift+A) ----
 const AXIS_PAD = 3000, axisCache = new WeakMap();
-/** The live effects' reach: [min t0 - pad, max t1 + pad] (a spurt's window widens for the cap), or null. */
+/** The live effects' reach: [min t0 - pad, max t1 + pad] (a spurt's ringing reaches past its instant), or null. */
 export function fxReach(fx, pad = AXIS_PAD) {
   const L = liveFx(fx);
   return L.length ? { t0: Math.min(...L.map((e) => e.t0)) - pad, t1: Math.max(...L.map((e) => e.t1)) + pad } : null;

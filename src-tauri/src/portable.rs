@@ -47,8 +47,9 @@ use std::process::Command;
 use std::sync::{Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-/// The zips, in unpack order.
-pub const ZIPS: [&str; 2] = ["runtime", "code"];
+/// The zips, in unpack order. runtime-rocm (paw-vdb3.3) holds python-rocm\ beside the CUDA runtime's python\ and the same
+/// ffmpeg.exe / ffprobe.exe: either runtime or both may be unpacked.
+pub const ZIPS: [&str; 3] = ["runtime", "runtime-rocm", "code"];
 const SETUP_DIR: &str = ".setup";
 pub const COPY_FIRST: &str = "Copy this folder to your own drive first";
 pub const MOVE_IT: &str = r"Move the Pawscript folder somewhere else on this PC, for example C:\Pawscript, then start it again.";
@@ -124,10 +125,18 @@ pub struct Runtime {
   pub portable: bool,
   /// the exe's folder: where runtime.zip goes
   pub dir: String,
+  pub runtimes: Vec<RuntimeFacts>,
+}
+
+/// One runtime (`runtime` = CUDA, `runtime-rocm` = AMD) as the disk has it.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeFacts {
+  pub id: &'static str,
   /// the recorded stamp of the unpacked runtime ("runtime 2026-11-18 python3.12.12 ..."), None: none unpacked
   pub installed: Option<String>,
   pub python: bool,
-  /// runtime.zip (or its first part) beside the exe: the setup unpacks that, nothing to download
+  /// <id>.zip (or its first part) beside the exe: the setup unpacks that, nothing to download
   pub zip: bool,
 }
 
@@ -137,10 +146,29 @@ pub fn runtime_status() -> Runtime {
   Runtime {
     portable: zip_path(&dir, "code").is_file(),
     dir: crate::files::path_str(&dir),
-    installed: installed_stamp(&dir, "runtime").map(|s| s.trim().to_string()),
-    python: dir.join("python").join("python.exe").is_file(),
-    zip: zip_path(&dir, "runtime").is_file() || dir.join("runtime.zip.001").is_file(),
+    runtimes: [crate::gpu::CUDA, crate::gpu::ROCM]
+      .map(|id| RuntimeFacts {
+        id,
+        installed: installed_stamp(&dir, id).map(|s| s.trim().to_string()),
+        python: dir.join(crate::gpu::folder_of(id)).join("python.exe").is_file(),
+        zip: zip_path(&dir, id).is_file() || dir.join(format!("{id}.zip.001")).is_file(),
+      })
+      .into(),
   }
+}
+
+/// Settings > Models, Remove on a runtime that is not the chosen one: its folder, stamp and ownership record (the shared
+/// ffmpeg.exe stays). Refused while the sidecar holds it (the retry gives up with the OS's words).
+#[tauri::command]
+pub fn runtime_remove(id: String) -> Result<(), String> {
+  if !crate::gpu::is_runtime(&id) {
+    return Err(format!("{id}: not a runtime"));
+  }
+  let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
+  let setup = dir.join(SETUP_DIR);
+  remove(&setup.join(format!("{id}.stamp")), RETRY_FOR)?;
+  remove(&dir.join(crate::gpu::folder_of(&id)), RETRY_FOR)?;
+  remove(&owns_path(&dir, &id), RETRY_FOR)
 }
 
 /// runtime.zip was just downloaded beside the exe: the same one-time setup as at a start (the setup screen polls
@@ -224,7 +252,7 @@ pub fn prepare(dir: &Path, progress: &dyn Fn(&str)) -> State {
 /// paw-d62c (paw-mn92): runtime.zip is not read again once unpacked and stamped (an update ships a new one, told apart by
 /// its stamp): deleted, best effort, to give back its 2.3 GB. code.zip (small) stays.
 fn drop_unpacked(name: &str, zip: &Path) {
-  if name == "runtime" {
+  if name.starts_with("runtime") {
     let _ = remove(zip, Duration::from_secs(10));
   }
 }
@@ -577,7 +605,9 @@ pub fn foreign(dir: &Path, name: &str, items: &[String]) -> Vec<String> {
     Err(_) if installed_stamp(dir, name).is_some() => return Vec::new(),
     Err(_) => String::new(),
   };
-  let owned: std::collections::HashSet<&str> = owns.lines().map(str::trim).collect();
+  // paw-vdb3.3: the other runtime's zip carries the same ffmpeg.exe: what a sibling zip made is not someone's own either
+  let siblings: Vec<String> = ZIPS.iter().filter(|z| **z != name).filter_map(|z| fs::read_to_string(owns_path(dir, z)).ok()).collect();
+  let owned: std::collections::HashSet<&str> = owns.lines().chain(siblings.iter().flat_map(|s| s.lines())).map(str::trim).collect();
   items.iter().filter(|t| !owned.contains(t.as_str()) && fs::symlink_metadata(dir.join(t)).is_ok()).cloned().collect()
 }
 
@@ -924,6 +954,13 @@ mod tests {
     assert!(foreign(d, "runtime", &items).is_empty());
     fs::write(owns_path(d, "runtime"), "python\nffprobe.exe").unwrap(); // .owns is the word once it exists
     assert_eq!(foreign(d, "runtime", &items), ["ffmpeg.exe"]);
+    // paw-vdb3.3: the ROCm zip carries the same ffmpeg.exe; the CUDA runtime made it, so it is not someone's own
+    let rocm: Vec<String> = ["python-rocm", "ffmpeg.exe"].map(String::from).into();
+    fs::write(owns_path(d, "runtime"), "python
+ffmpeg.exe").unwrap();
+    assert!(foreign(d, "runtime-rocm", &rocm).is_empty());
+    fs::write(owns_path(d, "runtime"), "python").unwrap();
+    assert_eq!(foreign(d, "runtime-rocm", &rocm), ["ffmpeg.exe"]);
 
     let listing = "python/\npython/Lib/site-packages/torch/include/a.h\nffmpeg.exe\n";
     assert_eq!(longest_entry(listing), "python/Lib/site-packages/torch/include/a.h".len());

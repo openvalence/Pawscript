@@ -17,9 +17,11 @@ const strip = (st) => st && { ...st, buf: st.buf.length, blocks: st.blocks && [.
 
 async function same(bytes) {
   const a = decodeRuns(bytes);
-  let slices = 0, done = false;
-  const p = decodeRunsAsync(bytes, { budget: 0 }).then((r) => { done = true; return r; });
-  while (!done) { await new Promise((r) => setTimeout(r, 0)); slices++; }
+  // a slice ends in one MessageChannel macrotask (runs-file.js): count those, not wall-clock timer ticks
+  const Real = globalThis.MessageChannel; let slices = 0;
+  globalThis.MessageChannel = class extends Real { constructor() { super(); slices++; } };
+  let p;
+  try { p = decodeRunsAsync(bytes, { budget: 0 }); await p; } finally { globalThis.MessageChannel = Real; }
   const b = await p;
   assert.deepEqual(b.map(plain), a.map(plain));
   assert.equal(v1(b), v1(a));
@@ -33,7 +35,7 @@ test('decodeRunsAsync: a version-1 file, the same runs, key and state; one run p
   const fx = synthRuns({ runs: 4, frames: 40, points: 32, groups: 2 }), bytes = encodeRuns(decodeRuns(encodeRuns(fx)));
   const { runs, slices } = await same(bytes);
   assert.equal(runs.length, 4);
-  assert.ok(slices >= 3, `${slices} slices`);
+  assert.equal(slices, 3, `${slices} slices`);
 });
 
 test('decodeRunsAsync: a version-2 file, also damaged (a bad block, a missing record), the same as decodeRuns', async () => {

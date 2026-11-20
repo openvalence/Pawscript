@@ -19,6 +19,9 @@ class FakeCuda:
     def is_available(self):
         return True
 
+    def current_device(self):
+        return 0
+
     def get_device_properties(self, i):
         return types.SimpleNamespace(total_memory=self.total * GB)
 

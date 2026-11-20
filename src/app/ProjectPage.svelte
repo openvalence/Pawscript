@@ -220,7 +220,7 @@
       {#if !shown.length}<p class="k-hint nomatch">Nothing matches “{q}”.</p>{/if}
     </div>
   {/if}
-  <p class="k-hint foot" data-testid="project-footer">For adults (18+) only · Free software under the GPL · No telemetry, online only when you ask</p>
+  <p class="k-hint foot" data-testid="project-footer">Explicit content, legal age only · Free software under the GPL · No telemetry, online only when you ask</p>
 </div>
 
 <style>

@@ -30,7 +30,7 @@ test('the seed frame: the middle of the visible part of the modifier in the shot
 });
 
 test('its seed lives on the modifier: the seed frame, then corrections; an emptied correction goes', () => {
-  let m = M('i', 'insertion', 1000, 4000);
+  let m = M('i', 'knotting', 1000, 4000, { params: { mode: 'none', to: 0 } });
   assert.equal(hasSeed(m), false);
   m = setSeed(m, 0, [G('c2_penis', 2000), G('c1_anus', 2000)], 2000);
   assert.equal(hasSeed(m), true);
@@ -41,24 +41,24 @@ test('its seed lives on the modifier: the seed frame, then corrections; an empti
   assert.deepEqual(req.map((g) => g.name), ['c2_penis', 'c1_anus']);
   assert.deepEqual(req[0].fixes, [{ t_ms: 3000, poly: G('c2_penis', 0).poly }], 'a correction of the same part = a fix');
   assert.equal(req[1].fixes, undefined);
-  assert.equal(modGroups(m, { points: true })[0].shaft, true, 'a points run of an insertion asks for the shaft pass');
+  assert.equal(modGroups(m, { points: true })[0].shaft, true, 'a points run of a push asks for the shaft pass');
   assert.equal(modGroups(m, { points: true })[0].fixes, undefined, 'points trackers take one seed frame');
   assert.deepEqual(seedsOf(setSeed(m, 1, [], 0)).map((s) => s.t_ms), [2000]);
   const plan = modTrackPlan(m, 'sam2_mask');
   assert.deepEqual(plan.range, { start: 1000, end: 4000 });
   assert.deepEqual(plan.roi, { kind: 'box', x: 0, y: 0, w: 1, h: 1, t_ms: 2000 });
   assert.deepEqual(plan.seeds, [2000, 3000]);
-  assert.ok(modTrackPlan(M('x', 'insertion', 0, 1), 'sam2_mask').why, 'nothing painted: nothing to track');
+  assert.ok(modTrackPlan(M('x', 'knotting', 0, 1, { params: { mode: 'none', to: 0 } }), 'sam2_mask').why, 'nothing painted: nothing to track');
   assert.ok(modTrackPlan(M('x', 'idle', 0, 1, { seeds: m.seeds }), 'sam2_mask').why, 'idle is generated only');
 });
 
 test('unassigned (unnamed) paint is never sent; the groups keep their own frame', () => {
-  const m = setSeed(M('i', 'insertion', 0, 4000), 0, [G('c2_penis', 1000), { name: 'unassigned1', poly: G('c2_penis', 0).poly, t_ms: 1000 }], 1000);
+  const m = setSeed(M('i', 'knotting', 0, 4000, { params: { mode: 'none', to: 0 } }), 0, [G('c2_penis', 1000), { name: 'unassigned1', poly: G('c2_penis', 0).poly, t_ms: 1000 }], 1000);
   assert.deepEqual(modGroups(m).map((g) => g.name), ['c2_penis']);
 });
 
 test('assignment: its own run, a part of the shot run, or none; deleting a run unassigns; the default is the one candidate', () => {
-  const m = M('i', 'insertion', 1000, 5000), own = shaftRun('run7', { mod: 'i' }), shot = shaftRun('run2');
+  const m = M('i', 'knotting', 1000, 5000, { params: { mode: 'none', to: 0 } }), own = shaftRun('run7', { mod: 'i' }), shot = shaftRun('run2');
   assert.equal(sourcesOf(m, [own], shot).length, 2);
   assert.equal(assignedOf(m, [own], shot), null, 'two candidates, nothing chosen: generated');
   assert.equal(assignedOf(m, [], shot).auto, true, 'one candidate: today\'s default');
@@ -110,7 +110,7 @@ test('.pawruns keeps a modifier run\'s masks (they are what the owner sees and c
 });
 
 test('stage 4: the measure is the depth where SAM is confident, the shot signal elsewhere, cross-faded', () => {
-  const m = M('i', 'insertion', 1000, 5000, { src: { run: 'run7', ch: 'sem_c2_penis_in' } }), run = shaftRun('run7', { mod: 'i' });
+  const m = M('i', 'knotting', 1000, 5000, { params: { mode: 'none', to: 0 }, src: { run: 'run7', ch: 'sem_c2_penis_in' } }), run = shaftRun('run7', { mod: 'i' });
   const lowConf = { ...run, channels: { ...run.channels, sem_c2_penis_in_conf: channelOf(Array.from(run.channels.sem_c2_penis_in_conf.t, (t) => [t, t < 3000 ? 0.1 : 1])) } };
   const ch = measureOf(m, lowConf);
   assert.ok(ch.w[0] === 0 && ch.w.at(-1) === 1 && ch.v.at(-1) === 0, 'weight 0 where SAM is unsure, depth = 1 - inside');
