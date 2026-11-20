@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pawscript: transport + HUD</title>
+  <style>
+    html, body { height: 100%; }
+    #pane { display: flex; flex-direction: column; height: 100vh; }
+    #stage { position: relative; overflow: hidden; flex: 1; background: var(--bg-sunken); }
+    #stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  </style>
+</head>
+<body class="kit-root">
+  <div id="pane"><div id="stage"><video muted playsinline></video></div><div id="bar"></div></div>
+  <script type="module" src="./video-transport.js"></script>
+</body>
+</html>

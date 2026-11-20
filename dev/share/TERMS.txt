@@ -1,0 +1,101 @@
+PAWSCRIPT: TERMS OF USE
+=======================
+
+Pawscript is published by OpenValence. Copyright 2026 AtlanticTM. By using Pawscript you agree to these terms.
+They are short and plain on purpose. If you do not agree, do not use it.
+
+
+1. ADULTS ONLY (18+)
+--------------------
+Pawscript is for adults. You must be 18 or older, and of legal age where you live, to use it.
+
+
+2. NO WARRANTY
+--------------
+Pawscript is free software, provided "as is", without any warranty of any kind, express or implied, including
+fitness for a particular purpose. It is early access: expect bugs. To the extent the law allows, nobody who made or
+shared Pawscript is liable for any damage or loss that comes from using it. Sections 15 and 16 of the GNU General
+Public License (LICENSE) say the same in full.
+
+
+3. DEVICES: AT YOUR OWN RISK
+----------------------------
+Pawscript can drive physical devices (Bluetooth, serial, USB/HID toys and a Valence hub). Scripts, trackers and
+generators can produce fast, deep or unexpected motion. You use any device with Pawscript at your own risk.
+- Panic stop: Shift+Esc or the Pause key, from anywhere in the app, stops the device and pauses the video. The Stop
+  button in the Device panel does the same. Learn it before you connect anything.
+- Check a script at low speed and range before you use it on your body. Keep the device's own stop within reach.
+- Never use a device in a way its maker does not allow.
+
+
+4. YOUR MEDIA
+-------------
+Pawscript works on videos and files you open yourself. Use it only with media you have the right to use. Pawscript
+does not supply, download or share any media.
+
+
+5. WHAT YOU MAKE IS YOURS
+-------------------------
+Scripts, projects, packs and anything else you create with Pawscript belong to you. Use them, share them or sell them
+as you please. The GPL covers the program, not what you make with it. The file formats are free for anyone to
+implement (docs/formats in the source).
+
+
+6. NOTHING LEAVES YOUR PC
+-------------------------
+No account, no telemetry, no crash reports, no licence check. The bundled Python is blocked from making any network
+connection (trackers\sitecustomize.py); a missing model file is an error, never a download by itself. The app goes
+online only when you ask it to:
+- Download (the first-start screen, Settings > Models): the runtime and the models you pick, from the Pawscript models
+  server (dl.openvalence.org), over HTTPS. Each file is checked against the checksum built into the app before it is kept.
+- Check for updates (Help menu, Settings > Updates; at start only if you turn that on, off by default): asks GitHub for
+  the newest version; Download and install fetches it, checked against the signing key built into the app.
+Nothing is sent but the requests themselves (the server sees your IP address and which file you asked for). The
+other connection is to a Valence hub, and only if you set one up and press Connect.
+
+What Pawscript writes, all of it on your own PC:
+- Beside your video, continuously while you work: <name>.pawproj (the project), <name>.pawruns (the tracker runs; it
+  can reach about 120 MB) and a <name>.pawhistory folder (undo history, checkpoints and commits). The .funscript files
+  go beside the video when you Publish; a file Pawscript did not write is kept as a .bak before it is replaced.
+- %APPDATA%\app.pawscript.portable: settings, the recent projects list, the window position.
+- %LOCALAPPDATA%\app.pawscript.portable: a daily usage log (usage-YYYY-MM-DD.jsonl: the commands and tools you use;
+  turn it off with the "Usage log" setting), the fix log (fixes.jsonl: what you corrected of what the app produced,
+  same switch), your feedback notes (feedback.jsonl: only what you type into the note field), the part finder's labels,
+  small pictures of the frames you labelled and the small model it trains from them (seeder\), project thumbnails,
+  autosaves, backups, a media cache (proxies, waveforms, thumbnails; capped, clear it from inside the app) and the
+  browser data of the app window (EBWebView\).
+- The Pawscript folder itself: the first start unpacks runtime.zip and code.zip into it.
+None of it is sent anywhere. To remove it all, delete the Pawscript folder, the two folders above and the files beside
+your videos.
+
+
+7. LICENCE
+----------
+Pawscript is free and always will be. It is licensed under the GNU General Public License, version 3 or (at your
+option) any later version (LICENSE): anyone may share it, nobody may make it closed. If someone sold it to you, you can
+get it free at https://github.com/openvalence/Pawscript.
+The parts made by others keep their own licences: LICENSES-SUMMARY.txt and the LICENSES folder.
+
+
+8. SOURCE CODE (WRITTEN OFFER)
+------------------------------
+You are entitled to the complete corresponding source code of every GPL and LGPL component in this folder:
+- Pawscript itself (the app, its tracker code and the build scripts): https://github.com/openvalence/Pawscript, published by OpenValence;
+  its docs/BUILDING.md says how to build this folder from it.
+- ffmpeg.exe and ffprobe.exe: FFmpeg 8.1.1, the "full" static Windows build by gyan.dev
+  (version string 8.1.1-full_build-www.gyan.dev), GPL-3.0. Source: FFmpeg commit 239f2c733d
+  (https://github.com/FFmpeg/FFmpeg/commit/239f2c733d; the 8.1.1 release is also at https://ffmpeg.org/releases/).
+  The exact configuration and every external library with its version: LICENSES\ffmpeg-gyan.dev-build-README.txt
+  (gyan.dev's own file from that build), also printed by "ffmpeg -buildconf". Build page: https://www.gyan.dev/ffmpeg/builds/
+- The FFmpeg inside PyAV 19.0.2 (runtime.zip: python\Lib\site-packages\av.libs; FFmpeg 9.0.2 libraries with libx264,
+  libx265 and others, GPL-2.0-or-later): PyAV's source for 19.0.2 (https://github.com/PyAV-Org/PyAV, tag v19.0.2) and
+  the FFmpeg build it is made with (https://github.com/PyAV-Org/pyav-ffmpeg).
+- Other LGPL libraries in runtime.zip (the FFmpeg inside opencv-python-headless, libvips inside pyvips-binary): the
+  sources named in their licence files inside python\Lib\site-packages.
+If any of these links stops working, ask at https://github.com/openvalence/Pawscript/issues and you will get the same source. This offer is valid for at
+least three years after this build was published, to anyone who has a copy.
+
+
+9. CONTACT
+----------
+Problems, questions, the source: https://github.com/openvalence/Pawscript/issues

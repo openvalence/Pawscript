@@ -1,0 +1,27 @@
+{
+  "name": "pawscript",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run check && vite build",
+    "build:only": "vite build",
+    "check": "node --test \"test/**/*.test.mjs\"",
+    "check:perf": "node --test --test-concurrency=1 \"test/**/*.test.mjs\"",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^4.0.4",
+    "@tauri-apps/cli": "^2.11.4",
+    "playwright": "^1.65.0",
+    "svelte": "^5.56.8",
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.0.0",
+    "mp4box": "^2.5.0"
+  }
+}

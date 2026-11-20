@@ -1,0 +1,5 @@
+RedRocket/Hydra 3.5 shot tagger (models\.models\hydra: weights hydra-3.5.safetensors + its Python model code)
+Source: https://huggingface.co/RedRocket/Hydra, revision cfa9b0a1ffcf2b8df8553be7673210fd60fba23b
+Licence: Apache-2.0 according to the model card's metadata. The repository has NO licence file, so none ships here.
+Base model: google/siglip2-so400m-patch16-naflex, Apache-2.0.
+The Apache-2.0 text is the one in SAM2.1-weights-and-code-Apache-2.0.txt beside this file.

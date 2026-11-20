@@ -1,0 +1,34 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Pawscript",
+  "version": "0.1.0",
+  "identifier": "app.pawscript",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      { "label": "main", "title": "Pawscript", "width": 1440, "height": 900, "minWidth": 900, "minHeight": 600, "resizable": true }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost; media-src 'self' blob: asset: http://asset.localhost; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost ws: wss:; object-src 'none'; base-uri 'none'",
+      "dangerousDisableAssetCspModification": ["style-src"],
+      "assetProtocol": { "enable": true, "scope": ["**"] }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMzQjU1QTdEQUE4MTlCOTcKUldTWG00R3FmVnExTTJmMVVURk94Um5BWjYwVWhKZXlJcnNkS0hNZGxnSC8rYllrYjJ6b1JMSzEK",
+      "endpoints": ["https://github.com/openvalence/Pawscript/releases/latest/download/latest.json"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "fileAssociations": [{ "ext": ["pawproj"], "name": "Pawscript project", "description": "Pawscript project", "role": "Editor", "mimeType": "application/json" }],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+  }
+}

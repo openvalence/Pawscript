@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Graph harness</title><link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--tx); font-family: var(--font); font-size: 13px; }
+  #root { display: grid; grid-template-rows: auto auto 1fr; height: 100vh; }
+  #bar { display: flex; gap: 8px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--line-1); background: var(--bg-raised); font-size: 12px; color: var(--tx-mut); flex-wrap: wrap; }
+  #bar b { color: var(--tx-hi); font-weight: 600; }
+  #bar .num { font-family: var(--mono); color: var(--tx-val); font-size: 11px; }
+  #bar select, #bar button { background: var(--bg-card); color: var(--tx); border: 1px solid var(--line-2); border-radius: 2px; padding: 2px 8px; font: inherit; cursor: pointer; }
+  #lanes { display: flex; flex-direction: column; border-bottom: 1px solid var(--line-1); background: var(--bg-sunken); }
+  .row { position: relative; border-bottom: 1px solid var(--line-0); }
+  .row > .tag { position: absolute; top: 2px; right: 6px; z-index: 3; pointer-events: none; font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--tx-ghost); }
+  #panel { min-height: 0; display: flex; }
+  #out { display: none; }
+</style></head>
+<body><div id="root">
+  <div id="bar"><b>Graph harness</b><span class="num" id="info"></span><span style="flex:1"></span>
+    <label>Preset <select id="preset"><option value="">—</option></select></label>
+    <button id="stress">200-node stress graph</button>
+    <button id="play">Play</button>
+    <a href="?" style="color:inherit">reset</a>
+  </div>
+  <div id="lanes">
+    <div class="row" style="height:86px"><span class="tag">stroke</span><div id="lane-stroke" style="position:absolute;inset:0"></div></div>
+    <div class="row" style="height:56px"><span class="tag">roll</span><div id="lane-roll" style="position:absolute;inset:0"></div></div>
+    <div class="row" style="height:56px"><span class="tag">probe</span><div id="lane-probe" style="position:absolute;inset:0"></div></div>
+  </div>
+  <div id="panel"></div>
+</div><pre id="out"></pre>
+<script type="module" src="./graph.js"></script></body></html>

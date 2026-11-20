@@ -1,0 +1,67 @@
+PAWSCRIPT: LICENCES IN ONE PAGE
+==============================
+
+Pawscript itself is GPL-3.0-or-later (LICENSE, NOTICE). Everything else in this folder keeps its own licence, listed
+below. "May it be passed on": yes = permissive, keep the notices (they are in LICENSES\); yes, with notice = the same,
+plus the condition named; unclear = no licence file came with it. A summary, not legal advice. Full texts: LICENSES\
+(models\ the model licences; THIRD-PARTY-app.md the app's own table). Each Python package's own licence files ship
+inside runtime.zip, in python\Lib\site-packages\<package>.dist-info. Where to get the source of the GPL and LGPL parts:
+TERMS.txt, section 8.
+
+READ FIRST
+----------
+GPL      Pawscript (Pawscript.exe, code.zip: trackers\pawtrack): GPL-3.0-or-later, Copyright 2026 AtlanticTM, published
+         by OpenValence. Free to share with its source; nobody may make it closed. Source: https://github.com/openvalence/Pawscript
+absent   CoTracker3 (Meta, CC BY-NC 4.0: non-commercial only) is not part of this build, and neither is the code that
+         would call it: Guide\cotracker.md.
+yes, GPL ffmpeg.exe / ffprobe.exe (gyan.dev 8.1.1 "full" build: --enable-gpl --enable-version3, so GPL-3.0) and the
+         FFmpeg inside PyAV (runtime.zip: python\...\av.libs: built with libx264 / libx265, so GPL-2.0+): passed on with
+         the licence (LICENSES\ffmpeg-LICENSE.txt), the build configuration (LICENSES\ffmpeg-gyan.dev-build-README.txt)
+         and the source offer in TERMS.txt.
+unclear  Hydra 3.5 tagger (RedRocket): Apache-2.0 according to its model card only; the repository has no licence file.
+         It was trained on e621 artwork. LICENSES\models\Hydra-3.5-NOTE.txt.
+unclear  NVIDIA CUDA / cuBLAS / cuDNN DLLs inside the PyTorch wheel: NVIDIA's redistribution terms allow shipping them
+         with an application (that is how PyTorch ships them), but no NVIDIA licence text came with the wheel.
+         LICENSES\NVIDIA-CUDA-NOTE.txt.
+
+MODELS (the models folder: trackers\.cache, trackers\.models, or the folder chosen in Settings > Models; in the full
+folder they are inside, the small download fetches the ones you pick from the Pawscript models server)
+------------------------------------------
+SAM 2.1 tiny / small / base+ / large (Meta)        Apache-2.0                 yes
+TAPNext++ 256 and 512 (Google DeepMind)            Apache-2.0                 yes
+Hydra 3.5 shot tagger (RedRocket)                  Apache-2.0 (card only)     unclear (no licence file)
+
+APP (Pawscript.exe; code.zip: trackers\pawtrack)
+----------------------------------------------------
+Pawscript                                                         GPL-3.0-or-later                          yes, with source
+Kinetic2, code adapted from Phosphor (Copyright 2026 AtlanticTM)  Apache-2.0                                yes
+Valence client (src/lib/valence/vendor)                           MIT                                       yes
+                                                                    (LICENSES\valence-vendor-LICENSE.txt)
+Human body for the Machine panel (Z-Anatomy / BodyParts3D)        CC BY-SA 4.0                              yes, with notice
+                                                                    (attribution: LICENSES\human-body-ATTRIBUTION.txt)
+Chakra Petch, Martian Mono fonts                                  SIL OFL 1.1                               yes
+Svelte, Tauri crates and plugins, serde, sha2, tempfile, ...      MIT / Apache-2.0                          yes
+tauri-plugin-updater, reqwest, rustls, ring, minisign-verify      MIT / Apache-2.0 / ISC                    yes
+mp4box.js                                                         BSD-3-Clause                              yes
+buttplug crates (owner's fork), btleplug, hidapi                  BSD-3 / MIT / Apache-2.0                  yes
+evalexpr (inside the buttplug server)                             AGPL-3.0-only                             yes, with source
+serialport, cssparser, selectors                                  MPL-2.0                                   yes
+WebView2                                                          part of Windows, not bundled              -
+
+RUNTIME (runtime.zip: python\, ffmpeg.exe, ffprobe.exe)
+---------------------------------------------------------
+Python 3.12.12 (python-build-standalone)        PSF-2.0                          yes
+PyTorch 2.12.1+cu130, torchvision 0.27.1        BSD-3-Clause                     yes
+NVIDIA CUDA 13.0 runtime libs, cuDNN 9           NVIDIA redistribution terms     unclear (see above)
+ffmpeg / ffprobe 8.1.1 (gyan.dev full)          GPL-3.0                          yes, with notice + source offer
+PyAV 19.0.2 (av)                                BSD-3; bundled FFmpeg GPL-2.0+   yes, with notice + source offer
+opencv-python-headless 5.0.0.93                 Apache-2.0 / MIT; bundled
+                                                third-party (incl. LGPL FFmpeg)  yes, with notice + source offer
+pyvips 3.2.0 / pyvips-binary 8.18.7 (libvips)   MIT / LGPL-3.0+                  yes, with notice + source offer
+sam-2 1.0 (Meta)                                Apache-2.0 (+ BSD-3 cc_torch)    yes
+tapnet 0.1.0 (Google DeepMind)                  Apache-2.0                       yes
+numpy, scipy, matplotlib, pillow, contourpy, kiwisolver, networkx, sympy, mpmath, einops, safetensors, hydra-core,
+omegaconf, antlr4 runtime, iopath, portalocker, fsspec, filelock, jinja2, markupsafe, pyyaml, packaging, pyparsing,
+python-dateutil, cycler, fonttools, typing-extensions, tzdata, colorama, cffi, pycparser, setuptools, pip, pytest,
+pluggy, iniconfig, pygments                     BSD / MIT / Apache-2.0 / PSF     yes
+tqdm                                            MPL-2.0 AND MIT                  yes

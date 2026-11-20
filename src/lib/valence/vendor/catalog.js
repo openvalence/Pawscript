@@ -1,0 +1,811 @@
+/**
+ * catalog.js — Valence blob transfer + catalog decode + packed-STATE decoding.
+ *
+ * The catalog is the self-describing channel list (§8.1) and, since RFC-009,
+ * the self-describing SETTINGS model too. A client fetches it with BLOB_REQ
+ * (0x1A) — an empty CBOR map means "the whole of blob namespace 0", the
+ * catalog — and the hub streams it back as BLOB_CHUNK (0x1B) raw frames, each
+ * carrying a fixed 14-byte identity header (ns/store/slot/reserved/generation/
+ * chunk_index/chunk_count/total_bytes) followed by up to 192 catalog bytes.
+ *
+ * v1.0 RETIRED CATALOG_REQ/CATALOG_CHUNK: transfer is ONE verb for the whole
+ * protocol now, with the catalog as namespace 0 and preset/trust stores as
+ * namespace 1 (RFC-021).
+ *
+ * THERE IS NO FALLBACK LAYOUT TABLE, DELIBERATELY. Until v1.0 this file
+ * carried `FALLBACK_LAYOUTS`, a hand-copied mirror of THIS device's packed
+ * layouts, because retained STATE used to race the catalog transfer. RFC-015's
+ * readiness gate removed the race — the hub emits NO data-plane frame to a
+ * session that has not declared CATALOG_READY — so a state frame can no longer
+ * arrive without its decoder ring. A hand-copied table is exactly the coupling
+ * the self-describing catalog exists to prevent (and this one had already gone
+ * stale: it described 0x0080 as 7 bytes after the firmware appended raw_10um,
+ * silently truncating the "asked" line). Decode from the received catalog,
+ * always.
+ */
+
+import { cbMap, cbArray, cbUint, cbDecode } from './cbor.js';
+import {
+  PACKED, PACKED_NAME, PACKED_SIZE, CBOR_FIELD_NAME,
+  CHANNEL_CLASS_NAME, DIRECTION_NAME, ACCESS_NAME,
+  UI_CATEGORY, UI_CATEGORY_NAME, UI_RANK, UI_RANK_NAME,
+  VALUE_ASPECT, VALUE_ASPECT_NAME, VALUE_SCOPE, VALUE_SCOPE_NAME,
+  VALUE_PROVENANCE, VALUE_PROVENANCE_NAME, UNIT_ID_NAME,
+  SETTING_FLAG, PLAN_FLAG_NAME,
+  K, BLOB_K, BLOB_NS, LIMITS,
+} from './frames.js';
+import { catalogEtag, bytesEqual } from './sha256.js';
+
+// ============================================================================
+// BLOB_REQ payload builders (§8.4 / RFC-021)
+// ============================================================================
+
+/**
+ * Build a BLOB_REQ body.
+ *
+ * A bare catalog request is the EMPTY CBOR map (0xA0): namespace 0 is the
+ * default and store_id/slot are absent by rule, so generalizing transfer cost
+ * the common case exactly zero bytes. The `blob` (38) sub-map is emitted ONLY
+ * when it says something a default does not.
+ *
+ * @param {Object} [o]
+ * @param {number} [o.ns] BLOB_NS.catalog (default) | BLOB_NS.store
+ * @param {number} [o.storeId] store selector (namespace 1 only)
+ * @param {number} [o.slot] item index (namespace 1 only)
+ * @param {number} [o.generation] roster generation this request is consistent with
+ * @param {number[]} [o.chunks] selective-repair indices (omit for a full transfer)
+ * @returns {Uint8Array}
+ */
+export function buildBlobReq(o = {}) {
+  const ns = o.ns == null ? BLOB_NS.catalog : o.ns;
+  const isCatalog = ns === BLOB_NS.catalog;
+  if (isCatalog && (o.storeId != null || o.slot != null)) {
+    throw new Error('buildBlobReq: the catalog namespace takes no store_id/slot (§8.4)');
+  }
+  if (o.chunks && o.chunks.length === 0) {
+    throw new Error('buildBlobReq: a repair naming zero chunks is MALFORMED (RFC-022.6)');
+  }
+
+  const blobPairs = [];
+  if (!isCatalog) blobPairs.push([BLOB_K.ns, cbUint(ns)]);
+  if (o.storeId != null) blobPairs.push([BLOB_K.store_id, cbUint(o.storeId)]);
+  if (o.slot != null) blobPairs.push([BLOB_K.slot, cbUint(o.slot)]);
+  if (o.generation != null) blobPairs.push([BLOB_K.generation, cbUint(o.generation)]);
+
+  const pairs = [];
+  if (o.chunks) pairs.push([K.chunks, cbArray(o.chunks.map((i) => cbUint(i)))]); // 27 < 38
+  if (blobPairs.length) pairs.push([K.blob, cbMap(blobPairs)]);
+  return cbMap(pairs);
+}
+
+/** Full transfer of blob namespace 0 (the catalog): the empty map. */
+export function buildCatalogRequest() { return buildBlobReq(); }
+
+/** Selective repair of the catalog: {27:[indices]}. @param {number[]} indices */
+export function buildCatalogRepair(indices) { return buildBlobReq({ chunks: indices }); }
+
+// ============================================================================
+// BLOB_CHUNK parsing + reassembly (§8.4)
+// ============================================================================
+
+/** Fixed binary identity header on every BLOB_CHUNK payload (blob_chunks.hpp). */
+export const BLOB_CHUNK_HEADER_BYTES = 14;
+export const BLOB_CHUNK_PAYLOAD = LIMITS.catalog_chunk_payload; // 192
+
+/**
+ * Parse a BLOB_CHUNK raw payload's 14-byte identity header.
+ * Layout (little-endian): ns u8 | store_id u8 | slot u8 | reserved u8 |
+ * generation u16 | chunk_index u16 | chunk_count u16 | total_bytes u32.
+ * The reserved byte is IGNORED, never validated — that is what makes it usable
+ * later without a wire break.
+ * @param {Uint8Array} payload
+ * @returns {?{ns:number,storeId:number,slot:number,generation:number,
+ *             chunkIndex:number,chunkCount:number,totalBytes:number,bytes:Uint8Array}}
+ */
+export function parseBlobChunk(payload) {
+  if (payload.length < BLOB_CHUNK_HEADER_BYTES) return null;
+  const dv = new DataView(payload.buffer, payload.byteOffset, BLOB_CHUNK_HEADER_BYTES);
+  return {
+    ns: dv.getUint8(0),
+    storeId: dv.getUint8(1),
+    slot: dv.getUint8(2),
+    generation: dv.getUint16(4, true),
+    chunkIndex: dv.getUint16(6, true),
+    chunkCount: dv.getUint16(8, true),
+    totalBytes: dv.getUint32(10, true),
+    bytes: payload.subarray(BLOB_CHUNK_HEADER_BYTES),
+  };
+}
+
+/**
+ * BLOB_DONE status (§8.4 / RFC-050). Sole home for these numbers is the
+ * registry's frame_types 0x20 note; there is no vocabulary table to generate
+ * from, so they are named here against it rather than typed at call sites.
+ */
+export const BLOB_DONE_STATUS = { VERIFIED_COMPLETE: 0, HASH_MISMATCH: 1, ABORTED: 2 };
+
+/**
+ * Build a BLOB_DONE raw payload (7 bytes). The first 6 are BLOB_CHUNK's
+ * identity prefix VERBATIM, so the two frames describe one vocabulary:
+ * ns u8 | store_id u8 | slot u8 | reserved u8 | generation u16 | status u8.
+ * Mirrors encodeBlobDone() in wire/raw/blob_done.hpp.
+ * @param {number} status one of BLOB_DONE_STATUS
+ * @param {{ns?:number,storeId?:number,slot?:number,generation?:number}} [id]
+ * @returns {Uint8Array}
+ */
+export function buildBlobDone(status, id = {}) {
+  const out = new Uint8Array(7);
+  const dv = new DataView(out.buffer);
+  dv.setUint8(0, id.ns || 0);
+  dv.setUint8(1, id.storeId || 0);
+  dv.setUint8(2, id.slot || 0);
+  dv.setUint8(3, 0); // reserved
+  dv.setUint16(4, id.generation || 0, true);
+  dv.setUint8(6, status);
+  return out;
+}
+
+/** Do two chunk identities name the same blob? `generation` is deliberately excluded. */
+export function sameBlobTarget(a, b) {
+  return a.ns === b.ns && a.storeId === b.storeId && a.slot === b.slot;
+}
+
+/**
+ * Receiver-side blob reassembler. Mirrors ChunkReassembler<> in
+ * lib/valence/.../wire/blob_chunks.hpp: begun from the first chunk's own
+ * header (which declares total_bytes, so the size is known before anything is
+ * allocated — RFC-028), and REJECTS chunks belonging to a different blob so a
+ * catalog transfer and a store fetch cannot corrupt each other.
+ */
+export class BlobReassembler {
+  // The default budget is limits::catalog_max_bytes (RFC-121, §8.1): a client
+  // at client-watch or above MUST accept a catalog up to it. Do not size it to
+  // today's catalog; a catalog over the budget is refused (BLOB_REFUSED).
+  // It bounds one allocation of the declared total_bytes, made once per
+  // transfer and dropped on reset().
+  constructor(maxTotalBytes = LIMITS.catalog_max_bytes) {
+    this.maxTotalBytes = maxTotalBytes;
+    this.reset();
+  }
+
+  reset() {
+    this.active = false;
+    this.target = null;
+    this.chunkCount = 0;
+    this.totalBytes = 0;
+    this.received = null;
+    this.receivedCount = 0;
+    this.buf = null;
+    this.startMs = 0;
+    this.lastProgressMs = 0;
+  }
+
+  /** Start (or restart) a transfer from a parsed chunk header. */
+  begin(h, nowMs) {
+    const ok = h.chunkCount > 0 && h.totalBytes > 0 && h.totalBytes <= this.maxTotalBytes;
+    this.reset();
+    if (!ok) return false; // refuse the NUMBERS too, not just the transfer
+    this.active = true;
+    this.target = { ns: h.ns, storeId: h.storeId, slot: h.slot };
+    this.chunkCount = h.chunkCount;
+    this.totalBytes = h.totalBytes;
+    this.received = new Array(h.chunkCount).fill(false);
+    this.receivedCount = 0;
+    this.buf = new Uint8Array(h.totalBytes);
+    this.startMs = nowMs;
+    this.lastProgressMs = nowMs;
+    return true;
+  }
+
+  /**
+   * Accept one parsed BLOB_CHUNK. Returns true when it was valid, addressed to
+   * THIS transfer and copied in (duplicates are idempotent and still true).
+   */
+  insert(h, nowMs) {
+    if (!this.active) return false;
+    if (!sameBlobTarget(h, this.target)) return false;
+    if (h.chunkCount !== this.chunkCount || h.chunkIndex >= this.chunkCount) return false;
+    const offset = h.chunkIndex * BLOB_CHUNK_PAYLOAD;
+    if (offset + h.bytes.length > this.buf.length) return false;
+    this.buf.set(h.bytes, offset);
+    if (!this.received[h.chunkIndex]) {
+      this.received[h.chunkIndex] = true;
+      this.receivedCount++;
+    }
+    this.lastProgressMs = nowMs;
+    return true;
+  }
+
+  complete() { return this.active && this.receivedCount === this.chunkCount; }
+
+  /** @returns {number[]} not-yet-received chunk indices (ascending) */
+  missingIndices() {
+    if (!this.active) return [];
+    const out = [];
+    for (let i = 0; i < this.chunkCount; i++) if (!this.received[i]) out.push(i);
+    return out;
+  }
+
+  /** §8.4: no progress for catalog_chunk_gap_timeout_ms while still incomplete. */
+  gapElapsed(nowMs) {
+    return this.active && !this.complete() &&
+      nowMs - this.lastProgressMs >= LIMITS.catalog_chunk_gap_timeout_ms;
+  }
+
+  /** Arm the next gap interval (call after emitting a repair BLOB_REQ). */
+  noteRepairSent(nowMs) { this.lastProgressMs = nowMs; }
+
+  /** §8.4: total-abandon threshold since the transfer began. */
+  timedOut(nowMs) {
+    return this.active && nowMs - this.startMs >= LIMITS.frag_reassembly_timeout_ms;
+  }
+
+  /** @returns {Uint8Array} the reassembled bytes (valid when complete()) */
+  assembled() { return this.buf.subarray(0, this.totalBytes); }
+}
+
+/**
+ * RFC-073 (§8.7): a store item is a blob_keys map whose optional `digest` (11)
+ * is SHA-256 over `payload` (7) alone. False only when a digest is present and
+ * disagrees, which is BLOB_DONE status 1; bytes that are not an item map (the
+ * trust ledger's own grammar, a device namespace) have nothing to check.
+ * @param {Uint8Array} bytes the reassembled item
+ * @returns {boolean}
+ */
+export function storeItemDigestOk(bytes) {
+  let m;
+  try { [m] = cbDecode(bytes, 0); } catch { return true; }
+  if (!(m instanceof Map)) return true;
+  const payload = m.get(BLOB_K.payload);
+  const digest = m.get(BLOB_K.digest);
+  if (!(payload instanceof Uint8Array) || !(digest instanceof Uint8Array)) return true;
+  return bytesEqual(catalogEtag(payload, digest.length), digest);
+}
+
+// ============================================================================
+// Catalog CBOR decode (catalog_codec.hpp / schema/catalog.cddl)
+// ============================================================================
+
+/**
+ * Decode the reassembled catalog encoding into channel entries.
+ *
+ * catalog = [ *channel-entry ]
+ * channel-entry = {1:id, 2:name, 3:class, 4:dir, 5:access, 6:maxRateHz f32,
+ *                  7:priority, ?8:[layout-field], ?9:{key=>schema-field},
+ *                  ?10:category, ?11:category_label, ?12:store-descriptor,
+ *                  ?13:replay_depth, ?14:setting_channel, ?15:stream_kind,
+ *                  ?16:rank, ?17:store_id, ?18:role, ?19:{event_kinds},
+ *                  ?20:[mod_target channel, field]}
+ * layout-field = {1:name, 2:packedType, 3:unit, 4:scale f32, ?5:min, ?6:max,
+ *                 ?7:{bits}, ?8:setting_key, ?9:default, ?10:[options],
+ *                 ?11:group, ?12:desc, ?13:role, ?14:step, ?15:flags, ?18:size,
+ *                 ?19:rank, ?20:aspect, ?21:scope, ?22:provenance, ?23:unit_id,
+ *                 ?25:safe}
+ * schema-field = {1:name, 2:cborType, 3:unit, ?5:min, ?6:max, ?9:default,
+ *                 ?10:[options], ?11:group, ?12:desc, ?13:role, ?14:step,
+ *                 ?15:flags, ?16:access, ?17:[option_access],
+ *                 ?19:rank, ?20:aspect, ?21:scope, ?22:provenance, ?23:unit_id,
+ *                 ?24:destructive_options, ?25:safe}
+ *
+ * Unknown keys are ignored per §4.3 — forward compatibility is mandatory.
+ * @param {Uint8Array} bytes
+ * @returns {Array<Object>} channel entries
+ */
+export function decodeCatalog(bytes) {
+  const [entries] = cbDecode(bytes, 0);
+  if (!Array.isArray(entries)) throw new Error('decodeCatalog: top-level must be an array');
+  return entries.map(decodeEntry);
+}
+
+/** @param {Map} m @param {number} k @param {*} d @returns {*} */
+function mget(m, k, d) {
+  return m instanceof Map && m.has(k) ? m.get(k) : d;
+}
+
+/**
+ * Resolve an annotation code against its registry vocabulary, applying the
+ * ABSENT default and the UNRECOGNIZED rule in one place.
+ *
+ * §8.9 rule 8 / §4.3: an unknown code is never a decode failure and never a
+ * reason to drop the field — it falls back to the vocabulary's defined default.
+ * The raw wire value is kept alongside so a renderer can still show what the
+ * device actually said.
+ */
+function annot(m, key, names, dflt) {
+  const raw = m instanceof Map && m.has(key) ? m.get(key) : null;
+  const code = (typeof raw === 'number' && raw in names) ? raw : dflt;
+  return { code, name: names[code], raw };
+}
+
+function decodeEntry(m) {
+  const cls = mget(m, 3, 0);
+  const dir = mget(m, 4, 0);
+  const access = mget(m, 5, 0);
+  const entry = {
+    id: mget(m, 1, 0),
+    name: mget(m, 2, ''),
+    cls,
+    clsName: CHANNEL_CLASS_NAME[cls] || String(cls),
+    dir,
+    dirName: DIRECTION_NAME[dir] || String(dir),
+    access,
+    accessName: ACCESS_NAME[access] || String(access),
+    maxRateHz: mget(m, 6, 0),
+    priority: mget(m, 7, 0),
+    layout: null,
+    schema: null,
+    store: null,
+    category: null,
+    categoryName: null,
+    categoryLabel: null,
+    replayDepth: null,
+    settingChannel: null,
+    streamKind: 0,
+    // Entry rank (key 16): how much THIS CHANNEL matters. A SEPARATE AXIS from
+    // any per-field key-19 rank — emphatically not inheritance, so a hero
+    // channel may still hold a diagnostic field and vice versa.
+    rank: UI_RANK.detail,
+    rankName: UI_RANK_NAME[UI_RANK.detail],
+    storeId: null, // RFC-070: the STORE entry this roster/writer belongs to
+    role: null, // RFC-065: channel_roles string; may repeat across entries
+    eventKinds: null, // RFC-065: {event_kind: label}, EVENT class only
+    modTarget: null, // RFC-066: {channel, field} this modulator rides
+  };
+  if (m.has(8)) entry.layout = m.get(8).map(decodeLayoutField);
+  if (m.has(9)) {
+    const sm = m.get(9); // Map<key, field-map>
+    entry.schema = [];
+    for (const [key, fm] of sm) entry.schema.push(decodeSchemaField(key, fm));
+    entry.schema.sort((a, b) => a.key - b.key);
+  }
+  if (m.has(10)) {
+    // The RAW id is preserved: a device-defined category outside the registry
+    // vocabulary still identifies its own tab, and merging every unknown id into
+    // one `other` bucket would fuse unrelated tabs together. `categoryName` is
+    // the RESOLVED registry name, which for an unrecognized id is `other` —
+    // ui_categories 14 is the DEFINED overflow, so the settings still render
+    // (§8.8 item 8) instead of landing on the floor.
+    entry.category = m.get(10);
+    entry.categoryName = UI_CATEGORY_NAME[entry.category] || UI_CATEGORY_NAME[UI_CATEGORY.other];
+    entry.categoryKnown = entry.category in UI_CATEGORY_NAME;
+  }
+  if (m.has(11)) entry.categoryLabel = m.get(11);
+  if (m.has(12)) entry.store = decodeStoreDescriptor(m.get(12));
+  if (m.has(13)) entry.replayDepth = m.get(13);
+  if (m.has(14)) entry.settingChannel = m.get(14);
+  if (m.has(15)) entry.streamKind = m.get(15);
+  if (m.has(16)) {
+    const r = annot(m, 16, UI_RANK_NAME, UI_RANK.detail);
+    entry.rank = r.code;
+    entry.rankName = r.name;
+  }
+  if (m.has(17)) entry.storeId = m.get(17);
+  if (m.has(18)) entry.role = m.get(18);
+  if (m.has(19)) entry.eventKinds = Object.fromEntries(m.get(19));
+  if (m.has(20)) {
+    const [channel, field] = m.get(20);
+    entry.modTarget = { channel, field };
+  }
+  return entry;
+}
+
+/** RFC-009 annotations shared by layout- and schema-fields (keys 9..15). */
+function decodeSharedAnnotations(fm, f) {
+  if (fm.has(9)) f.default = fm.get(9);
+  if (fm.has(10)) f.options = fm.get(10); // [tstr], wire value = index
+  if (fm.has(11)) f.group = fm.get(11);
+  if (fm.has(12)) f.desc = fm.get(12);
+  if (fm.has(13)) f.role = fm.get(13);
+  if (fm.has(14)) f.step = fm.get(14);
+  if (fm.has(15)) {
+    f.flags = fm.get(15);
+    f.flagBits = {
+      advanced: (f.flags & SETTING_FLAG.advanced) !== 0,
+      restart_required: (f.flags & SETTING_FLAG.restart_required) !== 0,
+      secret: (f.flags & SETTING_FLAG.secret) !== 0,
+      destructive: (f.flags & SETTING_FLAG.destructive) !== 0,
+    };
+  }
+  if (fm.has(25)) f.safe = fm.get(25); // RFC-076: value in an accessory's safe state
+  // ---- RFC-048 rendering metamodel, keys 19..23 ----------------------------
+  //
+  // Decoded UNCONDITIONALLY, with each vocabulary's absent-default, because a
+  // renderer must be able to ask "what rank is this?" without first asking "did
+  // the device say?" — that second question is where per-caller guesses breed.
+  // Same keys, same meanings on layout- and schema-fields, so one function owns
+  // them (catalog.cddl points its schema-field block at the layout-field block
+  // for exactly this reason).
+  const rank = annot(fm, 19, UI_RANK_NAME, UI_RANK.detail);
+  f.rank = rank.code;
+  f.rankName = rank.name;
+  const aspect = annot(fm, 20, VALUE_ASPECT_NAME, VALUE_ASPECT.live);
+  f.aspect = aspect.code;
+  f.aspectName = aspect.name;
+  const scope = annot(fm, 21, VALUE_SCOPE_NAME, VALUE_SCOPE.session);
+  f.scope = scope.code;
+  f.scopeName = scope.name;
+  const prov = annot(fm, 22, VALUE_PROVENANCE_NAME, VALUE_PROVENANCE.actual);
+  f.provenance = prov.code;
+  f.provenanceName = prov.name;
+  // unit_id has NO fallback vocabulary value: absent or unrecognized means
+  // "render the tstr `unit` (key 3) verbatim", so this stays null rather than
+  // resolving to a wrong unit name. catalog.cddl key 23, RENDERING.md §6.
+  const unitId = fm.has(23) ? fm.get(23) : null;
+  f.unitId = (typeof unitId === 'number' && unitId in UNIT_ID_NAME) ? unitId : null;
+  f.unitIdName = f.unitId != null ? UNIT_ID_NAME[f.unitId] : null;
+}
+
+function decodeLayoutField(fm) {
+  const type = mget(fm, 2, 0);
+  const f = {
+    name: mget(fm, 1, ''),
+    type,
+    typeName: PACKED_NAME[type] || String(type),
+    unit: mget(fm, 3, ''),
+    scale: mget(fm, 4, 1),
+  };
+  if (fm.has(5)) f.min = fm.get(5);
+  if (fm.has(6)) f.max = fm.get(6);
+  if (fm.has(7)) {
+    const bm = fm.get(7); // Map<bitIndex, name>
+    const bits = new Array(8).fill('');
+    for (const [bit, nm] of bm) bits[bit] = nm;
+    f.bits = bits;
+  }
+  // RFC-009: PRESENT setting_key = this field is a stored SETTING and key
+  // `settingKey` on the entry's paired INTENT channel writes it. ABSENT =
+  // read-only effective/telemetry truth — display it, NEVER write it back into
+  // a setting's shadow. That presence test IS RFC-003's stored/effective
+  // distinction, and stomping a stored value with an effective one is the
+  // original valence-js window bug.
+  if (fm.has(8)) f.settingKey = fm.get(8);
+  decodeSharedAnnotations(fm, f);
+  // RFC-037: the field's packed width, stated explicitly rather than derived
+  // from `type`. Absent on every catalog this reference device currently
+  // emits (the encoder side is a named follow-up) — this is forward-looking
+  // decode support, exercised so far only by this file's own tests. See
+  // decodePacked() for what it buys: an unknown FUTURE packed type becomes a
+  // skippable hole in the layout instead of truncating every field after it.
+  if (fm.has(18)) f.declaredSize = fm.get(18);
+  return f;
+}
+
+function decodeSchemaField(key, fm) {
+  const type = mget(fm, 2, 0);
+  const f = {
+    key,
+    name: mget(fm, 1, ''),
+    type,
+    typeName: CBOR_FIELD_NAME[type] || String(type),
+    unit: mget(fm, 3, ''),
+  };
+  if (fm.has(5)) f.min = fm.get(5);
+  if (fm.has(6)) f.max = fm.get(6);
+  decodeSharedAnnotations(fm, f);
+  if (fm.has(16)) f.access = fm.get(16); // per-field minimum role
+  // RFC-009/025b: index-aligned with `options` — element i is the minimum role
+  // for wire value i. A client that reads this GRAYS the ops it cannot use
+  // instead of discovering them by NACK (gray, never hide).
+  if (fm.has(17)) f.optionAccess = fm.get(17);
+  // RFC-063: index-aligned with `options` like optionAccess (element i: option
+  // i is destructive), so no caller does 32-bit bitwise math on a 64-bit mask.
+  // A mask past 2^53 is not exact as a JS number, so every option counts as
+  // destructive: an extra confirm is safe, a missed one is not.
+  if (fm.has(24)) {
+    const mask = fm.get(24);
+    f.destructiveOptions = Array.from({ length: (f.options || []).length },
+      (_, i) => !Number.isSafeInteger(mask) || Math.floor(mask / 2 ** i) % 2 === 1);
+  }
+  return f;
+}
+
+function decodeStoreDescriptor(dm) {
+  return {
+    storeId: mget(dm, 1, 0),
+    kind: mget(dm, 2, ''),
+    capacity: mget(dm, 3, 0),
+    perItemMax: mget(dm, 4, 0),
+    nameMax: mget(dm, 5, 0),
+  };
+}
+
+/**
+ * Build a Map<channelId, entry> from a decoded catalog array.
+ * @param {Array<Object>} entries
+ * @returns {Map<number, Object>}
+ */
+export function catalogChannelMap(entries) {
+  const map = new Map();
+  for (const e of entries) map.set(e.id, e);
+  return map;
+}
+
+// ============================================================================
+// Catalog introspection helpers (RFC-009 / RFC-016)
+// ============================================================================
+
+/**
+ * INTENT value encoding, resolved FROM THE CATALOG. Replaces the hand-copied
+ * INTENT_SCHEMAS table that used to live in session.js and had already drifted
+ * (it encoded a float as an integer for months). The device publishes a
+ * per-key CBOR type on every INTENT channel; this reads it.
+ * @param {Object} entry a decoded catalog entry (class INTENT)
+ * @returns {Map<number, Object>} field key -> schema field
+ */
+export function schemaByKey(entry) {
+  const out = new Map();
+  if (entry && entry.schema) for (const f of entry.schema) out.set(f.key, f);
+  return out;
+}
+
+/**
+ * The minimum role required to send `optionValue` on schema field `key` of
+ * `entry`: the entry's floor raised by the field's access and the option's,
+ * never lowered (RFC-119, Hub::requiredAccessFor). An option past the end
+ * takes the strictest declared.
+ * @returns {number} an ACCESS level
+ */
+export function optionAccessFor(entry, key, optionValue) {
+  if (!entry) return 0;
+  const f = schemaByKey(entry).get(key);
+  let need = entry.access | 0;
+  if (!f) return need;
+  if (f.access != null) need = Math.max(need, f.access);
+  if (!f.optionAccess || typeof optionValue !== 'number') return need;
+  const a = f.optionAccess[optionValue];
+  return Math.max(need, a == null ? Math.max(...f.optionAccess) : a);
+}
+
+/**
+ * May a session holding `roles` send `optionValue` on this field? RFC-009's
+ * gray-never-hide input: a client grays what this returns false for, and the
+ * hub gates on the very same catalog data (Hub::requiredAccessFor), so the two
+ * cannot disagree.
+ */
+export function canUseOption(entry, key, optionValue, roles) {
+  return (roles | 0) >= optionAccessFor(entry, key, optionValue);
+}
+
+/** All channel entries a client may see for a given class (e.g. CHANNEL_CLASS.STORE). */
+export function entriesOfClass(entries, cls) {
+  return (entries || []).filter((e) => e.cls === cls);
+}
+
+/** Does this hub advertise `channelId`? (RFC-016: capability discovery IS catalog introspection.) */
+export function hasChannel(channelMap, channelId) {
+  return !!(channelMap && channelMap.has(channelId));
+}
+
+// ============================================================================
+// Packed STATE decode (SPEC §5.4/§8.2)
+// ============================================================================
+
+const _dec = new TextDecoder();
+
+/**
+ * Decode a packed STATE payload against a layout descriptor array. Wire =
+ * physical * scale for scaled numeric fields, so decoded = raw / scale. A
+ * bitfield8 passes through as a raw byte (scale ignored) plus, if named, a
+ * `<name>_bits` object of {bitName:boolean}. RFC-026 str16/32/64 fields are
+ * fixed-width zero-padded UTF-8 and decode to a string.
+ *
+ * A SHORT payload stops gracefully (append-only layout evolution means an
+ * older hub's shorter snapshot is a correct PREFIX of a newer layout), and a
+ * LONGER payload than the layout describes is ignored past the end — the same
+ * append-only rule from the other side.
+ *
+ * RFC-037 (`f.declaredSize`, catalog key 18): a field's byte width is
+ * otherwise derivable ONLY from `type` — so the day the registry adds packed
+ * type 11, every client that meets it on the wire has to stop decoding the
+ * layout THERE, not just at that field: every later field's offset becomes
+ * unknowable too, and the whole tail goes dark. A declared size fixes that:
+ *   - KNOWN type, declared size present and it disagrees with the type's own
+ *     width: that is a CATALOG AUTHORING error (conformance is supposed to
+ *     catch it before it ships). We trust the TYPE, not the declaration —
+ *     the type is what tells us how to actually decode the bytes — and warn
+ *     once per field so the mismatch doesn't decode-loop silently forever.
+ *   - UNKNOWN type, declared size present: a SKIPPABLE HOLE. We don't know
+ *     what the bytes mean, but we know how many there are, so we step over
+ *     them and keep decoding every field that follows — the whole point of
+ *     RFC-037.
+ *   - UNKNOWN type, no declared size: offsets are genuinely unknowable past
+ *     here — stop, exactly as before this RFC (a pre-RFC-037 hub, or a hub
+ *     that forgot to state it, gets today's behavior, not a crash).
+ *
+ * @param {Uint8Array} payload
+ * @param {Array<{name,type,scale,bits?,declaredSize?}>} layout
+ * @returns {Object} field name -> value (+ optional _bits maps)
+ */
+export function decodePacked(payload, layout) {
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  const out = {};
+  let off = 0;
+  for (const f of layout) {
+    const derivedSize = PACKED_SIZE[f.type];
+    if (derivedSize == null) {
+      // Unknown packed type (a future registry addition this build predates).
+      if (f.declaredSize == null) break; // offsets unknowable past here — stop (pre-RFC-037 behavior)
+      if (off + f.declaredSize > payload.byteLength) break; // short frame — stop gracefully
+      off += f.declaredSize; // skippable hole: no value to produce, but decoding continues
+      continue;
+    }
+    if (f.declaredSize != null && f.declaredSize !== derivedSize && !f._sizeMismatchWarned) {
+      f._sizeMismatchWarned = true; // warn once per field, not once per STATE push
+      // eslint-disable-next-line no-console
+      console.warn('valence: catalog field "' + f.name + '" (type ' + f.typeName +
+        ') declares size ' + f.declaredSize + ' B but the type is ' + derivedSize +
+        ' B wide — trusting the type (RFC-037: this is a catalog authoring error)');
+    }
+    const size = derivedSize; // known type: TRUST THE TYPE, never the declaration
+    if (off + size > payload.byteLength) break; // short frame — stop gracefully
+    let raw;
+    switch (f.type) {
+      case PACKED.u8: raw = dv.getUint8(off); break;
+      case PACKED.i8: raw = dv.getInt8(off); break;
+      case PACKED.u16: raw = dv.getUint16(off, true); break;
+      case PACKED.i16: raw = dv.getInt16(off, true); break;
+      case PACKED.u32: raw = dv.getUint32(off, true); break;
+      case PACKED.i32: raw = dv.getInt32(off, true); break;
+      case PACKED.f32: raw = dv.getFloat32(off, true); break;
+      case PACKED.bitfield8: raw = dv.getUint8(off); break;
+      case PACKED.str16:
+      case PACKED.str32:
+      case PACKED.str64: {
+        const bytes = payload.subarray(off, off + size);
+        let end = bytes.length;
+        while (end > 0 && bytes[end - 1] === 0) end--; // zero-padded, register-map style
+        raw = _dec.decode(bytes.subarray(0, end));
+        break;
+      }
+      default: raw = 0;
+    }
+    off += size;
+    if (f.type === PACKED.bitfield8) {
+      out[f.name] = raw;
+      if (f.bits) {
+        const bitsOut = {};
+        for (let b = 0; b < 8; b++) if (f.bits[b]) bitsOut[f.bits[b]] = (raw & (1 << b)) !== 0;
+        out[f.name + '_bits'] = bitsOut;
+      }
+    } else if (typeof raw === 'string') {
+      out[f.name] = raw;
+    } else {
+      const scale = f.scale || 1;
+      out[f.name] = scale !== 1 ? raw / scale : raw;
+    }
+  }
+  return out;
+}
+
+// control-owner (0x0004, SPEC §11.4) by its registry layout, never a hub's
+// catalog: four {src, owner} pairs, then per slot (RFC-098) the source kind and
+// the owner's HELLO client_kind and client_name, 216 B.
+const OWNER_SLOTS = [0, 1, 2, 3];
+const CONTROL_OWNER_LAYOUT = [
+  ...OWNER_SLOTS.flatMap((i) => [{ name: 'src' + i, type: PACKED.u8 }, { name: 'owner' + i, type: PACKED.u32 }]),
+  ...OWNER_SLOTS.flatMap((i) => [
+    { name: 'kind' + i, type: PACKED.u8 },
+    { name: 'client_kind' + i, type: PACKED.str16 },
+    { name: 'client_name' + i, type: PACKED.str32 },
+  ]),
+];
+
+/**
+ * Decode a control-owner payload into its slots, in slot order. `owner` is the
+ * session id (0 = unowned), `kind` a SOURCE_KIND value; names are display
+ * strings, never a key. A pre-RFC-098 hub's 20 B payload reads kind null and
+ * empty names.
+ * @param {Uint8Array} payload
+ * @returns {Array<{src:number, owner:number, kind:number|null, clientKind:string, clientName:string}>}
+ */
+export function decodeControlOwner(payload) {
+  const d = decodePacked(payload, CONTROL_OWNER_LAYOUT);
+  const slots = [];
+  for (const i of OWNER_SLOTS) {
+    if (d['owner' + i] === undefined) break;
+    slots.push({
+      src: d['src' + i], owner: d['owner' + i], kind: d['kind' + i] ?? null,
+      clientKind: d['client_kind' + i] ?? '', clientName: d['client_name' + i] ?? '',
+    });
+  }
+  return slots;
+}
+
+/**
+ * The registry names of the `plan_flags` bits set in a `plan.flags` byte
+ * (RFC-100), in bit order. Reserved bits are ignored; an empty list is a clean
+ * plan, and any name at all means the plan is infeasible.
+ * @param {number} raw
+ * @returns {string[]}
+ */
+export function planFlagNames(raw) {
+  const names = [];
+  for (const [bit, name] of Object.entries(PLAN_FLAG_NAME)) if (raw & Number(bit)) names.push(name);
+  return names;
+}
+
+const PACKED_RANGE = {
+  [PACKED.u8]: [0, 0xff], [PACKED.i8]: [-0x80, 0x7f],
+  [PACKED.u16]: [0, 0xffff], [PACKED.i16]: [-0x8000, 0x7fff],
+  [PACKED.u32]: [0, 0xffffffff], [PACKED.i32]: [-0x80000000, 0x7fffffff],
+  [PACKED.bitfield8]: [0, 0xff],
+};
+
+/**
+ * Encode one packed sample (a STREAM c2h sample) from physical values keyed by
+ * layout field name: wire = round(physical * scale), rounding half away from
+ * zero exactly as lib/valence's packField (std::lround) does. The inverse of
+ * decodePacked for the numeric types.
+ *
+ * Throws instead of guessing: a missing field, a non-finite value, a value
+ * outside the packed type's range (the C++ codec wraps silently; a wrapped
+ * motion target is a different position), a string type (§5.4: STREAM layouts
+ * carry none) or a packed type this build predates.
+ *
+ * @param {Object<string, number>} values field name -> physical value
+ * @param {Array<{name,type,scale}>} layout the channel's catalog layout
+ * @returns {Uint8Array}
+ */
+export function encodePacked(values, layout) {
+  let size = 0;
+  for (const f of layout) {
+    const s = PACKED_SIZE[f.type];
+    if (s == null) throw new Error('encodePacked: field "' + f.name + '" has packed type ' + f.type + ' this build cannot encode');
+    size += s;
+  }
+  const out = new Uint8Array(size);
+  const dv = new DataView(out.buffer);
+  let off = 0;
+  for (const f of layout) {
+    const v = values[f.name];
+    if (typeof v !== 'number' || !Number.isFinite(v)) {
+      throw new Error('encodePacked: field "' + f.name + '" needs a finite number, got ' + v);
+    }
+    if (f.type === PACKED.f32) {
+      dv.setFloat32(off, v * (f.scale || 1), true);
+      off += 4;
+      continue;
+    }
+    const range = PACKED_RANGE[f.type];
+    if (!range) throw new Error('encodePacked: field "' + f.name + '" is ' + f.typeName + ', not a numeric type');
+    const scaled = f.type === PACKED.bitfield8 ? v : v * (f.scale || 1);
+    const raw = Math.sign(scaled) * Math.round(Math.abs(scaled));
+    if (raw < range[0] || raw > range[1]) {
+      throw new RangeError('encodePacked: field "' + f.name + '" = ' + v + ' encodes to ' + raw +
+        ', outside ' + f.typeName + ' [' + range[0] + ', ' + range[1] + ']');
+    }
+    switch (f.type) {
+      case PACKED.u8: case PACKED.bitfield8: dv.setUint8(off, raw); break;
+      case PACKED.i8: dv.setInt8(off, raw); break;
+      case PACKED.u16: dv.setUint16(off, raw, true); break;
+      case PACKED.i16: dv.setInt16(off, raw, true); break;
+      case PACKED.u32: dv.setUint32(off, raw, true); break;
+      case PACKED.i32: dv.setInt32(off, raw, true); break;
+    }
+    off += PACKED_SIZE[f.type];
+  }
+  return out;
+}
+
+/**
+ * Decode an EVENT's scoped `body` (key 40) sub-map against the channel's OWN
+ * catalog schema (§9.4 + the v1.0 grammar fix). Kind-specific fields used to
+ * sit in the global CBOR key space, which meant every device-authored EVENT
+ * channel needed a registry PR to name its own fields — precisely the coupling
+ * the self-describing catalog exists to prevent. They now ride `body`, keyed
+ * exactly as an INTENT's `value` (20) is.
+ *
+ * @param {Map} bodyMap the decoded key-40 sub-map
+ * @param {Object} entry the EVENT channel's catalog entry (may be null)
+ * @returns {Object} field name -> value (unknown keys kept as `key<N>`)
+ */
+export function decodeEventBody(bodyMap, entry) {
+  const out = {};
+  if (!(bodyMap instanceof Map)) return out;
+  const byKey = schemaByKey(entry);
+  for (const [k, v] of bodyMap) {
+    const f = byKey.get(k);
+    out[f ? f.name : 'key' + k] = v;
+  }
+  return out;
+}

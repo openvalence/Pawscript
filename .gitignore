@@ -1,0 +1,46 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+.venv/
+__pycache__/
+*.pyc
+trackers/.venv/
+*.funscript.bak
+
+# personal reference clips and scripts (large, not for the repo)
+/Reference/
+target-test/
+
+# experiment weights / caches / outputs (GBs; regenerable)
+trackers/experiments/**/models/
+trackers/experiments/**/out*/
+trackers/eval/out/
+*.gguf
+*.npz
+# the synthetic golden output of a tracker test (tracked; a fresh repo's add must keep it)
+!trackers/tests/data/*.npz
+*.pkl
+*.pt
+*.pth
+*.safetensors
+*.onnx
+*.log
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
+
+# imported character bodies for the Machine panel: local only, never committed (only the stock human body is tracked)
+/src/features/machine/bodies/*
+!/src/features/machine/bodies/human.*
+!/src/features/machine/bodies/stroker-penis.glb
+
+# the owner's own toys (paw-p4r4: profiles from their product pictures, owner.js): local only, never committed
+/src/features/machine/toys/owner/
+
+# the friends' share build's runtime archive (python + ffmpeg, ~3 GB, paw-i7s): local only, made once, see the .txt beside it
+/dev/share/runtime/*.zip*

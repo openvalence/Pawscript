@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Machine harness</title><link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--tx); }
+  #cols { display: flex; gap: var(--space-5); padding: var(--space-5); height: calc(100vh - 2 * var(--space-5)); box-sizing: border-box; }
+  .col { flex: none; width: 360px; display: flex; flex-direction: column; border: 1px solid var(--line-1); background: var(--bg); min-height: 0; }
+</style></head>
+<body class="kit-root"><div id="cols"></div><pre id="out" hidden></pre>
+<script type="module" src="./machine.js"></script></body></html>

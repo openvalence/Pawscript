@@ -1,0 +1,60 @@
+[package]
+name = "pawscript"
+version = "0.1.0"
+description = "Pawscript - funscript editor and tracker bench"
+edition = "2021"
+license = "GPL-3.0-or-later"
+# 1.91: str::ceil_char_boundary (sidecar stderr tail); tauri-plugin-opener 2.7 needs 1.90.
+rust-version = "1.91"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+# protocol-asset: local videos play through convertFileSrc (asset://).
+tauri = { version = "2.11.3", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+# Plugins pinned to releases built against the tauri in Cargo.lock (2.12): a
+# caret bump could pull a tauri minor the rest of the tree has not been tried on.
+# A second launch forwards its file arguments to the running window (src/app.rs).
+tauri-plugin-single-instance = "=2.5.5"
+# Window size/position/maximised, in window-state.json in the app config dir.
+tauri-plugin-window-state = "=2.5.0"
+# Rust API only (reveal in file manager, open with default app): not registered
+# as a plugin, so the webview gets none of its commands (src/files.rs).
+tauri-plugin-opener = "=2.7.2"
+# Content hashes: write_with_backup's "last written by us" log, fingerprints,
+# cache keys. Already in the tree through tauri.
+sha2 = "0.10"
+# Atomic writes: same-directory temp file, cleaned up on drop, replace or
+# no-clobber persist on every platform (src/files.rs).
+tempfile = "3"
+# .pawpack's zip entries (src/pack.rs, paw-2k9s): CRC-32 while streaming. Already in the tree through flate2 / png.
+crc32fast = "1"
+# Embedded buttplug server for device playback (src/buttplug.rs, src/features/playback): path deps on the
+# owner's buttplug fork beside OpenValence/Phosphor (branch `valence`), the crates Phosphor builds. In process
+# only: no websocket transport, no listener.
+buttplug_core = { git = "https://github.com/openvalence/ButtplugIO", rev = "35c8344f78fcddd82b2802708b65081a35d5eb87" }
+buttplug_server = { git = "https://github.com/openvalence/ButtplugIO", rev = "35c8344f78fcddd82b2802708b65081a35d5eb87" }
+buttplug_server_device_config = { git = "https://github.com/openvalence/ButtplugIO", rev = "35c8344f78fcddd82b2802708b65081a35d5eb87" }
+buttplug_server_hwmgr_btleplug = { git = "https://github.com/openvalence/ButtplugIO", rev = "35c8344f78fcddd82b2802708b65081a35d5eb87" }
+buttplug_server_hwmgr_serial = { git = "https://github.com/openvalence/ButtplugIO", rev = "35c8344f78fcddd82b2802708b65081a35d5eb87" }
+buttplug_server_hwmgr_hid = { git = "https://github.com/openvalence/ButtplugIO", rev = "35c8344f78fcddd82b2802708b65081a35d5eb87" }
+futures = "0.3"
+# paw-cdot: the only network code, both run only when the user asks. Help > Check for updates: the official updater
+# plugin (GitHub release, minisign-signed; its rustls path, no zip / proxy extras). The models and the runtime
+# (src/models.rs): the HTTP client the plugin brings, with the same rustls + ring; nothing new beyond the plugin's tree.
+tauri-plugin-updater = { version = "2.14", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+
+# Job Objects: sidecar / ffmpeg process trees die with the app (src/sidecar.rs). Already in the tree.
+# Win32_UI_Shell: SHFileOperationW, a file to the Recycle Bin (files::remove_recoverably, paw-zkvc).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_UI_Shell"] }

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Inspector harness</title>
+<link rel="icon" href="data:,">
+<style>
+  /* harness chrome only: kit tokens, so ?theme= and ?density= restyle it too */
+  html, body { height: 100%; }
+  #root { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+  #top { padding: var(--space-3) var(--space-4); border-bottom: var(--bw) solid var(--line-1); display: flex; flex-direction: column; gap: var(--space-3); background: var(--bg-raised); }
+  #bar { display: flex; gap: var(--space-5); align-items: center; color: var(--tx-mut); }
+  #bar b { color: var(--tx-hi); font-weight: 500; }
+  #bar .grow { flex: 1; }
+  #lane { width: 100%; height: 190px; display: block; background: var(--bg-sunken); cursor: crosshair; }
+  #cols { display: flex; gap: var(--space-4); padding: var(--space-4); overflow: auto; min-height: 0; background: var(--bg-sunken); }
+  .col { flex: none; width: 320px; display: flex; flex-direction: column; border: var(--bw) solid var(--line-1); overflow: hidden; background: var(--bg); min-height: 0; }
+  /* the shell's dock head: a 30px --bg-raised band with the panel's tab */
+  .col > .ttl { flex: none; height: 30px; display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-4); background: var(--bg-raised); border-bottom: var(--bw) solid var(--line-1); color: var(--tx-hi); font-size: var(--fs-2); font-weight: 500; box-shadow: inset 0 -2px var(--reality); }
+  .col > .body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+  .hctl { width: auto; height: var(--ctl-h-sm); margin-left: var(--space-3); padding: 0 var(--space-3); background: var(--bg-sunken); color: var(--tx); border: var(--bw) solid var(--line-2); border-radius: var(--radius); font-size: var(--fs-2); }
+  #out { display: none; }
+</style></head>
+<body class="kit-root"><div id="root">
+  <div id="top">
+    <div id="bar"><b>Inspector harness</b><span id="info" class="k-num"></span><span class="grow"></span><span id="ctl"></span></div>
+    <canvas id="lane"></canvas>
+  </div>
+  <div id="cols"></div>
+</div><pre id="out"></pre>
+<script type="module" src="./inspector.js"></script></body></html>

@@ -1,0 +1,53 @@
+/* palette.css -- what the palette, the help overlay and the keybinding editor share (pp- prefix). Tokens only. */
+
+/* An overlay: a full-viewport transparent modal <dialog> (top layer); its box sits inside, so a press on
+   the dialog itself is a press outside the box. */
+.pp-dialog {
+  position: fixed; inset: 0; width: 100vw; height: 100vh; max-width: none; max-height: none;
+  margin: 0; padding: 0; border: 0; background: transparent; color: var(--tx);
+  flex-direction: column; align-items: center; overflow: hidden;
+  font: var(--fs-ui) / var(--lh) var(--font);
+}
+.pp-dialog[open] { display: flex; }
+.pp-dialog::backdrop { background: rgba(var(--shade-rgb, 0, 0, 0), .4); }
+.pp-dialog:focus { outline: none; }
+.pp-box {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--bg-overlay); border: var(--bw) solid var(--line-2); border-radius: var(--radius);
+  outline: 1px solid var(--line-0); outline-offset: 1px; box-shadow: var(--shadow-3);
+  animation: pp-in var(--t-quick) var(--ease-out);
+}
+@keyframes pp-in { from { opacity: 0; translate: 0 -4px; } }
+
+/* small ghost / framed buttons */
+.pp-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  min-height: var(--ctl-h-sm); padding: 0 var(--space-3); flex: none;
+  font: 500 var(--fs-2) / 1 var(--font); color: var(--tx); white-space: nowrap; cursor: pointer;
+  background: transparent; border: var(--bw) solid var(--line-ctl); border-radius: var(--radius);
+  transition: border-color var(--t-quick) var(--ease-out), background var(--t-quick) var(--ease-out);
+}
+.pp-btn:hover { border-color: var(--line-ctl-hover); background: var(--bg-hover); }
+.pp-btn:disabled { color: var(--tx-ghost); border-color: var(--line-2); background: none; cursor: default; }
+.pp-btn.ghost { border-color: transparent; color: var(--tx-mut); }
+.pp-btn.ghost:hover { color: var(--tx-hi); background: var(--bg-hover); }
+.pp-btn.on { border-color: var(--reality); color: var(--accent-ink); }
+.pp-btn.danger:not(:disabled) { border-color: var(--bad); color: var(--bad-ink); }
+.pp-btn:focus-visible { outline: var(--ring-w) solid var(--focus); outline-offset: var(--ring-offset); }
+
+/* a search field with a leading icon */
+.pp-search {
+  display: flex; align-items: center; gap: var(--space-3); min-width: 0;
+  height: var(--ctl-h-sm); padding: 0 var(--space-3);
+  background: var(--bg-sunken); border: var(--bw) solid var(--line-ctl); border-radius: var(--radius); color: var(--tx-mut);
+}
+.pp-search:focus-within { border-color: var(--focus); }
+.pp-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--tx-hi); font: var(--fs-2) var(--font); }
+.pp-search input::placeholder { color: var(--tx-mut); }
+
+/* between two bindings of one command ('Home / G G'), so a sequence never reads as two bindings */
+.pp-or { color: var(--tx-ghost); font-size: var(--fs-2); padding: 0 1px; }
+
+/* conflict notes */
+.pp-warn { color: var(--warn-ink); }
+.pp-info { color: var(--tx-mut); }

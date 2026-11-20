@@ -1,0 +1,154 @@
+{
+ "v": 1,
+ "checkpoints": [
+  {
+   "id": "1795055089038",
+   "at": 1795055089038,
+   "label": "After a track",
+   "auto": true,
+   "kind": "auto",
+   "key": "7d1b6237:500629",
+   "changes": [
+    {
+     "scope": {
+      "kind": "project",
+      "label": "Project"
+     },
+     "lines": [
+      "Shots: 2 cuts added",
+      "S1–S3 · 0:00.0–0:36.0 · #1 tracked (shots 1–3) (outside the shots)",
+      "S1–S3 · 0:00.0–0:36.0 · #1 range added at 0:00.000 (shots 1–3) (outside the shots)"
+     ]
+    },
+    {
+     "scope": {
+      "kind": "shot",
+      "i": 0,
+      "t0": 0,
+      "t1": 13000,
+      "label": "Shot 1"
+     },
+     "lines": [
+      "run link to fused"
+     ]
+    },
+    {
+     "scope": {
+      "kind": "shot",
+      "i": 1,
+      "t0": 13000,
+      "t1": 25000,
+      "label": "Shot 2"
+     },
+     "lines": [
+      "run link to fused"
+     ]
+    },
+    {
+     "scope": {
+      "kind": "shot",
+      "i": 2,
+      "t0": 25000,
+      "t1": 36000,
+      "label": "Shot 3"
+     },
+     "lines": [
+      "run link to fused"
+     ]
+    }
+   ],
+   "sum": {
+    "pts": {},
+    "runs": [
+     "run1"
+    ],
+    "shots": 3
+   },
+   "runRefs": {
+    "run1": "779195b1cbd845d8a103c4f7b38b5ad3"
+   }
+  },
+  {
+   "id": "1795055089155",
+   "at": 1795055089155,
+   "label": "Commit",
+   "auto": false,
+   "kind": "commit",
+   "note": "First pass: tracked, shot 1 baked",
+   "key": "f4419665:501392",
+   "changes": [
+    {
+     "scope": {
+      "kind": "shot",
+      "i": 0,
+      "t0": 0,
+      "t1": 13000,
+      "label": "Shot 1"
+     },
+     "lines": [
+      "+19 points on stroke"
+     ]
+    },
+    {
+     "scope": {
+      "kind": "shot",
+      "i": 1,
+      "t0": 13000,
+      "t1": 25000,
+      "label": "Shot 2"
+     },
+     "lines": [
+      "anchors changed"
+     ]
+    },
+    {
+     "scope": {
+      "kind": "shot",
+      "i": 2,
+      "t0": 25000,
+      "t1": 36000,
+      "label": "Shot 3"
+     },
+     "lines": [
+      "orgasm added at 0:27.767",
+      "spurt marker added at 0:29.267"
+     ]
+    }
+   ],
+   "sum": {
+    "pts": {
+     "stroke": 19
+    },
+    "runs": [
+     "run1"
+    ],
+    "shots": 3
+   },
+   "runRefs": {
+    "run1": "779195b1cbd845d8a103c4f7b38b5ad3"
+   }
+  },
+  {
+   "id": "1795055089162",
+   "at": 1795055089162,
+   "label": "Published v1",
+   "auto": false,
+   "kind": "publish",
+   "version": 1,
+   "key": "4523e012:501707",
+   "changes": [],
+   "sum": {
+    "pts": {
+     "stroke": 19
+    },
+    "runs": [
+     "run1"
+    ],
+    "shots": 3
+   },
+   "runRefs": {
+    "run1": "779195b1cbd845d8a103c4f7b38b5ad3"
+   }
+  }
+ ]
+}

@@ -1,0 +1,77 @@
+runtime-2026-11-17.zip: the friends' share build's runtime (paw-i7s). Git-ignored (about 3 GB); this file is its record.
+Consumed by dev/share/build-nas.ps1 (hard-linked into the share folder as runtime.zip); the shared exe unpacks it on its
+first start (src-tauri/src/portable.rs).
+
+Contents (zip root)
+  runtime.stamp   "runtime 2026-11-17 python3.12.12 torch2.12.1+cu126 ffmpeg8.1.1" (the exe re-unpacks when this changes)
+  python\         26332 files, 4825445337 bytes
+  ffmpeg.exe, ffprobe.exe   454592000 bytes together
+
+Python
+  3.12.12 (main, Jan 14 2026, 19:30:21) [MSC v.1944 64 bit (AMD64)]
+  python-build-standalone, BUILD 20260114 (the interpreter uv installs for Python 3.12; copied as is, relocatable)
+  python\Lib\site-packages\pawtrack.pth = "../../../trackers": puts <folder>\trackers on sys.path (pawtrack and the
+  shared build's trackers\sitecustomize.py, which blocks every non-loopback connection)
+  Packages: the same set and versions as trackers\.venv on 2026-11-17 (torch / torchvision from the PyTorch cu126
+  index; sam-2, cotracker, tapnet from the git revisions pinned in trackers/pyproject.toml), installed into this
+  interpreter on 2026-11-07 for the first portable build:
+    antlr4-python3-runtime==4.9.3
+    av==19.0.2
+    cffi==2.1.1
+    colorama==0.4.6
+    contourpy==1.4.0
+    cotracker==3.0
+    cycler==0.12.1
+    einops==0.8.2
+    filelock==4.2.9
+    fonttools==4.68.0
+    fsspec==2026.9.0
+    hydra-core==1.3.8
+    iniconfig==2.3.1
+    iopath==0.1.10
+    jinja2==3.1.6
+    kiwisolver==1.5.1
+    markupsafe==3.0.4
+    matplotlib==3.11.2
+    mpmath==1.3.0
+    networkx==3.7
+    numpy==2.5.4
+    omegaconf==2.3.1
+    opencv-python-headless==5.0.0.93
+    packaging==26.3
+    pillow==13.0.0
+    pip==25.3
+    pluggy==1.7.0
+    portalocker==4.4.2
+    pycparser==3.12
+    pygments==2.21.0
+    pyparsing==3.3.3
+    pytest==9.2.0
+    python-dateutil==4.0.0
+    pyvips-binary==8.18.7
+    pyvips==3.2.0
+    pyyaml==6.0.3
+    safetensors==0.8.0
+    sam-2==1.0
+    scipy==1.18.1
+    setuptools==81.0.0
+    sympy==1.14.0
+    tapnet==0.1.0
+    torch==2.12.1+cu126
+    torchvision==0.27.1+cu126
+    tqdm==4.70.1
+    typing-extensions==4.16.0
+    tzdata==2026.6
+
+ffmpeg / ffprobe
+  ffmpeg version 8.1.1-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers
+  ffprobe version 8.1.1-full_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers
+  gyan.dev "full" build (https://www.gyan.dev/ffmpeg/builds/), --enable-gpl --enable-version3: GPL-3.0
+  (dev/share/LICENSES/ffmpeg-LICENSE.txt). Passing it on means offering its source (ffmpeg.org / gyan.dev).
+
+How it was made (2026-11-17, from Documents\Pawscript-portable, the 2026-11-07 portable build):
+  tar --format zip -c -f runtime-2026-11-17.zip -C <portable> python ffmpeg.exe ffprobe.exe -C <dir with runtime.stamp> runtime.stamp
+To make a new one: a python-build-standalone 3.12 folder, python -m pip install the packages above (torch from
+https://download.pytorch.org/whl/cu126, the git ones at the pyproject.toml revisions, SAM2_BUILD_CUDA=0), add
+pawtrack.pth, the two ffmpeg exes, a new runtime.stamp text, zip as above under a new date; build-nas.ps1 takes the
+newest runtime-*.zip.

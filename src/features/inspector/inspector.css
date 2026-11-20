@@ -1,0 +1,57 @@
+/* Inspector panels: layout glue only. Every control is a kit component; every colour, size and duration is a
+   kit token (src/ui/kit/theme.css), so all themes and densities apply. */
+/* container-type: the panels lay out by their own width (the right dock runs 200-680 px), not the viewport's.
+   tabindex=-1 on .pi: a field that hands focus back on Esc lands here, still inside the panel. */
+.pi { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; background: var(--bg); color: var(--tx); container-type: inline-size; }
+.pi:focus { outline: none; }
+/* A Section's open body is a grid item with an automatic minimum width, so the min-content of whatever it holds
+   (a text input's intrinsic size, a row of labelled buttons) would widen the Section past a narrow dock and clip.
+   Inline-size containment on each block we put in a Section body takes its content out of that minimum. */
+.pi .k-section .inner > :is(div, ul, dl) { contain: inline-size; }
+.pi-scroll { flex: 1; min-height: 0; overflow-x: hidden; }
+
+/* a panel's control band (search, scope): the kit's toolbar band (--bg-raised, bottom hairline) */
+.pi-bar {
+  flex: none; display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); background: var(--bg-raised); border-bottom: var(--bw) solid var(--line-1);
+}
+/* a one-line band: a quiet status on the left, a Toolbar on the right */
+.pi-bar.line { flex-direction: row; align-items: center; justify-content: space-between; min-height: var(--ctl-h); padding-block: var(--space-2); }
+.pi-bar .k-hint { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* key / value readouts: labels in Field's voice, values as tabular numerals */
+.pi-stats { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2) var(--space-5); align-items: baseline; margin: 0; }
+.pi-stats dt {
+  min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: var(--fs-2); font-weight: 500; letter-spacing: .04em; color: var(--tx-mut); text-transform: var(--label-case);
+}
+.pi-stats dd { margin: 0; text-align: right; color: var(--tx-val); white-space: nowrap; }
+
+/* button rows */
+.pi-row { display: flex; align-items: center; gap: var(--gap); }
+.pi-row + .pi-row, * + .pi-row { margin-top: var(--space-4); }
+/* .pi in the selector: it must outrank the kit's `.k-button.s-md { flex: none }`, which loads later */
+.pi .pi-row > .grow { flex: 1 1 0; min-width: 0; }
+.pi-row.end { justify-content: flex-end; }
+
+.pi-note { margin: var(--space-4) 0 0; font-size: var(--fs-2); line-height: var(--lh); color: var(--tx-mut); }
+.pi-note :is(.k-kbd) { margin: 0 1px; }
+
+/* a list row (tools, quick actions): the kit's row metrics (--row-h, --bg-hover, inset focus ring) */
+.pi-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-4);
+  width: 100%; min-height: var(--row-h); margin: 0; padding: 0 var(--space-3);
+  border: 0; border-radius: var(--radius); background: none; color: var(--tx); text-align: left;
+  font: inherit; cursor: pointer; user-select: none;
+  transition: color var(--t-quick) var(--ease-out), background-color var(--t-quick) var(--ease-out);
+}
+.pi-item:hover:not(:disabled) { background: var(--bg-hover); color: var(--tx-hi); }
+.pi-item:active:not(:disabled) { color: var(--highlight); }
+.pi-item:focus-visible { outline: var(--ring-w) solid var(--focus); outline-offset: calc(var(--ring-w) * -1); }
+.pi-item:disabled { opacity: .45; cursor: not-allowed; }
+.pi-item > .lab { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pi-item > .keys { font-size: var(--fs-2); color: var(--tx-mut); }
+
+.pi-bad { color: var(--bad-ink); }
+.pi-warn { color: var(--warn-ink); }
+.pi-ok { color: var(--ok-ink); }

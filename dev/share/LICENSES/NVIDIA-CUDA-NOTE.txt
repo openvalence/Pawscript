@@ -1,0 +1,5 @@
+NVIDIA CUDA runtime, cuBLAS, cuFFT, cuRAND, cuSOLVER, cuSPARSE, NVRTC, cuDNN 9 ... (python\Lib\site-packages\torch\lib\*.dll)
+These ship inside the official PyTorch 2.12.1+cu130 wheel. The wheel carries no NVIDIA licence text. NVIDIA's CUDA Toolkit
+EULA (Attachment A) lists these runtime libraries as redistributable with an application, and the cuDNN licence allows
+distribution as part of an application; that is the basis on which PyTorch itself redistributes them. Not verified from a
+file on this machine.

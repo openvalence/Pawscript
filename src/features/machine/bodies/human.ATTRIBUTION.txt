@@ -1,0 +1,11 @@
+The Machine panel's Human body (human.json and human.*.bin) is derived from the Z-Anatomy atlas:
+
+BodyParts3D - The Database Center for Life Science - CC-BY-SA 2.1 Japan
+Z-Anatomy - The libre 3D atlas of anatomy - CC-BY-SA 4.0
+
+Authors: Kousaku OKUBO (BodyParts3D), Gauthier KERVYN (design, 3D, anatomy), Marcin ZIELINSKI (Blender add-on), Lluis VINENT (Unity development).
+
+Modified for Pawscript (tools/zanatomy_export.py, tools/build-body-layers.mjs): posed on all fours, the head removed
+(everything above the base of the neck, the brain and the inner ear with it), the kidneys replaced by generated shapes
+(the atlas's kidney model is not included), the hair, muscles, vessels and nerves left out, the meshes reduced and
+coloured per tissue. This derived mesh is itself licensed CC-BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).

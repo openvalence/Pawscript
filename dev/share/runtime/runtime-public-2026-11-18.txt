@@ -1,0 +1,22 @@
+runtime-public-2026-11-18.zip: the PUBLIC share build's runtime (paw-vdr4). Git-ignored (3,014,102,839 bytes, 2.81 GiB:
+over GitHub's 2 GiB per-file limit, so it cannot be a release asset as one file); this file is its record. Consumed by
+dev/share/build-nas.ps1 (the newest runtime-*.zip by name: this one sorts after runtime-2026-11-17.zip), hard-linked
+into the share folder as runtime.zip; the exe unpacks it on its first start (src-tauri/src/portable.rs). No build ships
+CoTracker3 any more (owner, 2026-11-18); paw-k793 replaces both archives with a newer PyTorch.
+
+What it is: runtime-2026-11-17.zip less CoTracker3, whose code (and weights) are CC-BY-NC 4.0 and may not ship inside
+GPL-3.0 Pawscript: the 65 entries of python/Lib/site-packages/cotracker/ and cotracker-3.0.dist-info/ are left out
+(343,329 bytes unpacked). Everything else is the same (28,379 entries, every CRC equal to the original's), with its own
+stamp so an exe never takes one for the other:
+  runtime.stamp   "runtime 2026-11-17 public python3.12.12 torch2.12.1+cu126 ffmpeg8.1.1"
+  python\         26281 files; ffmpeg.exe, ffprobe.exe as in runtime-2026-11-17.txt
+Packages: the list in runtime-2026-11-17.txt without cotracker==3.0.
+
+How it was made (2026-11-18, 260 s at below-normal priority, one thread; the input is only read):
+  python -I dev/share/make-public-runtime.py dev/share/runtime/runtime-2026-11-17.zip dev/share/runtime/runtime-public-2026-11-18.zip
+Checked: unpacked with Windows tar.exe (as the exe does) in 22 s; with trackers\pawtrack and sitecustomize.py beside it
+`import pawtrack, torch, tapnet` work, `cotracker` is not importable, `list` names lk_box, lk_two_point, sam2_mask,
+tapnext_points, template (not cotracker_points, even with its checkpoints present), and a TAPNext++ track of the synthetic
+clip gave the same events byte for byte as the dev venv. The opt-in in docs/guide/cotracker.md (pip, offline, from the
+source zip) then lists cotracker_points; uninstalled again, it is gone. The unpacked copy was deleted.
+A new private runtime -> run the script again on it under a new date.

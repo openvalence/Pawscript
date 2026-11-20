@@ -1,0 +1,35 @@
+{"t":"2026-11-09T10:00:00.000Z","s":"aa","k":"app:start","day":"2026-11-09"}
+{"t":"2026-11-09T10:00:05.000Z","s":"aa","k":"project:open","file":"clip.mp4","kind":"video"}
+{"t":"2026-11-09T10:00:06.000Z","s":"aa","k":"ui:panel","dock":"right","id":"tracking","mode":"track"}
+{"t":"2026-11-09T10:00:10.000Z","s":"aa","k":"track.run","src":"key","focus":"lane:plan","mode":"track"}
+{"t":"2026-11-09T10:00:10.100Z","s":"aa","k":"tracking:runStart","tracker":"tapnext_points","label":"track","t0":0,"t1":10000,"params":"{}"}
+{"t":"2026-11-09T10:00:40.000Z","s":"aa","k":"tracking:runEnd","tracker":"tapnext_points","run":"run1","ms":29900,"points":120,"picked":"g1_proj","candidates":"5"}
+{"t":"2026-11-09T10:00:50.000Z","s":"aa","k":"tracking:setChannel","run":"run1","tracker":"tapnext_points","from":"primary","to":"g2_proj","sidecar":"g1_proj"}
+{"t":"2026-11-09T10:01:00.000Z","s":"aa","k":"app:heartbeat","active":true,"playing":false,"mode":"track"}
+{"t":"2026-11-09T10:01:00.000Z","s":"aa","k":"track.accept","src":"button","focus":"right dock","mode":"track"}
+{"t":"2026-11-09T10:01:00.050Z","s":"aa","k":"tracking:accept","run":"run1","tracker":"tapnext_points","mode":"replace","points":118,"range":false}
+{"t":"2026-11-09T10:01:00.060Z","s":"aa","k":"edit:commit","label":"Accept Run 1 (replace)","paths":"axes.stroke"}
+{"t":"2026-11-09T10:01:04.000Z","s":"aa","k":"edit.undo","src":"key","focus":"lane:plan","mode":"track"}
+{"t":"2026-11-09T10:01:04.010Z","s":"aa","k":"edit:undo","label":"Accept Run 1 (replace)"}
+{"t":"2026-11-09T10:01:10.000Z","s":"aa","k":"track.run","src":"palette","focus":"dialog:Command palette","mode":"track"}
+{"t":"2026-11-09T10:01:10.100Z","s":"aa","k":"tracking:runStart","tracker":"tapnext_points","label":"track","t0":1000,"t1":9000,"params":"{\"box_points\":1024}"}
+{"t":"2026-11-09T10:01:30.000Z","s":"aa","k":"tracking:runEnd","tracker":"tapnext_points","ms":19900,"cancelled":true}
+{"t":"2026-11-09T10:01:40.000Z","s":"aa","k":"tracking:discard","run":"run1","tracker":"tapnext_points"}
+{"t":"2026-11-09T10:01:50.000Z","s":"aa","k":"fx:add","id":"f1","kind":"orgasm","ms":2000}
+{"t":"2026-11-09T10:01:55.000Z","s":"aa","k":"fx:edit","id":"f1","kind":"orgasm","ms":2000,"what":"lo","n":12}
+{"t":"2026-11-09T10:02:00.000Z","s":"aa","k":"app:heartbeat","active":true,"playing":false,"mode":"track"}
+{"t":"2026-11-09T10:02:10.000Z","s":"aa","k":"fx:remove","id":"f1","kind":"orgasm","ms":2000}
+{"t":"2026-11-09T10:02:11.000Z","s":"aa","k":"fx:add","id":"f2","kind":"spurt","ms":0}
+{"t":"2026-11-09T10:02:12.000Z","s":"aa","k":"scenes:tag","scene":2,"tag":"knotting","cat":"modifier","on":true}
+{"t":"2026-11-09T10:02:13.000Z","s":"aa","k":"ui:toast","level":"warn","text":"Run 2 has nothing new inside the range"}
+{"t":"2026-11-09T10:02:14.000Z","s":"aa","k":"ui:toast","level":"warn","text":"Run 3 has nothing new inside the range"}
+{"t":"2026-11-09T10:02:15.000Z","s":"aa","k":"ui:dialogOpen","name":"Command palette"}
+{"t":"2026-11-09T10:02:18.000Z","s":"aa","k":"ui:dialog","name":"Command palette","ms":3000}
+{"t":"2026-11-09T10:02:20.000Z","s":"aa","k":"settings:set","key":"player.rate","from":"1","to":"0.5","n":3,"ms":400}
+{"t":"2026-11-09T10:02:30.000Z","s":"aa","k":"play:seek","from":0,"to":5000,"n":40,"ms":2000}
+{"t":"2026-11-09T10:02:40.000Z","s":"aa","k":"ui:mode","mode":"script","from":"track"}
+{"t":"2026-11-09T10:03:00.000Z","s":"aa","k":"app:heartbeat","active":false,"playing":false,"mode":"script"}
+not json
+{"t":"2026-11-09T11:00:00.000Z","s":"bb","k":"app:start","day":"2026-11-09"}
+{"t":"2026-11-09T11:00:30.000Z","s":"bb","k":"edit.undo","src":"key","mode":"script"}
+{"t":"2026-11-09T11:00:30.010Z","s":"bb","k":"edit:undo","label":null}

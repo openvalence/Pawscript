@@ -1,0 +1,236 @@
+{
+  "kind": "pawscript.models/1",
+  "version": 1,
+  "generated": "2026-11-19",
+  "models": [
+    {
+      "id": "sam2.1-tiny",
+      "title": "SAM 2.1 tiny",
+      "for": "Finds the parts you point at (Groups, part finder)",
+      "required": true,
+      "licence": "Apache-2.0",
+      "licenceUrl": "https://github.com/facebookresearch/sam2/blob/main/LICENSE",
+      "notice": "SAM2.1-weights-and-code-Apache-2.0.txt",
+      "vramGb": 1,
+      "files": [
+        {
+          "path": ".cache/sam2/sam2.1_hiera_tiny.pt",
+          "bytes": 156008466,
+          "sha256": "7402e0d864fa82708a20fbd15bc84245c2f26dff0eb43a4b5b93452deb34be69",
+          "url": "sam2/sam2.1_hiera_tiny-7402e0d8.pt"
+        }
+      ]
+    },
+    {
+      "id": "sam2.1-small",
+      "title": "SAM 2.1 small",
+      "for": "The mask tracker and the shaft, default size",
+      "required": true,
+      "licence": "Apache-2.0",
+      "licenceUrl": "https://github.com/facebookresearch/sam2/blob/main/LICENSE",
+      "notice": "SAM2.1-weights-and-code-Apache-2.0.txt",
+      "vramGb": 2,
+      "files": [
+        {
+          "path": ".cache/sam2/sam2.1_hiera_small.pt",
+          "bytes": 184416285,
+          "sha256": "6d1aa6f30de5c92224f8172114de081d104bbd23dd9dc5c58996f0cad5dc4d38",
+          "url": "sam2/sam2.1_hiera_small-6d1aa6f3.pt"
+        }
+      ]
+    },
+    {
+      "id": "sam2.1-base_plus",
+      "title": "SAM 2.1 base+",
+      "for": "The mask tracker, a larger size you can pick",
+      "required": false,
+      "licence": "Apache-2.0",
+      "licenceUrl": "https://github.com/facebookresearch/sam2/blob/main/LICENSE",
+      "notice": "SAM2.1-weights-and-code-Apache-2.0.txt",
+      "vramGb": 3,
+      "files": [
+        {
+          "path": ".cache/sam2/sam2.1_hiera_base_plus.pt",
+          "bytes": 323606802,
+          "sha256": "a2345aede8715ab1d5d31b4a509fb160c5a4af1970f199d9054ccfb746c004c5",
+          "url": "sam2/sam2.1_hiera_base_plus-a2345aed.pt"
+        }
+      ]
+    },
+    {
+      "id": "sam2.1-large",
+      "title": "SAM 2.1 large",
+      "for": "The mask tracker, the largest size you can pick",
+      "required": false,
+      "licence": "Apache-2.0",
+      "licenceUrl": "https://github.com/facebookresearch/sam2/blob/main/LICENSE",
+      "notice": "SAM2.1-weights-and-code-Apache-2.0.txt",
+      "vramGb": 4,
+      "files": [
+        {
+          "path": ".cache/sam2/sam2.1_hiera_large.pt",
+          "bytes": 898083611,
+          "sha256": "2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318",
+          "url": "sam2/sam2.1_hiera_large-2647878d.pt"
+        }
+      ]
+    },
+    {
+      "id": "tapnext-256",
+      "title": "TAPNext++ 256",
+      "for": "The point tracker (Track, T)",
+      "required": true,
+      "licence": "Apache-2.0",
+      "licenceUrl": "https://github.com/google-deepmind/tapnet/blob/main/LICENSE",
+      "notice": "TAPNext++-weights-and-code-Apache-2.0.txt",
+      "vramGb": 4,
+      "files": [
+        {
+          "path": ".cache/tapnext/tapnextpp_ckpt.pt",
+          "bytes": 2532282370,
+          "sha256": "cb96a43444ccb4fbdb25d800b88c7ba196179a526e78f01b021a16b1c1eff6da",
+          "url": "tapnext/tapnextpp_ckpt-cb96a434.pt"
+        }
+      ]
+    },
+    {
+      "id": "tapnext-512",
+      "title": "TAPNext++ 512",
+      "for": "The point tracker for small parts (Auto picks it)",
+      "required": false,
+      "licence": "Apache-2.0",
+      "licenceUrl": "https://github.com/google-deepmind/tapnet/blob/main/LICENSE",
+      "notice": "TAPNext++-weights-and-code-Apache-2.0.txt",
+      "vramGb": 9,
+      "files": [
+        {
+          "path": ".cache/tapnext/tapnextpp_512.ckpt",
+          "bytes": 2532283010,
+          "sha256": "6cd0e793fdcface3063d63f8ed3819bcf74c2c0468fe1fef85acee4de2f3609f",
+          "url": "tapnext/tapnextpp_512-6cd0e793.ckpt"
+        }
+      ]
+    },
+    {
+      "id": "hydra-3.5",
+      "title": "Hydra 3.5 tagger",
+      "for": "Scene tags and part suggestions (Describe, Suggest)",
+      "required": false,
+      "licence": "Apache-2.0 (model card)",
+      "licenceUrl": "https://huggingface.co/RedRocket/Hydra",
+      "notice": "Hydra-3.5-NOTE.txt",
+      "vramGb": 3,
+      "files": [
+        {
+          "path": ".models/hydra/models/hydra-3.5.safetensors",
+          "bytes": 1064526448,
+          "sha256": "5e9337c21019c51f2bb5b33d053ea3e2c0412e5ca972b5ea3c4c21e6987452ca",
+          "url": "hydra/models/hydra-3.5-5e9337c2.safetensors"
+        },
+        {
+          "path": ".models/hydra/hydra/__init__.py",
+          "bytes": 258,
+          "sha256": "a10712df0e31864220bafdc11a727b78a4ffc6a40275ee8f13f2ad6b42d6daf3",
+          "url": "hydra/hydra/__init__-a10712df.py"
+        },
+        {
+          "path": ".models/hydra/hydra/classification.py",
+          "bytes": 18851,
+          "sha256": "1669e28b8a23ad0f053ef7d1a87246b54b129f5bf56970ab38e8c0598556c917",
+          "url": "hydra/hydra/classification-1669e28b.py"
+        },
+        {
+          "path": ".models/hydra/hydra/cufork.py",
+          "bytes": 1983,
+          "sha256": "7403f932d4e84a85604fb1027bbe4c9a027a0e359a11f1143905cfdd752be76b",
+          "url": "hydra/hydra/cufork-7403f932.py"
+        },
+        {
+          "path": ".models/hydra/hydra/glu.py",
+          "bytes": 1318,
+          "sha256": "5b592db60125130c25568d1110e183f38a808e5ffac75be3aedd2411e12ba2f7",
+          "url": "hydra/hydra/glu-5b592db6.py"
+        },
+        {
+          "path": ".models/hydra/hydra/head.py",
+          "bytes": 3810,
+          "sha256": "d0721aeaad132edb9a4d64761eef5713f3656ee9d3f64966f8f95194b7b60f00",
+          "url": "hydra/hydra/head-d0721aea.py"
+        },
+        {
+          "path": ".models/hydra/hydra/image.py",
+          "bytes": 12104,
+          "sha256": "bb4ad63a8f28b5faca4a8925a3bd7d90035ecfd12ffc14c9858a08ec5b657da7",
+          "url": "hydra/hydra/image-bb4ad63a.py"
+        },
+        {
+          "path": ".models/hydra/hydra/label.py",
+          "bytes": 9793,
+          "sha256": "5143bd708ee16984dfe9170aedb026f9ca5c2117d0d9a8c508bbbb4c2729c699",
+          "url": "hydra/hydra/label-5143bd70.py"
+        },
+        {
+          "path": ".models/hydra/hydra/model.py",
+          "bytes": 17785,
+          "sha256": "f0740c596b84269733297a96479829d26ba14521a485f9a7da9a23c1ebea23f7",
+          "url": "hydra/hydra/model-f0740c59.py"
+        },
+        {
+          "path": ".models/hydra/hydra/pool.py",
+          "bytes": 9746,
+          "sha256": "724da543c5e4dbebb1e97d11bcf459c89541ad060c2fb8c0a3ee3732166b6b35",
+          "url": "hydra/hydra/pool-724da543.py"
+        },
+        {
+          "path": ".models/hydra/hydra/siglip2.py",
+          "bytes": 15095,
+          "sha256": "a5d25e61031fb5ee0b16cc4e22147b1a4ab648b158f1362a4cfd2f0d9ae83eaf",
+          "url": "hydra/hydra/siglip2-a5d25e61.py"
+        }
+      ]
+    },
+    {
+      "id": "taggerine",
+      "title": "taggerine",
+      "for": "Extra features for the learned seeder (optional)",
+      "required": false,
+      "licence": "Apache-2.0 card, DINOv3 License base",
+      "licenceUrl": "https://ai.meta.com/resources/models-and-libraries/dinov3-license/",
+      "notice": "taggerine-NOTE.txt",
+      "vramGb": 4,
+      "source": "manual",
+      "downloadPage": "https://huggingface.co/lodestones/taggerine",
+      "files": [
+        {
+          "path": ".cache/taggerine/tagger_proto.safetensors",
+          "bytes": 5272842048,
+          "sha256": "6ef471936e144eb75a21b37e664f7499e0139a6643170a59473cdde8d1d4c238"
+        },
+        {
+          "path": ".cache/taggerine/tagger_vocab.json",
+          "bytes": 1350278,
+          "sha256": "88dec8d327781e437b96580634125a6d3e302df23ee48837cc28446c63600c5d"
+        }
+      ]
+    },
+    {
+      "id": "runtime",
+      "kind": "runtime",
+      "title": "Runtime (Python, PyTorch, ffmpeg)",
+      "for": "Runs the trackers and reads your videos",
+      "required": true,
+      "licence": "PSF / BSD / GPL-3.0 (ffmpeg) and more",
+      "licenceUrl": "https://github.com/openvalence/Pawscript/blob/main/dev/share/LICENSES-SUMMARY.txt",
+      "notice": "",
+      "version": "runtime 2026-11-18 python3.12.12 torch2.12.1+cu130 ffmpeg8.1.1",
+      "files": [
+        {
+          "path": "runtime.zip",
+          "bytes": 2287006433,
+          "sha256": "d9930152cb85ef054c9b388b479ea4ff1b31e9310da1e35572e5b616c1f71988",
+          "url": "runtime/runtime-2026-11-18-d9930152.zip"
+        }
+      ]
+    }
+  ]
+}

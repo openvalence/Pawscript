@@ -1,0 +1,39 @@
+Pawscript
+Copyright 2026 AtlanticTM
+Published by OpenValence.
+
+Pawscript is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
+License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
+version (SPDX: GPL-3.0-or-later). It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE for the full text.
+
+Pawscript is free and always will be. Anyone may share it; nobody may make it closed.
+
+What this covers
+- The application and its code: everything in this repository unless a file or folder below says otherwise.
+  Individual source files do not carry licence headers; this file and LICENSE apply to all of them.
+- Parts under their own licence (kept under their own terms; all of them may be combined with GPL-3.0 code):
+    Kinetic2 motion planner (src/lib/analyze/kinetic) and code adapted from Phosphor: Apache-2.0, Copyright 2026 AtlanticTM
+    Valence reference client (src/lib/valence/vendor): MIT, Copyright (c) 2026 AtlanticTM (its LICENSE file)
+    Chakra Petch and Martian Mono fonts (src/fonts): SIL Open Font License 1.1
+    Human body mesh (src/features/machine/bodies/human.*): CC BY-SA 4.0, see human.ATTRIBUTION.txt beside it
+    Stroker penis mesh (src/features/machine/bodies/stroker-penis.glb): model from "Easy penis auto-rigger" v2.2 by
+      Likkez, CC0 1.0 (public domain dedication); credited here at the author's request; modified (THIRD-PARTY.md)
+- Not covered, and not part of the public build: the toy library in src/features/machine/toys (Bad Dragon's product
+  data, pictures and meshes, kept for the owner's private use only).
+- The sample clip and project (sample/, made by dev/sample/: a generated animation, its true stroke, the project, runs,
+  history and .funscript): CC0 1.0, a public domain dedication. Anyone may use them for anything. See sample/README.md.
+- File format specifications (docs/formats): the text is CC BY 4.0, and implementing the formats needs no licence from
+  this project, in any software, open or closed, free or commercial. See docs/formats/README.md.
+
+Trademarks
+Product names (such as Fleshlight, Quickshot, Flight Pilot and GO in the Stroker's sleeve presets) are trademarks of their
+owners, used only to identify compatible sleeves. Pawscript is not affiliated with or endorsed by them; the presets
+are approximate shapes of our own, not product data.
+
+What you make is yours
+Scripts, projects, packs and anything else you create with Pawscript belong to you. The GPL covers the program, not
+what you make with it.
+
+Third-party software, models and their licences: THIRD-PARTY.md (and, in the shared build, LICENSES-SUMMARY.txt and
+the LICENSES folder). Source code: https://github.com/openvalence/Pawscript

@@ -1,0 +1,79 @@
+[project]
+name = "pawtrack"
+version = "0.1.0"
+description = "Pawscript tracker sidecar: video in, position signal and funscript points out (JSONL over stdio)."
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+dependencies = [
+    "av>=14",
+    "numpy>=2",
+    "opencv-python-headless>=4.10",
+    "scipy>=1.14",
+]
+
+# Heavy features get their own extra, installed once with
+#   uv sync --project trackers --extra sam2 --extra describe
+# (plain `uv run` afterwards does an inexact sync, so the extras stay installed).
+# Both extras share ONE torch (2.12.1, CUDA 13.0 wheels): the lock resolves all extras together.
+[project.optional-dependencies]
+sam2 = [
+    "torch>=2.5.1",
+    "torchvision>=0.20.1",
+    "sam-2",  # facebookresearch/sam2 (dist name "SAM-2"); the PyPI "sam2" is an unrelated fork
+]
+describe = [  # pawtrack/describe.py (Hydra 3.5 shot tagger)
+    "torch==2.12.1",
+    "einops==0.8.2",
+    "safetensors==0.8.0",
+    "pyvips[binary]==3.2.0",
+]
+cotracker = [  # optional, not included: pawtrack/trackers/cotracker_points.py (CoTracker3, CC-BY-NC code + weights) is in no build
+    # and not in the public source (paw-vdr4, paw-uekm); kept for a developer's own venv (`--extra cotracker`)
+    "torch==2.12.1",
+    "torchvision>=0.20.1",
+    "cotracker",
+]
+tapnext = [  # pawtrack/trackers/tapnext_points.py (TAPNext++, Apache-2.0 code + weights)
+    "torch==2.12.1",
+    "torchvision>=0.20.1",
+    "einops==0.8.2",
+    "tapnet",
+]
+
+[[tool.uv.dependency-metadata]]
+# tapnet declares jax/haiku/tensorflow-era deps; its PyTorch TAPNext code needs only torch, torchvision, einops
+name = "tapnet"
+version = "0.1.0"
+requires-dist = ["einops", "numpy"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform != 'darwin'" }]
+torchvision = [{ index = "pytorch-cu130", marker = "sys_platform != 'darwin'" }]
+sam-2 = { git = "https://github.com/facebookresearch/sam2", rev = "2b90b9f5ceec907a1c18123530e92e794ad901a4" }
+cotracker = { git = "https://github.com/facebookresearch/co-tracker", rev = "82e02e8029753ad4ef13cf06be7f4fc5facdda4d" }
+tapnet = { git = "https://github.com/google-deepmind/tapnet", rev = "ceedd60bb9f6c9f7c74796e4445aff6c6ddf7c9b" }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"  # CUDA 13.0 wheels: driver >= 580, sm_75..sm_120 (GTX 16xx / RTX 20xx..RTX 50xx); no Maxwell/Pascal/Volta
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.extra-build-variables]
+# sam2's optional CUDA op (hole filling, unused by us) needs nvcc + MSVC; skip it.
+sam-2 = { SAM2_BUILD_CUDA = "0" }
+
+[project.scripts]
+pawtrack = "pawtrack.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+markers = ["gpu: needs an ML extra (sam2 / cotracker / tapnext) and a CUDA GPU (skipped without them)"]
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""

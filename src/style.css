@@ -1,0 +1,30 @@
+/**
+ * style.css -- the page, nothing else. Tokens and the kit's own resets come from src/ui/kit/theme.css (imported
+ * first in main.js; body carries .kit-root). Safe to load standalone in a harness: it never styles kit internals.
+ *
+ * Rules: element resets are zero-specificity (:where) so any component's scoped style wins; there are NO bare
+ * class rules here. The small control language the migrated bench UI still uses (.btn / .label / .hint / .card /
+ * .screen / native inputs / kbd) only applies inside an element with class `ps-legacy` (TrackerPanel, the
+ * shell's fallback video pane and crash cards). New UI uses kit components.
+ */
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { background: var(--bg); color: var(--tx); font: var(--fs-ui) / var(--lh, 1.45) var(--font); -webkit-font-smoothing: antialiased; }
+#app { height: 100%; }
+:where(button, input, select, textarea) { font: inherit; color: inherit; }
+:where(button) { cursor: pointer; background: none; border: none; padding: 0; }
+:where(button:disabled, input:disabled, select:disabled) { cursor: not-allowed; }
+:where(h1, h2, h3, h4, p) { margin: 0; }
+:where(:focus-visible) { outline: var(--ring-w, 2px) solid var(--focus, var(--highlight)); outline-offset: var(--ring-offset, 2px); }
+::selection { background: var(--text-sel, rgba(255,92,179,.35)); }
+/* paw-6bkv: a drag on a timeline row (Shift+drag on a lane) never starts a text selection */
+:where([data-tl-lane]) { user-select: none; }
+
+/* ---- scrollbars (WebView2) ---- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line-3); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--line-4); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* lib/selmodal.js: B (box select) and C (circle select) are on: a crosshair everywhere until the mode ends */
+html.sel-modal, html.sel-modal * { cursor: crosshair !important; }

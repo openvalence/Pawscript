@@ -1,0 +1,71 @@
+runtime-2026-11-18.zip: the shared build's runtime on a PyTorch build with RTX 50-series (Blackwell, sm_120) kernels
+(paw-k793). One archive for the public and the owner's own builds; no CoTracker3 (paw-vdr4: CC-BY-NC, the user installs
+it if they want it). Git-ignored; this file is its record. Consumed like runtime-2026-11-17.zip (dev/share/build-nas.ps1,
+src-tauri/src/portable.rs).
+
+  size     2287006433 bytes (2.13 GiB: over GitHub's 2 GiB per-asset cap; see "Release assets" below)
+  sha256   d9930152cb85ef054c9b388b479ea4ff1b31e9310da1e35572e5b616c1f71988
+
+Contents (zip root)
+  runtime.stamp   "runtime 2026-11-18 python3.12.12 torch2.12.1+cu130 ffmpeg8.1.1"
+  python\         22633 files, 3399590264 bytes
+  ffmpeg.exe, ffprobe.exe   454592000 bytes together (the same files as runtime-2026-11-17.zip)
+
+Torch build
+  torch 2.12.1+cu130, torchvision 0.27.1+cu130 (https://download.pytorch.org/whl/cu130), CUDA 13.0, cuDNN 9.20.0
+  torch.cuda.get_arch_list() = sm_75 sm_80 sm_86 sm_90 sm_100 sm_120 (no PTX entry)
+    covers: GTX 16xx / RTX 20xx (sm_75), A100 (sm_80), RTX 30xx (sm_86), RTX 40xx (sm_89, via sm_86), H100 (sm_90),
+            B200 (sm_100), RTX 50xx and RTX PRO Blackwell (sm_120; sm_121 via sm_120)
+    NOT covered (runtime-2026-11-17's cu126 build does: sm_50 sm_60 sm_61 sm_70 sm_75 sm_80 sm_86 sm_90):
+            Maxwell GTX 9xx / 750 (sm_50/52), Pascal GTX 10xx (sm_60/61), Volta Titan V (sm_70). On those cards the
+            tracker's start probe (pawtrack/gpu.py) finds no kernel image and runs on the CPU.
+  NVIDIA driver: R580 or newer (CUDA 13.x). The cu126 build ran on R528+.
+  Every sm_120 build on the index drops Maxwell and Pascal: 2.14.1+cu130 and 2.11.0+cu128 list sm_75..sm_120,
+  2.9.1+cu128 sm_70..sm_120. 2.12.1+cu130 was chosen as the same torch release as before: only the CUDA build changes.
+
+Python
+  3.12.12, python-build-standalone BUILD 20260114 (the interpreter uv installs; copied as is), as for 2026-11-17.
+  python\Lib\site-packages\pawtrack.pth = "../../../trackers" (pawtrack and the shared build's sitecustomize.py).
+  Packages: trackers/uv.lock with torch / torchvision on the cu130 index (then dev/patches/paw-k793-torch.patch), extras
+  sam2 + describe + tapnext + the dev group (pytest), plus pip; no cotracker extra. Against 2026-11-17: torch and
+  torchvision cu126 -> cu130; gone with cotracker: cotracker, matplotlib, contourpy, cycler, fonttools, kiwisolver,
+  pyparsing, python-dateutil, tzdata. Every other pin unchanged:
+    antlr4-python3-runtime==4.9.3  av==19.0.2  cffi==2.1.1  colorama==0.4.6  einops==0.8.2  filelock==4.2.9
+    fsspec==2026.9.0  hydra-core==1.3.8  iniconfig==2.3.1  iopath==0.1.10  jinja2==3.1.6  markupsafe==3.0.4
+    mpmath==1.3.0  networkx==3.7  numpy==2.5.4  omegaconf==2.3.1  opencv-python-headless==5.0.0.93  packaging==26.3
+    pillow==13.0.0  pip==25.3  pluggy==1.7.0  portalocker==4.4.2  pycparser==3.12  pygments==2.21.0  pytest==9.2.0
+    pyvips==3.2.0  pyvips-binary==8.18.7  pyyaml==6.0.3  safetensors==0.8.0  sam-2==1.0 (git 2b90b9f5)
+    scipy==1.18.1  setuptools==81.0.0  sympy==1.14.0  tapnet==0.1.0 (git ceedd60b)  torch==2.12.1+cu130
+    torchvision==0.27.1+cu130  tqdm==4.70.1  typing-extensions==4.16.0
+
+How it was made (2026-11-18)
+  copy %USERPROFILE%\AppData\Roaming\uv\python\cpython-3.12.12-windows-x86_64-none to <build>\python
+  uv export --frozen --no-hashes --no-emit-project --extra sam2 --extra describe --extra tapnext --group dev  (patched lock)
+  SAM2_BUILD_CUDA=0 uv pip install -p <build>\python\python.exe --break-system-packages --no-deps -r requirements.txt
+      --index-url https://pypi.org/simple --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match
+  pawtrack.pth as above; ffmpeg.exe / ffprobe.exe taken from runtime-2026-11-17.zip (tar -xf ... ffmpeg.exe ffprobe.exe)
+  tar --format zip -c -f runtime-2026-11-18.zip -C <build> python ffmpeg.exe ffprobe.exe -C <dir with runtime.stamp> runtime.stamp
+  (deflate level 9 instead of the default saves 0.1 %: the CUDA DLLs barely compress)
+
+Checked (RTX 4090, driver 616.56; no RTX 50xx card was available, so sm_120 itself is untested here)
+  Unpacked into a scratch folder as portable.rs does, trackers\ from 6b35490 + sitecustomize.py, models junctioned:
+  sitecustomize blocks a connection to example.com; `python -m pawtrack.cli serve` hello, list (gpu state ok, probe
+  404 ms), a 2 s TAPNext++ 256 track on the GPU: result, 60 samples.
+  Same work on trackers\.venv (cu126) and the cu130 venv: TAPNext++ 256 / 512 (1024 points, 1080p, chunk 8), SAM 2.1
+  image tiny / small and Hydra 3.5 bit-identical; the sam2_mask video tracker differs below a pixel (signal max 0.2 of
+  100) and some of its derived points move; speed and peak VRAM equal; the TAPNext VRAM cells of tests/test_tapnext_auto.py
+  re-measured identical (need_gb stays an upper bound). Details in bead paw-k793.
+
+Shipped (paw-7yed, 2026-11-18)
+  The owner's call: this is the only runtime Pawscript ships; no "legacy cards" download (GTX 9xx / 10xx owners are not
+  a concern). trackers/uv.lock carries the cu130 index since commit 12ccaec. build-nas.ps1 takes it by the pinned name
+  in $RuntimeArchive (no longer "the newest by name", which picked runtime-public-2026-11-18.zip) and stops when this
+  record's runtime.stamp or the zip's own differs from the lock's torch build.
+
+Release assets
+  GitHub caps an asset at 2 GiB; this archive is 2.13 GiB. build-nas.ps1 cuts it into runtime.zip.001 (2,000,000,000
+  bytes) and runtime.zip.002 (287,006,433 bytes) beside the exe, listed with size and sha256 in parts.txt; the exe's
+  first start joins them in place into runtime.zip (portable.rs, dev/patches/paw-7yed-runtime-parts.patch until applied)
+  and then unpacks it as before. The two TAPNext++ checkpoints (2,532,282,370 / 2,532,283,010 bytes) go the same way.
+
+docs/guide/cotracker.md's opt-in was checked on the cu126 public runtime, which still had matplotlib; this one has not.

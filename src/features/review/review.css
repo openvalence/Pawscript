@@ -1,0 +1,24 @@
+/* Review panels: the shared frame (head / body / foot) and the key-value grid. Everything else is a kit component.
+   Kit tokens only (src/ui/kit/theme.css). */
+.rv { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; container-type: inline-size; }
+.rv-head { flex: none; display: flex; flex-direction: column; gap: var(--gap); padding: var(--space-4); border-bottom: var(--bw) solid var(--line-1); }
+.rv-row { display: flex; align-items: center; gap: var(--gap); min-width: 0; flex-wrap: wrap; }
+/* a control that takes the rest of the row; its basis makes a narrow row wrap instead of squashing it */
+.rv-grow { flex: 1 1 6rem; min-width: 0; }
+/* an empty spacer that pushes what follows to the end of the row */
+.rv-sp { flex: 1 1 0; min-width: 0; }
+.rv-body { flex: 1 1 auto; min-height: 0; }
+.rv-foot {
+  flex: none; display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; min-height: calc(var(--ctl-h-sm) + var(--space-3) * 2);
+  padding: var(--space-2) var(--space-4); background: var(--bg-raised); border-top: var(--bw) solid var(--line-1); color: var(--tx-mut); font-size: var(--fs-2);
+}
+.rv-foot .k-num { color: var(--tx-val); }
+.rv .k-hint { line-height: var(--lh); }
+.rv-err { display: flex; align-items: center; gap: var(--space-2); color: var(--bad-ink); font-size: var(--fs-2); }
+
+/* label / value rows (statistics, scores) */
+.rv-kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-5); align-items: baseline; }
+.rv-kv > * { padding: 1px 0; min-width: 0; }
+.rv-kv > :nth-child(odd) { color: var(--tx-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-kv > :nth-child(even) { color: var(--tx-val); text-align: right; white-space: nowrap; }
+.rv-kv + .k-hint, .rv-chart + .k-hint { margin-top: var(--space-3); }

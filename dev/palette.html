@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Palette harness</title>
+<style>
+  #root { display: grid; grid-template-rows: auto minmax(0, 1fr) 300px; height: 100vh; }
+  #top { display: flex; gap: 12px; align-items: center; padding: 8px 12px; background: var(--bg-raised); border-bottom: 1px solid var(--line-1); }
+  #mid { padding: 16px; display: grid; align-content: start; gap: 8px; color: var(--tx-mut); font-size: var(--fs-2); }
+  #mid b { color: var(--tx); font-weight: 500; }
+  #dock { border-top: 1px solid var(--line-2); min-height: 0; display: flex; flex-direction: column; }
+  #dock > .head { height: 28px; flex: none; display: flex; align-items: center; padding: 0 12px; background: var(--bg-raised); border-bottom: 1px solid var(--line-1); font-size: var(--fs-1); text-transform: uppercase; letter-spacing: .1em; color: var(--tx-hi); }
+  #dock > .body { flex: 1; min-height: 0; }
+  #out { display: none; }
+</style></head>
+<body><div id="root">
+  <div id="top"><b>Palette harness</b><span class="hint">Ctrl+K palette · ? help · Ctrl+Alt+K shortcuts</span><span style="flex:1"></span>
+    <button class="btn sm" id="open">Palette</button><button class="btn sm" id="help">Help</button></div>
+  <div id="mid"></div>
+  <div id="dock"><div class="head">Shortcuts</div><div class="body" id="panel"></div></div>
+</div><div id="modals"></div><pre id="out"></pre>
+<script type="module" src="./palette.js"></script></body></html>

@@ -1,0 +1,455 @@
+/**
+ * theme.css -- Pawscript's design tokens and the few global classes the kit shares.
+ *
+ * Tokens carry Phosphor's names and values (src/style.css there, the default theme), so CSS written for one
+ * reads in the other. Three themes, switched by `data-theme` on <html> or on any subtree:
+ *   (none) | 'dark'   Phosphor's default chassis
+ *   'light'           Phosphor's "Paper" variant, with the label and safety inks lifted to 4.5:1
+ *   'contrast'        Phosphor's Contrast theme (dark): text 7:1 or better, 3:1+ frames, a yellow ring
+ * Density (`data-density` = compact | comfortable, default in between) changes heights, never type colour.
+ * test/kit-theme.test.mjs parses this file and holds every text token to 4.5:1 (7:1 in contrast) and
+ * every control boundary to 3:1 on every surface it can sit on. Change a value, run `npm run check`.
+ *
+ * Rules: never hard-code a colour in a component; use a token. --tx-ghost is for disabled and decorative
+ * glyphs only (exempt from 4.5:1), never a label. --warn/--bad are fills and frames; their text is
+ * --warn-ink/--bad-ink.
+ */
+@font-face { font-family: 'Chakra Petch'; src: url('../../fonts/ChakraPetch-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Chakra Petch'; src: url('../../fonts/ChakraPetch-500.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Martian Mono'; src: url('../../fonts/MartianMono.woff2') format('woff2'); font-weight: 300 700; font-display: swap; }
+
+/* ==== dark (default) ===================================================== */
+:root, [data-theme='dark'] {
+  color-scheme: dark;
+  /* surfaces, lowest to highest */
+  --bg-sunken: #040507;   /* recessed: lanes, inputs, the video well */
+  --bg:        #08090B;   /* page and panels */
+  --bg-raised: #0D0F13;   /* bars that sit above the page: top bar, status bar, panel heads */
+  --bg-card:   #111318;   /* cards, popovers, menus, dialogs */
+  --bg-hover:  #171A20;   /* a row or ghost control under the pointer */
+  --bg-active: #1D2128;   /* pressed */
+  --bg-overlay: var(--bg-card);
+  --scrim: rgba(0, 0, 0, .55);
+  /* see-through surfaces: popovers and whatever sits over the picture (the Groups bar's look, 6543984), so the user
+     sees what they act on; the blur keeps their text readable over any frame */
+  --glass: color-mix(in srgb, var(--bg-card) 72%, transparent);
+  --glass-blur: blur(10px) saturate(1.2);
+  /* the picture's own surroundings, the same in every theme: the well behind a video or thumbnail, and a label on it */
+  --media-bg: #000;
+  --media-scrim: rgba(0, 0, 0, .6);
+  --on-media: #fff;
+  --media-check-a: #1a1c21;   /* the letterbox checker's two squares */
+  --media-check-b: #101215;
+  /* a canvas's guide lines and labels on a --glass surface (the six-axis view, the position bar): the theme's brightest ink
+     with alpha, haloed in the page colour */
+  --guide: var(--tx-hi);
+  --guide-halo: var(--bg);
+
+  /* lines: 0-2 are hairlines (decoration, dividers); --line-ctl is a control's own boundary (3:1) */
+  --line-0: #121419;
+  --line-1: #1D2026;
+  --line-2: #272B31;
+  --line-3: #33373E;
+  --line-4: #454A54;
+  --line-ctl: #666B75;
+  --line-ctl-hover: #8A909B;
+  --line: var(--line-1);
+
+  /* text */
+  --tx-hi:    #ECEFF4;   /* titles, values under focus */
+  --tx:       #C3C8D1;   /* body */
+  --tx-val:   #A8AEB9;   /* numerals at rest */
+  --tx-mut:   #848A96;   /* labels, hints, shortcuts (Phosphor hivis step: 4.5:1 here) */
+  --tx-ghost: #5C626C;   /* disabled and decorative only */
+  --tx-faint: #2C3037;   /* watermarks, index numerals: never text */
+
+  /* accents (Phosphor semantics): reality = active / confirmed, intent = pending / ghost, highlight = focus,
+     selection, playhead. Never a state colour. */
+  --reality: #4DA6FF;  --reality-rgb: 77,166,255;
+  --intent:  #A78BFA;  --intent-rgb: 167,139,250;
+  --highlight: #FF5CB3; --highlight-rgb: 255,92,179;
+  --accent: var(--reality);
+  --accent-ink: var(--reality);     /* the accent as text */
+  --on-accent: #050608;             /* text or glyph on an accent fill */
+  --on-ok: var(--on-accent);        /* text on an --ok / --warn / --bad fill */
+  --on-warn: var(--on-accent);
+  --on-bad: var(--on-accent);
+  --focus: var(--highlight);
+
+  /* semantic */
+  --ok:   #3DD68C; --ok-rgb: 61,214,140;  --ok-ink: #3DD68C;
+  --warn: #F5B94D; --warn-rgb: 245,185,77; --warn-ink: #F5B94D;
+  --bad:  #FF4757; --bad-rgb: 255,71,87;   --bad-ink: #FF5C6A;
+  --info: var(--reality); --info-rgb: var(--reality-rgb); --info-ink: var(--reality);
+
+  /* selection fills */
+  --sel-bg: rgba(var(--reality-rgb), .16);
+  --sel-bg-hover: rgba(var(--reality-rgb), .22);
+  --sel-line: rgba(var(--reality-rgb), .55);
+  --text-sel: rgba(var(--highlight-rgb), .35);
+
+  /* series / overlay palette: 8 colours that stay apart under protan, deutan and tritan vision
+     (test/kit-theme.test.mjs), then two more that draw dashed (tokens.js SERIES). */
+  --series-sky: #1FC3FA;
+  --series-orange: #F5A733;
+  --series-green: #3CEBC0;
+  --series-yellow: #D9E82E;
+  --series-blue: #6E84F0;
+  --series-vermilion: #EE5340;
+  --series-pink: #CC5CBC;
+  --series-grey: #A0A3A8;
+  --series-violet: #A98BFF;
+  --series-lime: #8CE05A;
+
+  /* script speed ramp: --spd-0 slow .. --spd-8 fast (the stroke lane's line while speed colours are on) */
+  --spd-0: #5b7fd9;
+  --spd-1: #3a9ee4;
+  --spd-2: #2fbcd8;
+  --spd-3: #35d1b0;
+  --spd-4: #45d468;
+  --spd-5: #bfdd46;
+  --spd-6: #ecb832;
+  --spd-7: #f47f2f;
+  --spd-8: #ff4a3d;
+
+  /* elevation: Phosphor is flat; only floating things cast */
+  --shade-rgb: 0,0,0;
+  --shadow-1: 0 4px 12px rgba(var(--shade-rgb), .45);
+  --shadow-2: 0 8px 24px rgba(var(--shade-rgb), .6);
+  --shadow-3: 0 16px 48px rgba(var(--shade-rgb), .7);
+  --recess: inset 0 1px 3px rgba(var(--shade-rgb), .55);
+  --glow-reality: 0 0 12px rgba(var(--reality-rgb), .35), 0 0 32px rgba(var(--reality-rgb), .1);
+  --glow-highlight: 0 0 10px rgba(var(--highlight-rgb), .5);
+  --glow-bad: 0 0 10px rgba(var(--bad-rgb), .25);
+
+  /* focus ring */
+  --ring-w: 2px;
+  --ring-offset: 1px;
+  --bw: 1px;
+
+  /* metrics: the instrument look is square */
+  --radius: 2px;
+  --radius-pill: 999px;   /* deliberate pills and round-ended bars only */
+  --r: var(--radius);
+
+  /* spacing: a px grid, so borders and text land on whole pixels */
+  --space-1: 2px; --space-2: 4px; --space-3: 6px; --space-4: 8px;
+  --space-5: 12px; --space-6: 16px; --space-7: 24px; --space-8: 32px;
+
+  /* type: Chakra Petch for words, Martian Mono (tabular) for numbers and time */
+  --font: 'Chakra Petch', system-ui, sans-serif;
+  --font-head: var(--font);
+  --mono: 'Martian Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --num-wght: 400;
+  --fs-1: 11px;   /* caps labels, badges */
+  --fs-2: 12px;   /* hints, shortcuts, status bar */
+  --fs-3: 13px;   /* controls and body */
+  --fs-4: 14px;   /* emphasis */
+  --fs-5: 16px;   /* panel and dialog titles */
+  --fs-6: 20px;   /* big headings */
+  --fs-7: 28px;   /* big readouts */
+  --lh: 1.45;
+  --lh-tight: 1.2;
+  --caps-track: .1em;
+  --label-case: lowercase;   /* Phosphor's quiet field label; a theme may set none */
+
+  /* density: default */
+  --ctl-h: 26px;       /* buttons, inputs, selects */
+  --ctl-h-sm: 22px;
+  --ctl-h-lg: 32px;
+  --row-h: 24px;       /* menu, list, table rows */
+  --pad-x: 8px;        /* inside a control */
+  --gap: 8px;          /* between controls */
+  --field-label-w: 96px; /* inline Field label column */
+  --fs-ui: var(--fs-3);
+
+  /* layers (popovers, menus, dialogs and tooltips also sit in the browser's top layer) */
+  --z-raised: 1; --z-sticky: 10; --z-overlay: 100; --z-drag: 200;
+  --z-popover: 1000; --z-toast: 1100; --z-tooltip: 1200;
+
+  /* motion */
+  --t-quick: 120ms;
+  --t-move: 200ms;
+  --t-slow: 320ms;
+  --ease-out: cubic-bezier(.2, .7, .2, 1);
+  --ease-settle: linear(0, .078, .235, .401, .549, .669, .762, .831, .882, .918, .944,
+    .962, .974, .982, .988, .992, .995, .996, .998, .998, 1);
+}
+
+/* ==== light (Phosphor "Paper") =========================================== */
+:root[data-theme='light'], [data-theme='light'] {
+  color-scheme: light;
+  --bg-sunken: #EAEDF1;
+  --bg:        #F3F5F8;
+  --bg-raised: #FEFEFF;
+  --bg-card:   #FFFFFF;
+  --bg-hover:  #E4E8EE;
+  --bg-active: #D9DEE6;
+  --scrim: rgba(40, 44, 52, .35);
+  --glass: color-mix(in srgb, var(--bg-card) 72%, transparent);
+
+  --line-0: #DEE1E9;
+  --line-1: #CBCFD7;
+  --line-2: #BABFC7;
+  --line-3: #A9AEB6;
+  --line-4: #8F94A0;
+  --line-ctl: #7A808B;
+  --line-ctl-hover: #50555F;
+
+  --tx-hi:    #000101;
+  --tx:       #10141A;
+  --tx-val:   #252A32;
+  --tx-mut:   #5A606B;
+  --tx-ghost: #8F949D;
+  --tx-faint: #C4C8CF;
+
+  --reality: #1A66C8;  --reality-rgb: 26,102,200;
+  --intent:  #6A3FC8;  --intent-rgb: 106,63,200;
+  --highlight: #C2186B; --highlight-rgb: 194,24,107;
+  --accent-ink: #155AB3;
+  --info-ink: var(--accent-ink);
+  --on-accent: #FFFFFF;
+  --on-ok: #000101;    /* white on --ok is 3.4:1 */
+  --on-warn: #000101;  /* white on --warn is 1.8:1 */
+  --on-bad: #FFFFFF;
+
+  --ok:   #1E9E5E; --ok-rgb: 30,158,94;   --ok-ink: #17703F;
+  --warn: #F5B94D; --warn-rgb: 245,185,77; --warn-ink: #845B00;
+  --bad:  #D92D43; --bad-rgb: 217,45,67;  --bad-ink: #BA0C2F;
+
+  --sel-bg: rgba(var(--reality-rgb), .12);
+  --sel-bg-hover: rgba(var(--reality-rgb), .18);
+  --text-sel: rgba(var(--reality-rgb), .25);
+
+  --series-sky: #0B5E92;
+  --series-orange: #A45000;
+  --series-green: #038F72;
+  --series-yellow: #8C7D00;
+  --series-blue: #3550DE;
+  --series-vermilion: #8E2A22;
+  --series-pink: #C04FB6;
+  --series-grey: #60646C;
+  --series-violet: #7046C8;
+  --series-lime: #4E7F14;
+
+  /* script speed ramp, darkened to read on the paper ground */
+  --spd-0: #3A56C0;
+  --spd-1: #1B6FB5;
+  --spd-2: #0B7C94;
+  --spd-3: #0B8566;
+  --spd-4: #2F8A2A;
+  --spd-5: #7C8200;
+  --spd-6: #A56A00;
+  --spd-7: #C0480E;
+  --spd-8: #C0192B;
+
+  --shade-rgb: 60,66,78;
+  --shadow-1: 0 2px 8px rgba(var(--shade-rgb), .16);
+  --shadow-2: 0 8px 24px rgba(var(--shade-rgb), .2);
+  --shadow-3: 0 16px 48px rgba(var(--shade-rgb), .26);
+  --recess: inset 0 1px 2px rgba(var(--shade-rgb), .12);
+  --glow-reality: 0 0 0 3px rgba(var(--reality-rgb), .14);
+  --glow-highlight: 0 0 0 3px rgba(var(--highlight-rgb), .18);
+  --glow-bad: 0 0 0 3px rgba(var(--bad-rgb), .14);
+}
+
+/* ==== contrast (Phosphor Contrast, dark) ================================= */
+:root[data-theme='contrast'], [data-theme='contrast'] {
+  color-scheme: dark;
+  --bg-sunken: #000000;
+  --bg:        #0E0E0E;
+  --bg-raised: #171717;
+  --bg-card:   #0E0E0E;
+  --bg-hover:  #262626;
+  --bg-active: #333333;
+  --scrim: rgba(0, 0, 0, .75);
+  --glass: var(--bg-card);   /* contrast: opaque, nothing shows through text */
+  --glass-blur: none;
+
+  --line-0: #3C3C3C;
+  --line-1: #707070;
+  --line-2: #9C9C9C;
+  --line-3: #C8C8C8;
+  --line-4: #FFFFFF;
+  --line-ctl: #B4B4B4;
+  --line-ctl-hover: #FFFFFF;
+
+  --tx-hi:    #FFFFFF;
+  --tx:       #F4F4F4;
+  --tx-val:   #E6E6E6;
+  --tx-mut:   #D0D0D0;
+  --tx-ghost: #8A8A8A;
+  --tx-faint: #5A5A5A;
+
+  --reality: #00FFFF;  --reality-rgb: 0,255,255;
+  --intent:  #E0A0FF;  --intent-rgb: 224,160,255;
+  --highlight: #FFFF00; --highlight-rgb: 255,255,0;
+  --on-accent: #000000;
+
+  --ok:   #33FF99; --ok-rgb: 51,255,153;  --ok-ink: #33FF99;
+  --bad: #FF7A85; --bad-rgb: 255,122,133;
+  --warn-ink: #FFC966;
+  --bad-ink: #FF9C9C;
+
+  --sel-bg: rgba(var(--reality-rgb), .2);
+  --sel-bg-hover: rgba(var(--reality-rgb), .28);
+  --sel-line: var(--reality);
+
+  --series-sky: #1CBEFC;
+  --series-orange: #FEC056;
+  --series-green: #7EF3CF;
+  --series-yellow: #ECF791;
+  --series-blue: #ACCBFF;
+  --series-vermilion: #FE8948;
+  --series-pink: #ED86E2;
+  --series-grey: #B4B4B6;
+  --series-violet: #C9A8FF;
+  --series-lime: #B8F06A;
+
+  /* script speed ramp */
+  --spd-0: #5b7fd9;
+  --spd-1: #3a9ee4;
+  --spd-2: #2fbcd8;
+  --spd-3: #35d1b0;
+  --spd-4: #45d468;
+  --spd-5: #bfdd46;
+  --spd-6: #ecb832;
+  --spd-7: #f47f2f;
+  --spd-8: #ff4a3d;
+
+  --glow-reality: none;
+  --glow-highlight: none;
+  --glow-bad: none;
+  --ring-w: 3px;
+  --ring-offset: 2px;
+  --num-wght: 600;
+  --label-case: none;
+}
+
+/* ==== density ============================================================ */
+[data-density='compact'] {
+  --ctl-h: 22px; --ctl-h-sm: 18px; --ctl-h-lg: 26px;
+  --row-h: 20px; --pad-x: 6px; --gap: 6px; --fs-ui: var(--fs-2);
+}
+[data-density='comfortable'] {
+  --ctl-h: 30px; --ctl-h-sm: 24px; --ctl-h-lg: 36px;
+  --row-h: 28px; --pad-x: 10px; --gap: 10px;
+}
+
+/* ==== motion ============================================================= */
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-quick: 0ms; --t-move: 0ms; --t-slow: 0ms; }
+}
+[data-motion='reduce'] { --t-quick: 0ms; --t-move: 0ms; --t-slow: 0ms; }
+
+/* ==== scoped base ========================================================
+   Zero-specificity, and only under .kit-root: the app's own src/style.css keeps the page. */
+*, *::before, *::after { box-sizing: border-box; }
+:where(.kit-root) {
+  margin: 0;
+  background: var(--bg);
+  color: var(--tx);
+  font: var(--fs-ui) / var(--lh) var(--font);
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+}
+:where(.kit-root) :where(button, input, select, textarea) { font: inherit; color: inherit; }
+:where(.kit-root) :where(h1, h2, h3, h4, p) { margin: 0; }
+:where(.kit-root) ::selection { background: var(--text-sel); }
+
+/* ==== shared classes (prefix k-) ========================================= */
+/* top / left 0: at its static place an absolutely placed element whose containing block is outside the nearest
+   scroller (a panel body around a scrolling list) stretches that outer box and shows it a second scroll bar */
+.k-sr { position: absolute !important; top: 0; left: 0; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.k-num { font-family: var(--mono); font-variant-numeric: tabular-nums slashed-zero; font-variation-settings: 'wght' var(--num-wght), 'wdth' 90; letter-spacing: -0.02em; }
+.k-caps { font-size: var(--fs-1); font-weight: 500; text-transform: uppercase; letter-spacing: var(--caps-track); color: var(--tx-mut); }
+.k-hint { font-size: var(--fs-2); color: var(--tx-mut); }
+/* the one separator (paw-p8o2): the Track group's bar, a --line-1 hairline the height of the row's controls, like the
+   status bar's tray toggle */
+.k-sep { flex: none; align-self: stretch; width: var(--bw); margin: 0 var(--space-2); background: var(--line-1); }
+.k-sep[data-orient='h'] { width: auto; height: var(--bw); margin: var(--space-2) 0; }
+.k-scroll { overflow: auto; overscroll-behavior: contain; }
+/* Scroll bars: Chromium (WebView2) draws the app's ::-webkit-scrollbar (src/style.css: 6 px, no arrow buttons) only
+   where scrollbar-width / scrollbar-color are auto; set here (and inherited: scrollbar-color is) they gave every panel
+   native bars with arrow buttons, a 15 px one inside a thin one. So the standard properties only where the
+   ::-webkit-scrollbar styling does not exist. */
+@supports not selector(::-webkit-scrollbar) {
+  .k-scroll, .k-pop { scrollbar-width: thin; scrollbar-color: var(--line-3) transparent; }
+  .k-scroll:hover { scrollbar-color: var(--line-4) transparent; }
+}
+.k-ring:focus-visible { outline: var(--ring-w) solid var(--focus); outline-offset: var(--ring-offset); }
+/* paw-hdxk: no focus ring on pointer use. The app keeps Tab and the arrows (commands.js), so a ring shows only after a key
+   that moved focus (focus.js trackInputModality sets html[data-input]); text entries keep their caret frame. Every ring
+   on a control is drawn in --focus, so clearing it on the focused control clears outline and box-shadow alike. --focus is
+   cleared on controls only: a focusable region (a timeline lane) keeps its focused frame, the key context, and loses only
+   the outline. */
+:root[data-input='pointer'] :focus-visible:is(button, summary, a[href], select, [role=button], [role=tab], [role=menuitem],
+  [role=menuitemcheckbox], [role=menuitemradio], [role=radio], [role=checkbox], [role=switch], [role=slider], [role=option]) { --focus: transparent; }
+:root[data-input='pointer'] :focus-visible:not(input, textarea, [contenteditable]) { outline-color: transparent; }
+
+/* Phosphor's .og-panel corner brackets, drawn from tokens so every theme re-inks them. */
+.k-brackets {
+  --bk: 8px;
+  background-image:
+    linear-gradient(var(--line-4), var(--line-4)), linear-gradient(var(--line-4), var(--line-4)),
+    linear-gradient(var(--line-2), var(--line-2)), linear-gradient(var(--line-2), var(--line-2)),
+    linear-gradient(var(--line-2), var(--line-2)), linear-gradient(var(--line-2), var(--line-2)),
+    linear-gradient(var(--line-3), var(--line-3)), linear-gradient(var(--line-3), var(--line-3));
+  background-size: var(--bk) 1px, 1px var(--bk), var(--bk) 1px, 1px var(--bk), var(--bk) 1px, 1px var(--bk), var(--bk) 1px, 1px var(--bk);
+  background-position: 0 0, 0 0, 100% 0, 100% 0, 0 100%, 0 100%, 100% 100%, 100% 100%;
+  background-repeat: no-repeat;
+}
+
+/* A closed popover is never painted. The UA hides [popover]:not(:popover-open) with display:none, but any author
+   display (.k-tip's flex, a host's .qb flex) outranks a UA rule, and hidePopover() then only leaves the top layer:
+   the surface stays drawn at its last place ("the tooltips never go away"). */
+[popover]:not(:popover-open) { display: none !important; }
+
+/* The floating surface: popovers, menus, listboxes. Top layer (popover="manual"), placed by position.js. */
+.k-pop {
+  position: fixed; inset: auto; margin: 0; padding: var(--space-2) 0;
+  min-width: 10rem; max-width: min(28rem, calc(100vw - 16px));
+  overflow: auto; overscroll-behavior: contain;
+  color: var(--tx); background: var(--bg-overlay);
+  border: var(--bw) solid var(--line-2); border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  font: var(--fs-ui) / var(--lh) var(--font);
+  outline: none;
+}
+.k-pop:popover-open { animation: k-pop-in var(--t-quick) var(--ease-out); }
+@keyframes k-pop-in { from { opacity: 0; translate: 0 calc(var(--k-dy, -1) * 3px); } }
+
+/* One row of a menu or listbox. data-active = the keyboard's row; aria-disabled greys it. */
+.k-item {
+  display: grid; grid-template-columns: 16px 16px minmax(0, 1fr) auto 12px; align-items: center; column-gap: var(--space-3);
+  min-height: var(--row-h); padding: 0 var(--space-4) 0 var(--space-3);
+  color: var(--tx); cursor: default; user-select: none; white-space: nowrap;
+  position: relative;
+}
+.k-item[data-active] { background: var(--bg-hover); color: var(--tx-hi); }
+.k-item[data-active]::before { content: ''; position: absolute; left: 0; top: 2px; bottom: 2px; width: 2px; background: var(--focus); }
+.k-item[aria-disabled='true'] { color: var(--tx-ghost); }
+.k-item[aria-selected='true'] { color: var(--accent-ink); }
+.k-item > .k-item-label { overflow: hidden; text-overflow: ellipsis; }
+.k-item > .k-item-hint, .k-item > .k-item-keys { color: var(--tx-mut); font-size: var(--fs-2); padding-left: var(--space-5); }
+.k-item[aria-disabled='true'] > :is(.k-item-hint, .k-item-keys) { color: var(--tx-ghost); }
+.k-menu-sep { height: 1px; margin: var(--space-2) 0; background: var(--line-1); }
+.k-menu-sec { padding: var(--space-3) var(--space-4) var(--space-1) calc(var(--space-3) + 16px + var(--space-3)); font-size: var(--fs-1); font-weight: 500; text-transform: uppercase; letter-spacing: var(--caps-track); color: var(--tx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.k-pop:not([data-icons]) .k-item { grid-template-columns: 16px minmax(0, 1fr) auto 12px; }
+.k-pop[data-icons] > .k-menu-sec { padding-left: calc(var(--space-3) * 3 + 32px); }
+
+/* The one tooltip (tooltip.js), Phosphor's #ph-tip: a framed card with an outline held off it. */
+.k-tip {
+  position: fixed; inset: auto; margin: 0; padding: var(--space-2) var(--space-3);
+  display: flex; align-items: center; gap: var(--space-4);
+  width: max-content; max-width: min(280px, calc(100vw - 8px));
+  background: var(--bg-card); color: var(--tx);
+  border: var(--bw) solid var(--line-2); outline: 1px solid var(--line-0); outline-offset: 1px;
+  border-radius: var(--radius); box-shadow: var(--shadow-1);
+  font: var(--fs-2) / 1.4 var(--font); white-space: pre-line; overflow-wrap: anywhere;
+  pointer-events: none;
+}
+.k-tip:popover-open { animation: k-tip-in var(--t-quick) var(--ease-out); }
+@keyframes k-tip-in { from { opacity: 0; } }
+/* the shortcut keeps its width: with overflow-wrap anywhere a long text used to squeeze it to one letter per line */
+.k-tip kbd { flex: none; white-space: nowrap; overflow-wrap: normal; font: 500 var(--fs-1) / 1 var(--mono); color: var(--tx-mut); }

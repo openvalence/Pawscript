@@ -1,0 +1,6 @@
+lodestones/taggerine (OPTIONAL piece models-tagger\.cache\taggerine: tagger_proto.safetensors, tagger_vocab.json)
+A DINOv3 ViT-H/16+ fine-tuned on e621 + Danbooru tags.
+Licence: the model card says Apache-2.0, BUT the DINOv3 backbone it is fine-tuned from is under Meta's "DINOv3 License"
+(a custom licence, not open source). No licence file was downloaded with the weights and no copy of the DINOv3 License is
+on the build machine, so none ships here. Whether a fine-tune of DINOv3 may be passed on, and under which terms, is
+UNCLEAR: read the DINOv3 License (https://ai.meta.com/resources/models-and-libraries/dinov3-license/) before sharing it.

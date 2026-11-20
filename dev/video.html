@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pawscript: video pane</title>
+  <style>
+    html, body { height: 100%; }
+    #root { display: grid; grid-template-columns: 1fr 260px; height: 100vh; }
+    #pane { min-width: 0; min-height: 0; }
+    #side { border-left: 1px solid var(--line-1); padding: 10px; font-size: .74rem; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+    #side select, #side button { width: 100%; }
+    #out { white-space: pre-wrap; font-family: var(--mono); font-size: .66rem; color: var(--tx-val); }
+    body.bare #side { display: none; } body.bare #root { grid-template-columns: 1fr; }
+  </style>
+</head>
+<body class="kit-root">
+  <div id="root">
+    <div id="pane"></div>
+    <div id="side">
+      <label class="label">Clip <select id="clip"></select></label>
+      <label><input type="checkbox" id="probe"> probe fps (backend)</label>
+      <label><input type="checkbox" id="table"> VFR frame table (backend)</label>
+      <button class="btn" id="track">Tracker overlay: off</button>
+      <div id="out"></div>
+    </div>
+  </div>
+  <script type="module" src="./video.js"></script>
+</body>
+</html>

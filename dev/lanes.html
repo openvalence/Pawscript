@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Lanes harness</title><link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  #root { display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); height: 100vh; }
+  #bar { overflow: hidden; display: flex; gap: 12px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--line-1); background: var(--bg-raised); font-size: 12px; color: var(--tx-mut); }
+  #bar b { color: var(--tx-hi); font-weight: 500; }
+  #bar .num { font-family: var(--mono); font-size: 11px; color: var(--tx-val); white-space: nowrap; }
+  #bar a, #bar button { color: var(--tx); background: var(--bg-card); border: 1px solid var(--line-2); border-radius: 2px; padding: 1px 7px; font: inherit; cursor: pointer; text-decoration: none; }
+  #stack { display: flex; flex-direction: column; min-height: 0; background: var(--bg-sunken); }
+  .hrow { display: grid; grid-template-columns: 76px minmax(0, 1fr); flex: none; border-bottom: 1px solid var(--line-0); }
+  .hrow.fill { flex: 1 1 auto; min-height: 110px; }
+  .gutter { padding: 4px 6px 0 8px; background: var(--bg-raised); border-right: 1px solid var(--line-1); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--tx-mut); overflow: hidden; white-space: nowrap; }
+  .content { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+</style></head>
+<body class="kit-root"><div id="root">
+  <div id="bar"><b>Lanes</b><span class="num" id="info"></span><span style="flex:1"></span>
+    <button id="play">Play</button>
+    <a href="?">10 min</a><a href="?n=100000">100k</a><a href="?n=100000&axes=4">100k × 4 lanes</a><a href="?empty=1">empty</a></div>
+  <div id="stack"></div>
+</div>
+<script type="module" src="./lanes.js"></script></body></html>
